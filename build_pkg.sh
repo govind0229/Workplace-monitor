@@ -27,26 +27,27 @@ fi
 
 # 3. Create the .app bundle structure
 echo "Creating .app bundle structure..."
-rm -rf "$APP_NAME.app"
-mkdir -p "$APP_NAME.app/Contents/MacOS"
-mkdir -p "$APP_NAME.app/Contents/Resources"
-mkdir -p "$APP_NAME.app/Contents/Resources/app"
+rm -rf payload
+mkdir -p payload
+mkdir -p "payload/$APP_NAME.app/Contents/MacOS"
+mkdir -p "payload/$APP_NAME.app/Contents/Resources"
+mkdir -p "payload/$APP_NAME.app/Contents/Resources/app"
 
 # 4. Copy files to the bundle
-cp Info.plist "$APP_NAME.app/Contents/"
+cp Info.plist "payload/$APP_NAME.app/Contents/"
 if [ -f "AppIcon.icns" ]; then
-    cp AppIcon.icns "$APP_NAME.app/Contents/Resources/"
+    cp AppIcon.icns "payload/$APP_NAME.app/Contents/Resources/"
 fi
 
-cp launcher.sh "$APP_NAME.app/Contents/MacOS/"
-chmod +x "$APP_NAME.app/Contents/MacOS/launcher.sh"
+cp launcher.sh "payload/$APP_NAME.app/Contents/MacOS/"
+chmod +x "payload/$APP_NAME.app/Contents/MacOS/launcher.sh"
 
-cp mac_utility "$APP_NAME.app/Contents/Resources/app/"
-cp server.js "$APP_NAME.app/Contents/Resources/app/"
-cp db.js "$APP_NAME.app/Contents/Resources/app/"
-cp com.user.workinghours.plist "$APP_NAME.app/Contents/Resources/app/"
-cp -R public "$APP_NAME.app/Contents/Resources/app/"
-cp -R node_modules "$APP_NAME.app/Contents/Resources/app/"
+cp mac_utility "payload/$APP_NAME.app/Contents/Resources/app/"
+cp server.js "payload/$APP_NAME.app/Contents/Resources/app/"
+cp db.js "payload/$APP_NAME.app/Contents/Resources/app/"
+cp com.user.workinghours.plist "payload/$APP_NAME.app/Contents/Resources/app/"
+cp -R public "payload/$APP_NAME.app/Contents/Resources/app/"
+cp -R node_modules "payload/$APP_NAME.app/Contents/Resources/app/"
 
 # 4. Prepare Scripts
 mkdir -p scripts
@@ -58,7 +59,7 @@ echo "Building final .pkg..."
 pkgbuild --identifier "$IDENTIFIER" \
          --version "$VERSION" \
          --install-location "$INSTALL_LOCATION" \
-         --root "$APP_NAME.app" \
+         --root "payload" \
          --scripts scripts \
          "$APP_NAME.pkg"
 
