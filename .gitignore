@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build Artifacts
+# WorkingHours.app/
+# WorkingHours.pkg
+# mac_utility
+# AppIcon.icns
+# scripts/
+
+# Database and Logs
+# working_hours.db
+# *.log
+
+# System Files
+.DS_Store
+.gemini/

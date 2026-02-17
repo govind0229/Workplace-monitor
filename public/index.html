@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Office Hours Monitor</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="logo">🕒 Monitor</div>
+        <nav>
+            <button class="nav-item active" data-view="monitor">
+                <span class="icon">📊</span> Monitor
+            </button>
+            <button class="nav-item" data-view="history">
+                <span class="icon">📜</span> History
+            </button>
+            <button class="nav-item" data-view="settings">
+                <span class="icon">⚙️</span> Settings
+            </button>
+        </nav>
+        <div class="sidebar-footer">
+            v1.2.0
+        </div>
+    </div>
+
+    <main class="main-content">
+        <div id="monitorView" class="view active">
+            <div class="monitor-grid">
+                <div class="glass-card monitor-card">
+                    <div class="card-header">
+                        <h3>Workplace Duration</h3>
+                        <div id="statusBadge" class="status-badge">Checking...</div>
+                    </div>
+                    <div id="timerDisplay" class="timer">00:00:00</div>
+                    <div class="progress-section">
+                        <div class="progress-container">
+                            <div id="progressBar" class="progress-bar"></div>
+                        </div>
+                        <span class="goal-label">Goal: 4h 10m</span>
+                    </div>
+                    <div class="controls">
+                        <button id="startBtn" class="btn primary">Start</button>
+                        <button id="stopBtn" class="btn secondary">Finish</button>
+                    </div>
+                </div>
+
+                <div class="glass-card monitor-card">
+                    <div class="card-header">
+                        <h3>Day Working Hours</h3>
+                    </div>
+                    <div id="todayTotalDisplay" class="timer">00:00:00</div>
+                    <div class="status-footer">
+                        Automatically tracks when unlocked
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- History View -->
+        <div id="historyView" class="view">
+            <div class="glass-card full-width">
+                <div class="view-header">
+                    <h2>Work History</h2>
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="daily">Day</button>
+                        <button class="tab-btn" data-tab="weekly">Week</button>
+                        <button class="tab-btn" data-tab="monthly">Month</button>
+                    </div>
+                </div>
+                <div id="reportsList" class="reports-list">
+                    <!-- Reports will load here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings View -->
+        <div id="settingsView" class="view">
+            <div class="glass-card align-left">
+                <h2>General Settings</h2>
+                <p class="subtitle">Customize your tracking goals and preferences.</p>
+                <div class="setting-group">
+                    <label>Daily Working Goal</label>
+                    <div class="input-row">
+                        <div class="input-field">
+                            <label>Hours</label>
+                            <input type="number" id="goalHours" value="4" min="0">
+                        </div>
+                        <div class="input-field">
+                            <label>Minutes</label>
+                            <input type="number" id="goalMinutes" value="10" min="0" max="59">
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-actions">
+                    <button id="saveSettings" class="btn primary">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
