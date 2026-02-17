@@ -2,7 +2,7 @@
 
 A professional, secure, and automated time tracking application for macOS.
 
-![App Logo](https://img.icons8.com/fluence/96/000000/clock.png) <!-- Placeholder or relative path if available -->
+![App Logo](icon.png) <!-- Placeholder or relative path if available -->
 
 ## Key Features
 
