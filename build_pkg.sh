@@ -10,7 +10,7 @@ echo "Building $APP_NAME.pkg..."
 
 # 1. Compile Swift Monitor
 echo "Compiling mac_utility.swift..."
-swiftc mac_utility.swift -o mac_utility
+swiftc mac_utility.swift -framework WebKit -o mac_utility
 
 # 2. Generate App Icon
 if [ -f "icon.png" ]; then
@@ -61,7 +61,7 @@ pkgbuild --identifier "$IDENTIFIER" \
          --install-location "$INSTALL_LOCATION" \
          --root "payload" \
          --scripts scripts \
+         --ownership recommended \
          "$APP_NAME.pkg"
 
 echo "Package built: $APP_NAME.pkg"
-# test
