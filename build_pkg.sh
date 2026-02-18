@@ -64,3 +64,4 @@ pkgbuild --identifier "$IDENTIFIER" \
          "$APP_NAME.pkg"
 
 echo "Package built: $APP_NAME.pkg"
+# test
