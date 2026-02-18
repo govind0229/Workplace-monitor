@@ -1,7 +1,18 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
-const dbPath = path.join(__dirname, 'working_hours.db');
+// Store DB in User's Application Support folder to persist across updates
+const homeDir = os.homedir();
+const appDataDir = path.join(homeDir, 'Library', 'Application Support', 'WorkingHours');
+
+// Ensure directory exists
+if (!fs.existsSync(appDataDir)) {
+  fs.mkdirSync(appDataDir, { recursive: true });
+}
+
+const dbPath = path.join(appDataDir, 'working_hours.db');
 const db = new Database(dbPath);
 
 // Initialize schema
@@ -15,7 +26,8 @@ db.exec(`
     status TEXT DEFAULT 'active', -- 'active', 'paused', 'completed'
     last_tick DATETIME DEFAULT CURRENT_TIMESTAMP,
     notified INTEGER DEFAULT 0,
-    type TEXT DEFAULT 'manual' -- 'manual', 'automatic'
+    type TEXT DEFAULT 'manual', -- 'manual', 'automatic'
+    last_break_notify INTEGER DEFAULT 0 -- total_seconds at last break reminder
   );
 
   CREATE TABLE IF NOT EXISTS lock_events (
@@ -29,33 +41,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
   CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
   CREATE INDEX IF NOT EXISTS idx_lock_events_session ON lock_events(session_id);
+
+  CREATE TABLE IF NOT EXISTS app_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT DEFAULT (date('now')),
+    app_name TEXT NOT NULL,
+    total_seconds INTEGER DEFAULT 0
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_app_usage_date ON app_usage(date);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_app_usage_date_app ON app_usage(date, app_name);
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
-
-// Migrations
-try {
-  db.exec("ALTER TABLE sessions ADD COLUMN notified INTEGER DEFAULT 0");
-} catch (e) {
-  // Column already exists
-}
-
-try {
-  db.exec("ALTER TABLE sessions ADD COLUMN last_tick DATETIME");
-  db.exec("UPDATE sessions SET last_tick = CURRENT_TIMESTAMP WHERE last_tick IS NULL");
-} catch (e) {
-  // Column already exists
-}
-
-try {
-  db.exec("ALTER TABLE sessions ADD COLUMN day_total INTEGER DEFAULT 0");
-} catch (e) {
-  // Column already exists
-}
-
-try {
-  db.exec("ALTER TABLE sessions ADD COLUMN type TEXT DEFAULT 'manual'");
-} catch (e) {
-  // Column already exists
-}
 
 module.exports = {
   db,
@@ -123,5 +124,27 @@ module.exports = {
   getTodayTotal: () => {
     const result = db.prepare("SELECT total_seconds FROM sessions WHERE date = date('now') AND type = 'automatic' LIMIT 1").get();
     return result ? (result.total_seconds || 0) : 0;
+  },
+  recordAppUsage: (appName, seconds) => {
+    db.prepare(`
+      INSERT INTO app_usage (date, app_name, total_seconds)
+      VALUES (date('now'), ?, ?)
+      ON CONFLICT(date, app_name) DO UPDATE SET total_seconds = total_seconds + ?
+    `).run(appName, seconds, seconds);
+  },
+  getTodayAppUsage: () => {
+    return db.prepare(`
+      SELECT app_name, total_seconds
+      FROM app_usage
+      WHERE date = date('now')
+      ORDER BY total_seconds DESC
+    `).all();
+  },
+  getSetting: (key, defaultValue = null) => {
+    const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+    return row ? row.value : defaultValue;
+  },
+  setSetting: (key, value) => {
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?").run(key, String(value), String(value));
   }
 };

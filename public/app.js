@@ -2,6 +2,7 @@ const timerDisplay = document.getElementById('timerDisplay');
 const statusBadge = document.getElementById('statusBadge');
 const progressBar = document.getElementById('progressBar');
 const startBtn = document.getElementById('startBtn');
+const pauseBtn = document.getElementById('pauseBtn');
 const stopBtn = document.getElementById('stopBtn');
 const todayTotalDisplay = document.getElementById('todayTotalDisplay');
 
@@ -25,7 +26,19 @@ function getStoredInt(key, defaultValue) {
     return (val === null || isNaN(parseInt(val))) ? defaultValue : parseInt(val);
 }
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = window.__API_BASE || 'http://localhost:3000';
+
+// Theme management
+function applyTheme(theme) {
+    document.body.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === theme);
+    });
+}
+
+// Apply saved theme immediately
+applyTheme(localStorage.getItem('theme') || 'dark');
 
 // Navigation Logic
 navItems.forEach(item => {
@@ -49,20 +62,54 @@ navItems.forEach(item => {
     };
 });
 
-function loadSettings() {
-    goalHoursInput.value = getStoredInt('goalHours', 4);
-    goalMinutesInput.value = getStoredInt('goalMinutes', 10);
+// Theme toggle buttons
+document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.onclick = () => applyTheme(btn.dataset.theme);
+});
+
+async function loadSettings() {
+    try {
+        const res = await fetch(`${API_BASE}/settings`);
+        const data = await res.json();
+        goalHoursInput.value = data.goalHours;
+        goalMinutesInput.value = data.goalMinutes;
+        const breakInput = document.getElementById('breakInterval');
+        if (breakInput) breakInput.value = data.breakInterval || 60;
+        // Sync to localStorage too
+        localStorage.setItem('goalHours', data.goalHours);
+        localStorage.setItem('goalMinutes', data.goalMinutes);
+        goalSeconds = (data.goalHours * 3600) + (data.goalMinutes * 60);
+        document.querySelector('.goal-label').textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;
+    } catch (e) {
+        goalHoursInput.value = getStoredInt('goalHours', 4);
+        goalMinutesInput.value = getStoredInt('goalMinutes', 10);
+    }
 }
 
-saveSettingsBtn.onclick = () => {
+saveSettingsBtn.onclick = async () => {
     const h = parseInt(goalHoursInput.value);
     const m = parseInt(goalMinutesInput.value);
+    const breakInput = document.getElementById('breakInterval');
+    const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
     localStorage.setItem('goalHours', h);
     localStorage.setItem('goalMinutes', m);
     goalSeconds = (h * 3600) + (m * 60);
     document.querySelector('.goal-label').textContent = `Goal: ${h}h ${m}m`;
+    try {
+        await fetch(`${API_BASE}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goalHours: h, goalMinutes: m, breakInterval: breakMin })
+        });
+    } catch (e) { /* server save failed, localStorage still works */ }
     alert('Settings saved!');
 };
+
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
 
 function formatTime(seconds = 0) {
     if (isNaN(seconds) || seconds === null) seconds = 0;
@@ -103,10 +150,17 @@ async function updateStatus(forceSync = false) {
                 startBtn.disabled = true;
                 startBtn.classList.add('pulse');
                 startBtn.textContent = 'Session Active';
+                pauseBtn.style.display = '';
+            } else if (manualStatus === 'paused') {
+                startBtn.disabled = false;
+                startBtn.classList.remove('pulse');
+                startBtn.textContent = 'Resume';
+                pauseBtn.style.display = 'none';
             } else {
                 startBtn.disabled = false;
                 startBtn.classList.remove('pulse');
                 startBtn.textContent = 'Start Session';
+                pauseBtn.style.display = 'none';
             }
         } catch (e) {
             console.error("Connection lost", e);
@@ -134,11 +188,21 @@ async function updateStatus(forceSync = false) {
 
     const progress = Math.min((displayManual / goalSeconds) * 100, 100);
     progressBar.style.width = progress + '%';
+    const pctEl = document.querySelector('.progress-percent');
+    if (pctEl) pctEl.textContent = Math.floor(progress) + '%';
+
+    // Update goal ring
+    if (typeof updateGoalRing === 'function') updateGoalRing(displayManual);
 }
 
 
 startBtn.onclick = async () => {
     await fetch(`${API_BASE}/start`, { method: 'POST' });
+    updateStatus(true);
+};
+
+pauseBtn.onclick = async () => {
+    await fetch(`${API_BASE}/pause`, { method: 'POST' });
     updateStatus(true);
 };
 
@@ -196,7 +260,273 @@ tabButtons.forEach(btn => {
     };
 });
 
-// Initialize
+document.getElementById('exportCsvBtn').onclick = () => {
+    const url = `${API_BASE}/export-csv?tab=${currentTab}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentTab}_report.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+};
+
+// ─── Dashboard Charts ───
+
+function formatHM(seconds) {
+    if (!seconds || isNaN(seconds)) return '0h';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h === 0) return m + 'm';
+    if (m === 0) return h + 'h';
+    return h + 'h ' + m + 'm';
+}
+
+async function renderWeeklyChart() {
+    const container = document.getElementById('weeklyChart');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API_BASE}/reports`);
+        const data = await res.json();
+        const daily = data.daily || [];
+
+        // Get last 7 days
+        const days = [];
+        const today = new Date();
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            const found = daily.find(r => r.date === dateStr);
+            days.push({
+                label: dayNames[d.getDay()],
+                date: dateStr,
+                manual: found ? found.manual_total : 0,
+                auto: found ? found.auto_total : 0,
+                isToday: i === 0
+            });
+        }
+
+        const maxSeconds = Math.max(...days.map(d => d.manual), goalSeconds, 1);
+
+        const overtimeThreshold = goalSeconds + 3600; // goal + 1 hour
+
+        container.innerHTML = days.map(d => {
+            const val = d.manual;
+            const pct = Math.max((val / maxSeconds) * 100, 2);
+
+            // Color based on goal: purple = below, green = met, orange = overtime
+            let colorClass = '';
+            if (val >= overtimeThreshold) colorClass = 'bar-orange';
+            else if (val >= goalSeconds) colorClass = 'bar-green';
+
+            const todayClass = d.isToday ? 'today-label' : '';
+
+            return `
+                <div class="chart-bar-group">
+                    <div class="chart-bar-track">
+                        <span class="chart-bar-value">${formatHM(val)}</span>
+                        <div class="chart-bar ${colorClass}" style="height: ${pct}%"></div>
+                    </div>
+                    <span class="chart-bar-label ${todayClass}">${d.label}</span>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = '<div class="chart-loading">Unable to load</div>';
+    }
+}
+
+function updateGoalRing(manualSeconds) {
+    const ring = document.getElementById('ringProgress');
+    const pctEl = document.getElementById('ringPercent');
+    if (!ring || !pctEl) return;
+
+    const circumference = 326.73;
+    const ratio = manualSeconds / goalSeconds;
+    const pct = Math.min(ratio, 1);
+    const offset = circumference - (pct * circumference);
+
+    ring.style.strokeDashoffset = offset;
+    pctEl.textContent = Math.floor(ratio * 100) + '%';
+
+    // Dynamic ring color: purple < goal, green >= goal, orange >= goal+1h
+    const overtimeThreshold = goalSeconds + 3600;
+    if (manualSeconds >= overtimeThreshold) {
+        ring.style.stroke = '#fbbf24';
+    } else if (manualSeconds >= goalSeconds) {
+        ring.style.stroke = '#34d399';
+    } else {
+        ring.style.stroke = 'url(#ringGradient)';
+    }
+}
+
+async function renderActivityTimeline() {
+    const container = document.getElementById('activityTimeline');
+    const countEl = document.getElementById('eventCount');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API_BASE}/today-events`);
+        const data = await res.json();
+        const events = data.events || [];
+
+        if (countEl) countEl.textContent = events.length + ' events';
+
+        if (events.length === 0) {
+            container.innerHTML = '<div class="timeline-empty">No activity recorded today</div>';
+            return;
+        }
+
+        container.innerHTML = events.map(ev => {
+            const ts = ev.timestamp || '';
+            let timeStr = '';
+            try {
+                const d = new Date(ts.replace(' ', 'T') + 'Z');
+                timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+            } catch(e) { timeStr = ts; }
+
+            const isUnlock = ev.event_type === 'unlock';
+            const label = isUnlock ? 'Screen Unlocked' : 'Screen Locked';
+
+            return `
+                <div class="timeline-item">
+                    <div class="timeline-dot ${ev.event_type}"></div>
+                    <span class="timeline-time">${timeStr}</span>
+                    <span class="timeline-event">${label}</span>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = '<div class="timeline-empty">Unable to load events</div>';
+    }
+}
+
+async function renderAppUsage() {
+    const container = document.getElementById('appUsageList');
+    const countEl = document.getElementById('appCount');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API_BASE}/app-usage`);
+        const data = await res.json();
+        const usage = data.usage || [];
+
+        if (countEl) countEl.textContent = usage.length + ' apps';
+
+        if (usage.length === 0) {
+            container.innerHTML = '<div class="app-usage-empty">No app usage recorded today</div>';
+            return;
+        }
+
+        const maxSeconds = usage[0].total_seconds || 1;
+        const colorClasses = ['app-bar-1', 'app-bar-2', 'app-bar-3', 'app-bar-4', 'app-bar-5'];
+
+        container.innerHTML = usage.slice(0, 10).map((app, i) => {
+            const pct = Math.max((app.total_seconds / maxSeconds) * 100, 3);
+            const color = i < colorClasses.length ? colorClasses[i] : 'app-bar-default';
+            return `
+                <div class="app-row">
+                    <span class="app-rank">${i + 1}</span>
+                    <div class="app-info">
+                        <div class="app-name-row">
+                            <span class="app-name">${escapeHTML(app.app_name)}</span>
+                            <span class="app-time">${formatHM(app.total_seconds)}</span>
+                        </div>
+                        <div class="app-bar-track">
+                            <div class="app-bar-fill ${color}" style="width: ${pct}%"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = '<div class="app-usage-empty">Unable to load app usage</div>';
+    }
+}
+
+async function renderCategoryChart() {
+    const container = document.getElementById('categoryChart');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API_BASE}/app-usage-categories`);
+        const data = await res.json();
+        const cats = data.categories || [];
+
+        if (cats.length === 0) {
+            container.innerHTML = '<div class="category-empty">No app usage recorded today</div>';
+            return;
+        }
+
+        const total = cats.reduce((sum, c) => sum + c.seconds, 0) || 1;
+        const colors = ['#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#fb923c', '#a3e635', '#e879f9'];
+
+        // Build SVG pie chart using conic segments via circle stroke-dasharray
+        const radius = 50;
+        const circumference = 2 * Math.PI * radius;
+        let offset = 0;
+        const slices = cats.map((cat, i) => {
+            const pct = cat.seconds / total;
+            const dashLen = pct * circumference;
+            const color = colors[i % colors.length];
+            const slice = `<circle cx="70" cy="70" r="${radius}" fill="none" stroke="${color}" stroke-width="30"
+                stroke-dasharray="${dashLen} ${circumference - dashLen}" stroke-dashoffset="${-offset}"
+                style="transition: stroke-dashoffset 0.5s ease"/>`;
+            offset += dashLen;
+            return slice;
+        });
+
+        const pieSvg = `<svg class="pie-svg" viewBox="0 0 140 140">${slices.join('')}</svg>`;
+
+        const legend = cats.map((cat, i) => {
+            const pct = Math.round((cat.seconds / total) * 100);
+            const color = colors[i % colors.length];
+            return `
+                <div class="category-item">
+                    <div class="category-dot" style="background:${color}"></div>
+                    <span class="category-name">${escapeHTML(cat.name)}</span>
+                    <span class="category-time">${formatHM(cat.seconds)}</span>
+                    <span class="category-pct">${pct}%</span>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = pieSvg + `<div class="category-legend">${legend}</div>`;
+    } catch (e) {
+        container.innerHTML = '<div class="category-empty">Unable to load categories</div>';
+    }
+}
+
+async function loadDashboardCharts() {
+    renderWeeklyChart();
+    renderAppUsage();
+    renderCategoryChart();
+    renderActivityTimeline();
+}
+
+// ─── Auto-refresh when window regains focus (native app + browser) ───
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        updateStatus(true);
+        loadDashboardCharts();
+    }
+});
+window.addEventListener('focus', () => {
+    updateStatus(true);
+    loadDashboardCharts();
+});
+
+// ─── Initialize ───
+(async () => {
+    try {
+        const res = await fetch(`${API_BASE}/settings`);
+        const data = await res.json();
+        localStorage.setItem('goalHours', data.goalHours);
+        localStorage.setItem('goalMinutes', data.goalMinutes);
+        goalSeconds = (data.goalHours * 3600) + (data.goalMinutes * 60);
+        document.querySelector('.goal-label').textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;
+    } catch (e) {
+        document.querySelector('.goal-label').textContent = `Goal: ${getStoredInt('goalHours', 4)}h ${getStoredInt('goalMinutes', 10)}m`;
+    }
+})();
 updateStatus(true);
 setInterval(() => updateStatus(false), 1000);
-document.querySelector('.goal-label').textContent = `Goal: ${getStoredInt('goalHours', 4)}h ${getStoredInt('goalMinutes', 10)}m`;
+loadDashboardCharts();

@@ -1,0 +1,7 @@
+node_modules
+npm-debug.log
+working_hours.db
+monitor.swift
+.git
+.gitignore
+*.md

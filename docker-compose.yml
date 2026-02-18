@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    image: working-hours-tracker:latest
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - GOAL_MINUTES=${GOAL_MINUTES:-250}
+    volumes:
+      - ./working_hours.db:/usr/src/app/working_hours.db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

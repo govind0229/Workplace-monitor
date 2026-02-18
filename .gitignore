@@ -6,59 +6,44 @@ package-lock.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-lerna-debug.log*
 .pnpm-debug.log*
-
-# Dependency directories
-node_modules/
-jspm_packages/
-
-# Optional npm cache directory
 .npm
-
-# Optional eslint cache
 .eslintcache
-
-# Output of 'npm pack'
 *.tgz
-
-# dotenv environment variable files
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env.*
 
 # =========================
 # Build Artifacts
 # =========================
 WorkingHours.app/
 WorkingHours.pkg
+WorkingHours.zip
+WorkingHours*.dmg
+WorkingHours*.zip
 mac_utility
 AppIcon.icns
+AppIcon.iconset/
+payload/
+dmg_staging/
+*-temp.dmg
 dist/
 build/
 out/
+
+# Bundled Node.js
+bundled_node/
+node-*.tar.gz
 
 # =========================
 # Swift / Xcode
 # =========================
 *.xcodeproj/
 *.xcworkspace/
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
 xcuserdata/
-*.xccheckout
-*.moved-aside
 DerivedData/
-*.hmap
-*.ipa
 *.dSYM.zip
 *.dSYM
-*.swp
-*.swo
 
 # =========================
 # Database and Logs
@@ -77,8 +62,6 @@ working_hours.db
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
-Thumbs.db
 Icon?
 
 # =========================
@@ -88,9 +71,6 @@ Icon?
 .idea/
 *.sublime-project
 *.sublime-workspace
-.project
-.classpath
-.settings/
 *.swp
 *.swo
 *~
@@ -110,8 +90,3 @@ Icon?
 *.temp
 *.bak
 *.orig
-*.pid
-*.seed
-*.pid.lock
-coverage/
-.nyc_output/
