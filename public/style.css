@@ -16,6 +16,9 @@
   --radius: 16px;
   --radius-sm: 10px;
   --radius-xs: 8px;
+  --transition-fast: 0.15s;
+  --transition-base: 0.2s;
+  --transition-slow: 0.35s;
 }
 
 body[data-theme="light"] {
@@ -99,18 +102,23 @@ body[data-theme="light"] .progress-bar::after {
 
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  margin: 0;
-  padding: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text);
   display: flex;
   height: 100vh;
   overflow: hidden;
-  -webkit-font-smoothing: antialiased;
 }
 
 /* ─── Sidebar ─── */
@@ -224,13 +232,19 @@ nav {
 .main-content::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 3px;
+  transition: background var(--transition-fast);
+}
+
+.main-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .view {
   display: none;
   max-width: 800px;
   margin: 0 auto;
-  animation: viewIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: viewIn var(--transition-slow) cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
 }
 
 .view.active {
@@ -274,11 +288,14 @@ nav {
   padding: 32px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  transition: border-color 0.25s ease;
+  transition: border-color var(--transition-base) ease, box-shadow var(--transition-base) ease;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .glass-card:hover {
   border-color: var(--border-hover);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 .glass-card.full-width,
@@ -328,6 +345,7 @@ nav {
   color: #fff;
   text-align: center;
   line-height: 1;
+  will-change: contents;
 }
 
 /* ─── Status Badge ─── */
@@ -417,6 +435,8 @@ nav {
   border-radius: 3px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  will-change: width;
+  transform: translateZ(0);
 }
 
 .progress-bar::after {
@@ -446,10 +466,13 @@ nav {
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-base) ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  will-change: transform, box-shadow;
+  transform: translateZ(0);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn:hover {
@@ -914,8 +937,10 @@ body[data-theme="light"] .theme-btn.active {
   max-width: 36px;
   border-radius: 6px 6px 4px 4px;
   background: linear-gradient(180deg, var(--primary), rgba(167, 139, 250, 0.4));
-  transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1), filter var(--transition-fast);
   position: relative;
+  will-change: height;
+  transform: translateZ(0);
 }
 
 /* Truly hide a bar (no stub) when its value is zero */
@@ -1107,7 +1132,8 @@ body[data-theme="light"] .theme-btn.active {
 .ring-fg {
   stroke: url(#ringGradient);
   stroke-linecap: round;
-  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1), stroke var(--transition-base);
+  will-change: stroke-dashoffset;
 }
 
 .ring-center {
@@ -1210,6 +1236,8 @@ body[data-theme="light"] .theme-btn.active {
   border-radius: 3px;
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 3px;
+  will-change: width;
+  transform: translateZ(0);
 }
 
 .app-bar-fill.app-bar-1 {
@@ -1415,13 +1443,187 @@ body[data-theme="light"] .theme-btn.active {
 }
 
 @keyframes btn-pulse {
-
-  0%,
-  100% {
+  0%, 100% {
     box-shadow: 0 4px 20px rgba(167, 139, 250, 0.25);
   }
-
   50% {
     box-shadow: 0 4px 30px rgba(167, 139, 250, 0.45);
   }
+}
+
+/* ─── Responsive Design ─── */
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .ring-card {
+    max-width: 400px;
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    flex-direction: column;
+  }
+  
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    padding: 12px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .logo {
+    margin-bottom: 0;
+    padding: 0;
+  }
+  
+  nav {
+    flex-direction: row;
+    padding: 0;
+    gap: 8px;
+    flex: 1;
+    justify-content: center;
+  }
+  
+  .nav-item {
+    padding: 8px 12px;
+    font-size: 0.75rem;
+  }
+  
+  .nav-item svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .nav-item.active::before {
+    display: none;
+  }
+  
+  .sidebar-footer {
+    display: none;
+  }
+  
+  .main-content {
+    padding: 24px 20px;
+  }
+  
+  .view {
+    max-width: 100%;
+  }
+  
+  .timer {
+    font-size: 3rem;
+  }
+  
+  .controls {
+    flex-direction: column;
+  }
+  
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .glass-card {
+    padding: 20px;
+  }
+  
+  .hero-card {
+    padding: 28px 20px !important;
+  }
+  
+  .chart-card {
+    padding: 20px !important;
+  }
+  
+  .stats-row {
+    margin-top: 16px;
+  }
+  
+  .dashboard-grid {
+    margin-top: 16px;
+    gap: 16px;
+  }
+  
+  .category-chart {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .pie-svg {
+    margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding: 16px;
+  }
+  
+  .timer {
+    font-size: 2.5rem;
+  }
+  
+  .view-title h2 {
+    font-size: 1.5rem;
+  }
+  
+  .glass-card {
+    padding: 16px;
+  }
+  
+  .hero-card {
+    padding: 20px 16px !important;
+  }
+  
+  .chart-card {
+    padding: 16px !important;
+  }
+  
+  .report-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .report-item span {
+    display: flex;
+    justify-content: space-between;
+  }
+  
+  .report-item span::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+}
+
+/* ─── Performance Optimizations ─── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Improve paint performance */
+.chart-bar,
+.progress-bar,
+.app-bar-fill,
+.ring-fg {
+  contain: layout style paint;
+}
+
+/* Optimize scrolling */
+.main-content,
+.activity-timeline,
+.app-usage-list {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }

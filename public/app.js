@@ -28,6 +28,37 @@ function getStoredInt(key, defaultValue) {
 
 const API_BASE = window.__API_BASE || 'http://localhost:3000';
 
+// Utility: Debounce function
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Utility: Throttle function
+function throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+// Cache DOM elements
+const domCache = {
+    progressPercent: null,
+    goalLabel: null
+};
+
 // Theme management
 function applyTheme(theme) {
     document.body.setAttribute('data-theme', theme);
@@ -91,18 +122,36 @@ saveSettingsBtn.onclick = async () => {
     const m = parseInt(goalMinutesInput.value);
     const breakInput = document.getElementById('breakInterval');
     const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
+    
+    // Disable button to prevent double-clicks
+    saveSettingsBtn.disabled = true;
+    const originalText = saveSettingsBtn.textContent;
+    saveSettingsBtn.textContent = 'Saving...';
+    
     localStorage.setItem('goalHours', h);
     localStorage.setItem('goalMinutes', m);
     goalSeconds = (h * 3600) + (m * 60);
-    document.querySelector('.goal-label').textContent = `Goal: ${h}h ${m}m`;
+    
+    if (!domCache.goalLabel) {
+        domCache.goalLabel = document.querySelector('.goal-label');
+    }
+    if (domCache.goalLabel) {
+        domCache.goalLabel.textContent = `Goal: ${h}h ${m}m`;
+    }
+    
     try {
         await fetch(`${API_BASE}/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ goalHours: h, goalMinutes: m, breakInterval: breakMin })
         });
-    } catch (e) { /* server save failed, localStorage still works */ }
-    alert('Settings saved!');
+        alert('Settings saved!');
+    } catch (e) {
+        alert('Settings saved locally (server connection failed)');
+    } finally {
+        saveSettingsBtn.disabled = false;
+        saveSettingsBtn.textContent = originalText;
+    }
 };
 
 function escapeHTML(str) {
@@ -125,6 +174,8 @@ let lastSyncRealTime = 0;
 let manualStatus = 'idle';
 let autoStatus = 'idle';
 let syncInterval = 10000; // Sync every 10s
+let animationFrameId = null;
+let lastDisplayUpdate = 0;
 
 async function updateStatus(forceSync = false) {
     const now = Date.now();
@@ -143,34 +194,43 @@ async function updateStatus(forceSync = false) {
             // Critical: Align our local reference with the MOMENT of fetch completion
             lastSyncRealTime = Date.now();
 
-            statusBadge.textContent = manualStatus;
-            statusBadge.className = 'status-badge status-' + manualStatus;
+            // Batch DOM updates
+            requestAnimationFrame(() => {
+                statusBadge.textContent = manualStatus;
+                statusBadge.className = 'status-badge status-' + manualStatus;
 
-            if (manualStatus === 'active') {
-                startBtn.disabled = true;
-                startBtn.classList.add('pulse');
-                startBtn.textContent = 'Session Active';
-                pauseBtn.style.display = '';
-            } else if (manualStatus === 'paused') {
-                startBtn.disabled = false;
-                startBtn.classList.remove('pulse');
-                startBtn.textContent = 'Resume';
-                pauseBtn.style.display = 'none';
-            } else {
-                startBtn.disabled = false;
-                startBtn.classList.remove('pulse');
-                startBtn.textContent = 'Start Session';
-                pauseBtn.style.display = 'none';
-            }
+                if (manualStatus === 'active') {
+                    startBtn.disabled = true;
+                    startBtn.classList.add('pulse');
+                    startBtn.textContent = 'Session Active';
+                    pauseBtn.style.display = '';
+                } else if (manualStatus === 'paused') {
+                    startBtn.disabled = false;
+                    startBtn.classList.remove('pulse');
+                    startBtn.textContent = 'Resume';
+                    pauseBtn.style.display = 'none';
+                } else {
+                    startBtn.disabled = false;
+                    startBtn.classList.remove('pulse');
+                    startBtn.textContent = 'Start Session';
+                    pauseBtn.style.display = 'none';
+                }
+            });
         } catch (e) {
             console.error("Connection lost", e);
-            statusBadge.textContent = 'Offline';
-            statusBadge.className = 'status-badge status-offline';
-            startBtn.disabled = true;
+            requestAnimationFrame(() => {
+                statusBadge.textContent = 'Offline';
+                statusBadge.className = 'status-badge status-offline';
+                startBtn.disabled = true;
+            });
         }
     }
 
+    // Throttle display updates to 60fps max
     const currentNow = Date.now();
+    if (currentNow - lastDisplayUpdate < 16) return; // ~60fps
+    lastDisplayUpdate = currentNow;
+
     let displayManual = baseManualSeconds;
     if (manualStatus === 'active') {
         const elapsed = Math.floor((currentNow - lastSyncRealTime) / 1000);
@@ -183,16 +243,24 @@ async function updateStatus(forceSync = false) {
         displayAuto = baseAutoSeconds + elapsed;
     }
 
-    timerDisplay.textContent = formatTime(displayManual);
-    todayTotalDisplay.textContent = formatTime(displayAuto);
+    // Batch all DOM updates in a single animation frame
+    requestAnimationFrame(() => {
+        timerDisplay.textContent = formatTime(displayManual);
+        todayTotalDisplay.textContent = formatTime(displayAuto);
 
-    const progress = Math.min((displayManual / goalSeconds) * 100, 100);
-    progressBar.style.width = progress + '%';
-    const pctEl = document.querySelector('.progress-percent');
-    if (pctEl) pctEl.textContent = Math.floor(progress) + '%';
+        const progress = Math.min((displayManual / goalSeconds) * 100, 100);
+        progressBar.style.width = progress + '%';
+        
+        if (!domCache.progressPercent) {
+            domCache.progressPercent = document.querySelector('.progress-percent');
+        }
+        if (domCache.progressPercent) {
+            domCache.progressPercent.textContent = Math.floor(progress) + '%';
+        }
 
-    // Update goal ring
-    if (typeof updateGoalRing === 'function') updateGoalRing(displayManual);
+        // Update goal ring
+        if (typeof updateGoalRing === 'function') updateGoalRing(displayManual);
+    });
 }
 
 
@@ -233,22 +301,43 @@ function renderActiveTab() {
     if (!reportsData) return;
     const data = reportsData[currentTab] || [];
 
+    // Use DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
+    
     // Add header
-    const header = `
-        <div class="report-item report-header">
-            <span>Period</span>
-            <span>Workplace</span>
-            <span>Day Total</span>
-        </div>
+    const header = document.createElement('div');
+    header.className = 'report-item report-header';
+    header.innerHTML = `
+        <span>Period</span>
+        <span>Workplace</span>
+        <span>Day Total</span>
     `;
+    fragment.appendChild(header);
 
-    reportsList.innerHTML = header + (data.length ? data.map(item => `
-        <div class="report-item" style="animation: fadeIn 0.3s ease-out">
-            <span>${item.date || item.week || item.month}</span>
-            <span>${formatTime(item.manual_total)}</span>
-            <span class="auto-total-dim">${formatTime(item.auto_total)}</span>
-        </div>
-    `).join('') : '<div style="text-align:center; color:#555; margin-top:50px;">No records found</div>');
+    if (data.length) {
+        data.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'report-item';
+            row.style.animation = 'fadeIn 0.3s ease-out';
+            row.innerHTML = `
+                <span>${escapeHTML(item.date || item.week || item.month)}</span>
+                <span>${formatTime(item.manual_total)}</span>
+                <span class="auto-total-dim">${formatTime(item.auto_total)}</span>
+            `;
+            fragment.appendChild(row);
+        });
+    } else {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'text-align:center; color:#555; margin-top:50px;';
+        empty.textContent = 'No records found';
+        fragment.appendChild(empty);
+    }
+
+    // Single DOM update
+    requestAnimationFrame(() => {
+        reportsList.innerHTML = '';
+        reportsList.appendChild(fragment);
+    });
 }
 
 tabButtons.forEach(btn => {
@@ -281,12 +370,26 @@ function formatHM(seconds) {
     return h + 'h ' + m + 'm';
 }
 
+// Cache for chart data to avoid redundant fetches
+let chartDataCache = null;
+let chartDataCacheTime = 0;
+const CHART_CACHE_DURATION = 30000; // 30 seconds
+
 async function renderWeeklyChart() {
     const container = document.getElementById('weeklyChart');
     if (!container) return;
     try {
-        const res = await fetch(`${API_BASE}/reports`);
-        const data = await res.json();
+        // Use cached data if available and fresh
+        let data;
+        const now = Date.now();
+        if (chartDataCache && (now - chartDataCacheTime < CHART_CACHE_DURATION)) {
+            data = chartDataCache;
+        } else {
+            const res = await fetch(`${API_BASE}/reports`);
+            data = await res.json();
+            chartDataCache = data;
+            chartDataCacheTime = now;
+        }
         const daily = data.daily || [];
 
         // Get last 7 days
@@ -454,24 +557,33 @@ async function renderAppUsage() {
         const maxSeconds = usage[0].total_seconds || 1;
         const colorClasses = ['app-bar-1', 'app-bar-2', 'app-bar-3', 'app-bar-4', 'app-bar-5'];
 
-        container.innerHTML = usage.slice(0, 10).map((app, i) => {
+        // Use DocumentFragment for better performance
+        const fragment = document.createDocumentFragment();
+        usage.slice(0, 10).forEach((app, i) => {
             const pct = Math.max((app.total_seconds / maxSeconds) * 100, 3);
             const color = i < colorClasses.length ? colorClasses[i] : 'app-bar-default';
-            return `
-                <div class="app-row">
-                    <span class="app-rank">${i + 1}</span>
-                    <div class="app-info">
-                        <div class="app-name-row">
-                            <span class="app-name">${escapeHTML(app.app_name)}</span>
-                            <span class="app-time">${formatHM(app.total_seconds)}</span>
-                        </div>
-                        <div class="app-bar-track">
-                            <div class="app-bar-fill ${color}" style="width: ${pct}%"></div>
-                        </div>
+            
+            const row = document.createElement('div');
+            row.className = 'app-row';
+            row.innerHTML = `
+                <span class="app-rank">${i + 1}</span>
+                <div class="app-info">
+                    <div class="app-name-row">
+                        <span class="app-name">${escapeHTML(app.app_name)}</span>
+                        <span class="app-time">${formatHM(app.total_seconds)}</span>
+                    </div>
+                    <div class="app-bar-track">
+                        <div class="app-bar-fill ${color}" style="width: ${pct}%"></div>
                     </div>
                 </div>
             `;
-        }).join('');
+            fragment.appendChild(row);
+        });
+
+        requestAnimationFrame(() => {
+            container.innerHTML = '';
+            container.appendChild(fragment);
+        });
     } catch (e) {
         container.innerHTML = '<div class="app-usage-empty">Unable to load app usage</div>';
     }
@@ -537,15 +649,32 @@ async function loadDashboardCharts() {
 }
 
 // ─── Auto-refresh when window regains focus (native app + browser) ───
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-        updateStatus(true);
-        loadDashboardCharts();
-    }
-});
-window.addEventListener('focus', () => {
+// Debounce to avoid multiple rapid calls
+const debouncedRefresh = debounce(() => {
     updateStatus(true);
     loadDashboardCharts();
+}, 300);
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        debouncedRefresh();
+    }
+});
+
+window.addEventListener('focus', debouncedRefresh);
+
+// Handle online/offline events
+window.addEventListener('online', () => {
+    console.log('Connection restored');
+    updateStatus(true);
+});
+
+window.addEventListener('offline', () => {
+    console.log('Connection lost');
+    requestAnimationFrame(() => {
+        statusBadge.textContent = 'Offline';
+        statusBadge.className = 'status-badge status-offline';
+    });
 });
 
 // ─── Initialize ───
@@ -556,11 +685,32 @@ window.addEventListener('focus', () => {
         localStorage.setItem('goalHours', data.goalHours);
         localStorage.setItem('goalMinutes', data.goalMinutes);
         goalSeconds = (data.goalHours * 3600) + (data.goalMinutes * 60);
-        document.querySelector('.goal-label').textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;
+        const goalLabel = document.querySelector('.goal-label');
+        if (goalLabel) {
+            goalLabel.textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;
+        }
     } catch (e) {
-        document.querySelector('.goal-label').textContent = `Goal: ${getStoredInt('goalHours', 4)}h ${getStoredInt('goalMinutes', 10)}m`;
+        const goalLabel = document.querySelector('.goal-label');
+        if (goalLabel) {
+            goalLabel.textContent = `Goal: ${getStoredInt('goalHours', 4)}h ${getStoredInt('goalMinutes', 10)}m`;
+        }
     }
 })();
+
+// Initial load
 updateStatus(true);
-setInterval(() => updateStatus(false), 1000);
 loadDashboardCharts();
+
+// Use requestAnimationFrame for smoother updates instead of setInterval
+function animationLoop() {
+    updateStatus(false);
+    animationFrameId = requestAnimationFrame(animationLoop);
+}
+animationFrameId = requestAnimationFrame(animationLoop);
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+    }
+});
