@@ -614,9 +614,7 @@ async function renderWeeklyChart() {
 
         container.innerHTML = `
             <div class="chart-bars-area">
-                <div class="chart-goal-line" style="bottom: ${goalPct}%">
-                    <span class="chart-goal-label">Goal</span>
-                </div>
+                <div class="chart-goal-line" style="bottom: ${goalPct}%"></div>
                 <div class="chart-cols-row">${colsHTML}</div>
             </div>
             <div class="chart-day-labels-row">${labelsHTML}</div>

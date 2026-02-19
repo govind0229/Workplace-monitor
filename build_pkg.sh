@@ -51,7 +51,9 @@ cp -R node_modules "payload/$APP_NAME.app/Contents/Resources/app/"
 
 # 4. Prepare Scripts
 mkdir -p scripts
+cp preinstall.sh scripts/preinstall
 cp postinstall.sh scripts/postinstall
+chmod +x scripts/preinstall
 chmod +x scripts/postinstall
 
 # 5. Build the package
