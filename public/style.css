@@ -94,10 +94,12 @@ body[data-theme="light"] .tab-btn.active {
 }
 
 body[data-theme="light"] .progress-bar::after {
-  background: rgba(255,255,255,0.5);
+  background: rgba(255, 255, 255, 0.5);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -214,11 +216,13 @@ nav {
 .main-content::-webkit-scrollbar {
   width: 6px;
 }
+
 .main-content::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .main-content::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 3px;
 }
 
@@ -234,8 +238,15 @@ nav {
 }
 
 @keyframes viewIn {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ─── View Title ─── */
@@ -338,8 +349,15 @@ nav {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
-  50% { box-shadow: 0 0 12px 2px rgba(52, 211, 153, 0.15); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+
+  50% {
+    box-shadow: 0 0 12px 2px rgba(52, 211, 153, 0.15);
+  }
 }
 
 .status-paused {
@@ -408,7 +426,7 @@ nav {
   top: 0;
   width: 20px;
   height: 100%;
-  background: rgba(255,255,255,0.3);
+  background: rgba(255, 255, 255, 0.3);
   filter: blur(4px);
 }
 
@@ -794,29 +812,101 @@ body[data-theme="light"] .theme-btn.active {
 /* ─── Weekly Bar Chart ─── */
 .weekly-chart {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  height: 160px;
-  padding-top: 10px;
+  flex-direction: column;
+  height: 200px;
 }
 
-.chart-bar-group {
+/* Bar drawing area — position:relative so goal line can be absolute inside */
+.chart-bars-area {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+/* Row of columns inside the bar area */
+.chart-cols-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 100%;
+  padding-top: 22px;
+  /* room for top value labels */
+}
+
+/* One column per day */
+.chart-col {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
   height: 100%;
+  position: relative;
+  cursor: pointer;
 }
 
-.chart-bar-track {
+/* Today column subtle highlight */
+.today-col::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background: rgba(52, 211, 153, 0.05);
+  border: 1px solid rgba(52, 211, 153, 0.12);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Top value label above bars */
+.chart-col-top {
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* The actual bar container — fills remaining column height */
+.chart-col-bars {
   flex: 1;
   width: 100%;
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  min-height: 0;
+}
+
+/* Each bar inside a column */
+.chart-col-bars .chart-bar {
+  flex: 1;
+  max-width: 14px;
+}
+
+/* Day label row below bar area */
+.chart-day-labels-row {
+  display: flex;
+  gap: 6px;
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+.chart-day-cell {
+  flex: 1;
+  display: flex;
   align-items: center;
-  position: relative;
+  justify-content: center;
+}
+
+.chart-day-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.chart-day-label.today-label {
+  color: var(--secondary);
+  font-weight: 600;
 }
 
 .chart-bar {
@@ -826,7 +916,11 @@ body[data-theme="light"] .theme-btn.active {
   background: linear-gradient(180deg, var(--primary), rgba(167, 139, 250, 0.4));
   transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
-  min-height: 3px;
+}
+
+/* Truly hide a bar (no stub) when its value is zero */
+.bar-hidden {
+  display: none !important;
 }
 
 .chart-bar.today {
@@ -846,24 +940,145 @@ body[data-theme="light"] .theme-btn.active {
 }
 
 .chart-bar-value {
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   color: var(--text-muted);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  margin-bottom: 4px;
   white-space: nowrap;
+  line-height: 1;
 }
 
-.chart-bar-label {
-  font-size: 0.7rem;
+/* Top-label container above bars */
+.chart-bar-top-label {
+  min-height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-bar-value-empty {
+  color: rgba(255, 255, 255, 0.1);
+  font-size: 0.6rem;
+}
+
+
+/* ─── Goal Reference Line ─── */
+.chart-goal-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(167, 139, 250, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.chart-goal-label {
+  font-size: 0.55rem;
+  color: rgba(167, 139, 250, 0.6);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: var(--bg);
+  padding: 0 3px;
+  margin-top: -7px;
+}
+
+.chart-col .chart-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 35, 0.95);
+  border: 1px solid var(--border-hover);
+  border-radius: 8px;
+  padding: 8px 10px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.chart-col:hover .chart-tooltip {
+  display: block;
+}
+
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.tooltip-row strong {
+  color: var(--text);
+  font-weight: 600;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+.tooltip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.dot-workplace {
+  background: var(--primary);
+}
+
+.dot-day {
+  background: #60a5fa;
+}
+
+
+
+/* Day Working Hours bar (auto-tracked) — blue */
+.chart-bar.bar-auto {
+  background: linear-gradient(180deg, #60a5fa, rgba(96, 165, 250, 0.35));
+}
+
+
+.chart-bar-value.bar-value-auto {
+  color: #60a5fa;
+}
+
+/* ─── Chart Legend ─── */
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legend-workplace {
+  background: var(--primary);
+}
+
+.legend-day {
+  background: #60a5fa;
+}
+
+.legend-label {
+  font-size: 0.65rem;
   color: var(--text-muted);
   font-weight: 500;
 }
 
-.chart-bar-label.today-label {
-  color: var(--secondary);
-  font-weight: 600;
-}
+
 
 /* ─── Goal Ring ─── */
 .ring-card {
@@ -932,8 +1147,9 @@ body[data-theme="light"] .theme-btn.active {
 .app-usage-list::-webkit-scrollbar {
   width: 4px;
 }
+
 .app-usage-list::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 2px;
 }
 
@@ -999,18 +1215,23 @@ body[data-theme="light"] .theme-btn.active {
 .app-bar-fill.app-bar-1 {
   background: linear-gradient(90deg, var(--primary), #c4b5fd);
 }
+
 .app-bar-fill.app-bar-2 {
   background: linear-gradient(90deg, var(--secondary), #6ee7b7);
 }
+
 .app-bar-fill.app-bar-3 {
   background: linear-gradient(90deg, var(--accent), #fde68a);
 }
+
 .app-bar-fill.app-bar-4 {
   background: linear-gradient(90deg, #f472b6, #fda4af);
 }
+
 .app-bar-fill.app-bar-5 {
   background: linear-gradient(90deg, #60a5fa, #93c5fd);
 }
+
 .app-bar-fill.app-bar-default {
   background: rgba(255, 255, 255, 0.15);
 }
@@ -1120,8 +1341,9 @@ body[data-theme="light"] .theme-btn.active {
 .activity-timeline::-webkit-scrollbar {
   width: 4px;
 }
+
 .activity-timeline::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 2px;
 }
 
@@ -1177,8 +1399,15 @@ body[data-theme="light"] .theme-btn.active {
 
 /* ─── Animations ─── */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .pulse {
@@ -1186,6 +1415,13 @@ body[data-theme="light"] .theme-btn.active {
 }
 
 @keyframes btn-pulse {
-  0%, 100% { box-shadow: 0 4px 20px rgba(167, 139, 250, 0.25); }
-  50% { box-shadow: 0 4px 30px rgba(167, 139, 250, 0.45); }
+
+  0%,
+  100% {
+    box-shadow: 0 4px 20px rgba(167, 139, 250, 0.25);
+  }
+
+  50% {
+    box-shadow: 0 4px 30px rgba(167, 139, 250, 0.45);
+  }
 }

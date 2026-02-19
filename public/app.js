@@ -307,35 +307,69 @@ async function renderWeeklyChart() {
             });
         }
 
-        const maxSeconds = Math.max(...days.map(d => d.manual), goalSeconds, 1);
+        const maxSeconds = Math.max(...days.map(d => Math.max(d.manual, d.auto)), goalSeconds, 1);
+        const overtimeThreshold = goalSeconds + 3600;
 
-        const overtimeThreshold = goalSeconds + 3600; // goal + 1 hour
+        // Goal line: % from bottom of the bar area (same space bars use)
+        const goalPct = Math.min((goalSeconds / maxSeconds) * 100, 97);
 
-        container.innerHTML = days.map(d => {
-            const val = d.manual;
-            const pct = Math.max((val / maxSeconds) * 100, 2);
+        // Build per-column HTML (top value label + bars only — no day label here)
+        const colsHTML = days.map(d => {
+            const manualPct = d.manual > 0 ? Math.max((d.manual / maxSeconds) * 100, 3) : 0;
+            const autoPct = d.auto > 0 ? Math.max((d.auto / maxSeconds) * 100, 3) : 0;
 
-            // Color based on goal: purple = below, green = met, orange = overtime
-            let colorClass = '';
-            if (val >= overtimeThreshold) colorClass = 'bar-orange';
-            else if (val >= goalSeconds) colorClass = 'bar-green';
+            let manualColor = '';
+            if (d.manual >= overtimeThreshold) manualColor = 'bar-orange';
+            else if (d.manual >= goalSeconds) manualColor = 'bar-green';
 
-            const todayClass = d.isToday ? 'today-label' : '';
+            const hasData = d.manual > 0 || d.auto > 0;
+            const topVal = d.manual >= d.auto ? d.manual : d.auto;
+            const topCls = d.manual >= d.auto ? '' : 'bar-value-auto';
+            const valLabel = hasData
+                ? `<span class="chart-bar-value ${topCls}">${formatHM(topVal)}</span>`
+                : `<span class="chart-bar-value chart-bar-value-empty"></span>`;
+
+            const todayColCls = d.isToday ? 'chart-col today-col' : 'chart-col';
+
+            // bar-hidden = truly invisible when value is 0 (no stub)
+            const manualHiddenCls = d.manual === 0 ? 'bar-hidden' : '';
+            const autoHiddenCls = d.auto === 0 ? 'bar-hidden' : '';
 
             return `
-                <div class="chart-bar-group">
-                    <div class="chart-bar-track">
-                        <span class="chart-bar-value">${formatHM(val)}</span>
-                        <div class="chart-bar ${colorClass}" style="height: ${pct}%"></div>
+                <div class="${todayColCls}" data-manual="${formatHM(d.manual)}" data-auto="${formatHM(d.auto)}">
+                    <div class="chart-col-top">${valLabel}</div>
+                    <div class="chart-col-bars">
+                        <div class="chart-bar ${manualColor} ${manualHiddenCls}" style="height: ${manualPct}%"></div>
+                        <div class="chart-bar bar-auto ${autoHiddenCls}" style="height: ${autoPct}%"></div>
                     </div>
-                    <span class="chart-bar-label ${todayClass}">${d.label}</span>
+                    <div class="chart-tooltip">
+                        <div class="tooltip-row"><span class="tooltip-dot dot-workplace"></span>Workplace <strong>${formatHM(d.manual)}</strong></div>
+                        <div class="tooltip-row"><span class="tooltip-dot dot-day"></span>Day Hours <strong>${formatHM(d.auto)}</strong></div>
+                    </div>
                 </div>
             `;
         }).join('');
+
+        // Day labels row (separate from bars so their height doesn't affect goal line)
+        const labelsHTML = days.map(d => {
+            const cls = d.isToday ? 'chart-day-label today-label' : 'chart-day-label';
+            return `<div class="chart-day-cell"><span class="${cls}">${d.label}</span></div>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="chart-bars-area">
+                <div class="chart-goal-line" style="bottom: ${goalPct}%">
+                    <span class="chart-goal-label">Goal</span>
+                </div>
+                <div class="chart-cols-row">${colsHTML}</div>
+            </div>
+            <div class="chart-day-labels-row">${labelsHTML}</div>
+        `;
     } catch (e) {
         container.innerHTML = '<div class="chart-loading">Unable to load</div>';
     }
 }
+
 
 function updateGoalRing(manualSeconds) {
     const ring = document.getElementById('ringProgress');
@@ -383,7 +417,7 @@ async function renderActivityTimeline() {
             try {
                 const d = new Date(ts.replace(' ', 'T') + 'Z');
                 timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-            } catch(e) { timeStr = ts; }
+            } catch (e) { timeStr = ts; }
 
             const isUnlock = ev.event_type === 'unlock';
             const label = isUnlock ? 'Screen Unlocked' : 'Screen Locked';
