@@ -189,10 +189,9 @@ app.get('/app-usage', (req, res) => {
     res.json({ usage });
 });
 
-app.get('/app-usage-categories', (req, res) => {
-    const usage = getTodayAppUsage();
-
-    const categoryMap = {
+// Helper function to get merged category map (default + custom)
+function getCategoryMap() {
+    const defaultCategoryMap = {
         'Productivity': ['Xcode', 'Visual Studio Code', 'Code', 'Terminal', 'iTerm2', 'Sublime Text', 'IntelliJ IDEA', 'PyCharm', 'WebStorm', 'Android Studio', 'Cursor', 'Windsurf', 'Nova', 'BBEdit', 'TextMate'],
         'Communication': ['Slack', 'Microsoft Teams', 'Zoom', 'Discord', 'Telegram', 'WhatsApp', 'Messages', 'Mail', 'Outlook', 'Spark', 'FaceTime', 'Skype'],
         'Browsers': ['Safari', 'Google Chrome', 'Firefox', 'Arc', 'Brave Browser', 'Microsoft Edge', 'Opera', 'Vivaldi'],
@@ -201,6 +200,31 @@ app.get('/app-usage-categories', (req, res) => {
         'Entertainment': ['Spotify', 'Music', 'YouTube', 'Netflix', 'VLC', 'IINA', 'TV', 'Podcasts', 'Books'],
         'Utilities': ['Finder', 'System Preferences', 'System Settings', 'Activity Monitor', 'Disk Utility', 'Calculator', 'Calendar', 'Reminders', 'Clock', 'Shortcuts']
     };
+
+    // Get custom mappings from settings
+    const customMappingsJson = getSetting('customAppCategories', '{}');
+    let customMappings = {};
+    try {
+        customMappings = JSON.parse(customMappingsJson);
+    } catch (e) {
+        console.error('Failed to parse custom app categories:', e);
+    }
+
+    // Merge custom mappings with defaults (custom takes precedence)
+    const mergedMap = { ...defaultCategoryMap };
+    for (const [category, apps] of Object.entries(customMappings)) {
+        if (!mergedMap[category]) {
+            mergedMap[category] = [];
+        }
+        mergedMap[category] = [...new Set([...mergedMap[category], ...apps])];
+    }
+
+    return mergedMap;
+}
+
+app.get('/app-usage-categories', (req, res) => {
+    const usage = getTodayAppUsage();
+    const categoryMap = getCategoryMap();
 
     const categories = {};
     usage.forEach(app => {
@@ -226,16 +250,30 @@ app.get('/settings', (req, res) => {
     const goalHours = getSetting('goalHours', '4');
     const goalMinutes = getSetting('goalMinutes', '10');
     const breakInterval = getSetting('breakInterval', '60');
-    res.json({ goalHours: parseInt(goalHours), goalMinutes: parseInt(goalMinutes), breakInterval: parseInt(breakInterval) });
+    const customAppCategories = getSetting('customAppCategories', '{}');
+    res.json({ 
+        goalHours: parseInt(goalHours), 
+        goalMinutes: parseInt(goalMinutes), 
+        breakInterval: parseInt(breakInterval),
+        customAppCategories: customAppCategories
+    });
 });
 
 app.post('/settings', asyncHandler(async (req, res) => {
-    const { goalHours, goalMinutes, breakInterval } = req.body;
+    const { goalHours, goalMinutes, breakInterval, customAppCategories } = req.body;
     if (goalHours !== undefined) setSetting('goalHours', goalHours);
     if (goalMinutes !== undefined) setSetting('goalMinutes', goalMinutes);
     if (breakInterval !== undefined) setSetting('breakInterval', breakInterval);
+    if (customAppCategories !== undefined) setSetting('customAppCategories', customAppCategories);
     res.json({ success: true });
 }));
+
+// Get list of all apps used today for category mapping UI
+app.get('/today-apps', (req, res) => {
+    const usage = getTodayAppUsage();
+    const apps = usage.map(app => app.app_name).sort();
+    res.json({ apps });
+});
 
 app.get('/today-events', (req, res) => {
     const events = db.prepare(`

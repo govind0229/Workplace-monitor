@@ -17,6 +17,14 @@ const goalHoursInput = document.getElementById('goalHours');
 const goalMinutesInput = document.getElementById('goalMinutes');
 const saveSettingsBtn = document.getElementById('saveSettings');
 
+// Category Mapping
+const appNameInput = document.getElementById('appNameInput');
+const categorySelect = document.getElementById('categorySelect');
+const addCategoryMappingBtn = document.getElementById('addCategoryMapping');
+const categoryMappingsList = document.getElementById('categoryMappingsList');
+const appSuggestions = document.getElementById('appSuggestions');
+let customAppCategories = {};
+
 let currentTab = 'daily';
 let reportsData = null;
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
@@ -106,6 +114,18 @@ async function loadSettings() {
         goalMinutesInput.value = data.goalMinutes;
         const breakInput = document.getElementById('breakInterval');
         if (breakInput) breakInput.value = data.breakInterval || 60;
+        
+        // Load custom app categories
+        try {
+            customAppCategories = JSON.parse(data.customAppCategories || '{}');
+        } catch (e) {
+            customAppCategories = {};
+        }
+        renderCategoryMappings();
+        
+        // Load app suggestions
+        loadAppSuggestions();
+        
         // Sync to localStorage too
         localStorage.setItem('goalHours', data.goalHours);
         localStorage.setItem('goalMinutes', data.goalMinutes);
@@ -115,6 +135,121 @@ async function loadSettings() {
         goalHoursInput.value = getStoredInt('goalHours', 4);
         goalMinutesInput.value = getStoredInt('goalMinutes', 10);
     }
+}
+
+async function loadAppSuggestions() {
+    try {
+        const res = await fetch(`${API_BASE}/today-apps`);
+        const data = await res.json();
+        if (appSuggestions) {
+            appSuggestions.innerHTML = data.apps.map(app => 
+                `<option value="${escapeHTML(app)}">`
+            ).join('');
+        }
+    } catch (e) {
+        console.error('Failed to load app suggestions:', e);
+    }
+}
+
+function renderCategoryMappings() {
+    if (!categoryMappingsList) return;
+    
+    const allMappings = [];
+    for (const [category, apps] of Object.entries(customAppCategories)) {
+        apps.forEach(app => {
+            allMappings.push({ app, category });
+        });
+    }
+    
+    if (allMappings.length === 0) {
+        categoryMappingsList.innerHTML = '<div class="category-mappings-empty">No custom mappings yet. Add apps above to categorize them.</div>';
+        return;
+    }
+    
+    allMappings.sort((a, b) => a.app.localeCompare(b.app));
+    
+    const fragment = document.createDocumentFragment();
+    allMappings.forEach(({ app, category }) => {
+        const item = document.createElement('div');
+        item.className = 'category-mapping-item';
+        item.innerHTML = `
+            <div class="category-mapping-info">
+                <span class="category-mapping-app">${escapeHTML(app)}</span>
+                <span class="category-mapping-badge">${escapeHTML(category)}</span>
+            </div>
+            <button class="category-mapping-remove" data-app="${escapeHTML(app)}" data-category="${escapeHTML(category)}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        `;
+        fragment.appendChild(item);
+    });
+    
+    requestAnimationFrame(() => {
+        categoryMappingsList.innerHTML = '';
+        categoryMappingsList.appendChild(fragment);
+        
+        // Add remove handlers
+        categoryMappingsList.querySelectorAll('.category-mapping-remove').forEach(btn => {
+            btn.onclick = () => {
+                const app = btn.dataset.app;
+                const category = btn.dataset.category;
+                removeCategoryMapping(app, category);
+            };
+        });
+    });
+}
+
+function addCategoryMapping() {
+    const appName = appNameInput.value.trim();
+    const category = categorySelect.value;
+    
+    if (!appName) {
+        alert('Please enter an app name');
+        return;
+    }
+    
+    // Remove app from all categories first
+    for (const cat in customAppCategories) {
+        customAppCategories[cat] = customAppCategories[cat].filter(a => a !== appName);
+        if (customAppCategories[cat].length === 0) {
+            delete customAppCategories[cat];
+        }
+    }
+    
+    // Add to selected category
+    if (!customAppCategories[category]) {
+        customAppCategories[category] = [];
+    }
+    customAppCategories[category].push(appName);
+    
+    // Clear input and re-render
+    appNameInput.value = '';
+    renderCategoryMappings();
+}
+
+function removeCategoryMapping(app, category) {
+    if (customAppCategories[category]) {
+        customAppCategories[category] = customAppCategories[category].filter(a => a !== app);
+        if (customAppCategories[category].length === 0) {
+            delete customAppCategories[category];
+        }
+    }
+    renderCategoryMappings();
+}
+
+// Add category mapping button handler
+if (addCategoryMappingBtn) {
+    addCategoryMappingBtn.onclick = addCategoryMapping;
+}
+
+// Allow Enter key to add mapping
+if (appNameInput) {
+    appNameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addCategoryMapping();
+        }
+    });
 }
 
 saveSettingsBtn.onclick = async () => {
@@ -143,9 +278,16 @@ saveSettingsBtn.onclick = async () => {
         await fetch(`${API_BASE}/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ goalHours: h, goalMinutes: m, breakInterval: breakMin })
+            body: JSON.stringify({ 
+                goalHours: h, 
+                goalMinutes: m, 
+                breakInterval: breakMin,
+                customAppCategories: JSON.stringify(customAppCategories)
+            })
         });
         alert('Settings saved!');
+        // Refresh category chart to reflect changes
+        renderCategoryChart();
     } catch (e) {
         alert('Settings saved locally (server connection failed)');
     } finally {
