@@ -15,6 +15,7 @@ const tabButtons = document.querySelectorAll('.tab-btn');
 // Settings
 const goalHoursInput = document.getElementById('goalHours');
 const goalMinutesInput = document.getElementById('goalMinutes');
+const goalLinePercentInput = document.getElementById('goalLinePercent');
 const saveSettingsBtn = document.getElementById('saveSettings');
 
 // Category Mapping
@@ -28,6 +29,7 @@ let customAppCategories = {};
 let currentTab = 'daily';
 let reportsData = null;
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
+let goalLinePercent = getStoredInt('goalLinePercent', 44);
 
 function getStoredInt(key, defaultValue) {
     const val = localStorage.getItem(key);
@@ -114,6 +116,7 @@ async function loadSettings() {
         goalMinutesInput.value = data.goalMinutes;
         const breakInput = document.getElementById('breakInterval');
         if (breakInput) breakInput.value = data.breakInterval || 60;
+        if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
         
         // Load custom app categories
         try {
@@ -129,11 +132,14 @@ async function loadSettings() {
         // Sync to localStorage too
         localStorage.setItem('goalHours', data.goalHours);
         localStorage.setItem('goalMinutes', data.goalMinutes);
+        localStorage.setItem('goalLinePercent', data.goalLinePercent || 44);
         goalSeconds = (data.goalHours * 3600) + (data.goalMinutes * 60);
+        goalLinePercent = data.goalLinePercent || 44;
         document.querySelector('.goal-label').textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;
     } catch (e) {
         goalHoursInput.value = getStoredInt('goalHours', 4);
         goalMinutesInput.value = getStoredInt('goalMinutes', 10);
+        if (goalLinePercentInput) goalLinePercentInput.value = getStoredInt('goalLinePercent', 44);
     }
 }
 
@@ -257,6 +263,7 @@ saveSettingsBtn.onclick = async () => {
     const m = parseInt(goalMinutesInput.value);
     const breakInput = document.getElementById('breakInterval');
     const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
+    const linePct = goalLinePercentInput ? parseInt(goalLinePercentInput.value) || 44 : 44;
     
     // Disable button to prevent double-clicks
     saveSettingsBtn.disabled = true;
@@ -265,7 +272,9 @@ saveSettingsBtn.onclick = async () => {
     
     localStorage.setItem('goalHours', h);
     localStorage.setItem('goalMinutes', m);
+    localStorage.setItem('goalLinePercent', linePct);
     goalSeconds = (h * 3600) + (m * 60);
+    goalLinePercent = linePct;
     
     if (!domCache.goalLabel) {
         domCache.goalLabel = document.querySelector('.goal-label');
@@ -282,11 +291,13 @@ saveSettingsBtn.onclick = async () => {
                 goalHours: h, 
                 goalMinutes: m, 
                 breakInterval: breakMin,
+                goalLinePercent: linePct,
                 customAppCategories: JSON.stringify(customAppCategories)
             })
         });
         alert('Settings saved!');
-        // Refresh category chart to reflect changes
+        // Refresh charts to reflect changes
+        renderWeeklyChart();
         renderCategoryChart();
     } catch (e) {
         alert('Settings saved locally (server connection failed)');
@@ -555,8 +566,8 @@ async function renderWeeklyChart() {
         const maxSeconds = Math.max(...days.map(d => Math.max(d.manual, d.auto)), goalSeconds, 1);
         const overtimeThreshold = goalSeconds + 3600;
 
-        // Goal line: % from bottom of the bar area (same space bars use)
-        const goalPct = Math.min((goalSeconds / maxSeconds) * 100, 97);
+        // Use custom goal line percentage from settings
+        const goalPct = goalLinePercent;
 
         // Build per-column HTML (top value label + bars only — no day label here)
         const colsHTML = days.map(d => {
@@ -826,7 +837,9 @@ window.addEventListener('offline', () => {
         const data = await res.json();
         localStorage.setItem('goalHours', data.goalHours);
         localStorage.setItem('goalMinutes', data.goalMinutes);
+        localStorage.setItem('goalLinePercent', data.goalLinePercent || 44);
         goalSeconds = (data.goalHours * 3600) + (data.goalMinutes * 60);
+        goalLinePercent = data.goalLinePercent || 44;
         const goalLabel = document.querySelector('.goal-label');
         if (goalLabel) {
             goalLabel.textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;

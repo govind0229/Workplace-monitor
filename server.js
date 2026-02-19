@@ -250,20 +250,23 @@ app.get('/settings', (req, res) => {
     const goalHours = getSetting('goalHours', '4');
     const goalMinutes = getSetting('goalMinutes', '10');
     const breakInterval = getSetting('breakInterval', '60');
+    const goalLinePercent = getSetting('goalLinePercent', '44');
     const customAppCategories = getSetting('customAppCategories', '{}');
     res.json({ 
         goalHours: parseInt(goalHours), 
         goalMinutes: parseInt(goalMinutes), 
         breakInterval: parseInt(breakInterval),
+        goalLinePercent: parseInt(goalLinePercent),
         customAppCategories: customAppCategories
     });
 });
 
 app.post('/settings', asyncHandler(async (req, res) => {
-    const { goalHours, goalMinutes, breakInterval, customAppCategories } = req.body;
+    const { goalHours, goalMinutes, breakInterval, goalLinePercent, customAppCategories } = req.body;
     if (goalHours !== undefined) setSetting('goalHours', goalHours);
     if (goalMinutes !== undefined) setSetting('goalMinutes', goalMinutes);
     if (breakInterval !== undefined) setSetting('breakInterval', breakInterval);
+    if (goalLinePercent !== undefined) setSetting('goalLinePercent', goalLinePercent);
     if (customAppCategories !== undefined) setSetting('customAppCategories', customAppCategories);
     res.json({ success: true });
 }));
