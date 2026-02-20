@@ -328,7 +328,8 @@ let manualStatus = 'idle';
 let autoStatus = 'idle';
 let syncInterval = 10000; // Sync every 10s
 let animationFrameId = null;
-let lastDisplayUpdate = 0;
+let _lastRenderedManual = -1;
+let _lastRenderedAuto = -1;
 
 async function updateStatus(forceSync = false) {
     const now = Date.now();
@@ -379,10 +380,7 @@ async function updateStatus(forceSync = false) {
         }
     }
 
-    // Throttle display updates to 60fps max
     const currentNow = Date.now();
-    if (currentNow - lastDisplayUpdate < 16) return; // ~60fps
-    lastDisplayUpdate = currentNow;
 
     let displayManual = baseManualSeconds;
     if (manualStatus === 'active') {
@@ -395,6 +393,14 @@ async function updateStatus(forceSync = false) {
         const elapsed = Math.floor((currentNow - lastSyncRealTime) / 1000);
         displayAuto = baseAutoSeconds + elapsed;
     }
+
+    // Optimization: Only update DOM if the rounded seconds have changed, drastically reducing CPU usage
+    if (!forceSync && displayManual === _lastRenderedManual && displayAuto === _lastRenderedAuto) {
+        return;
+    }
+
+    _lastRenderedManual = displayManual;
+    _lastRenderedAuto = displayAuto;
 
     // Batch all DOM updates in a single animation frame
     requestAnimationFrame(() => {
