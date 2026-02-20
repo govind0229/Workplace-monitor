@@ -78,8 +78,29 @@ function applyTheme(theme) {
     });
 }
 
-// Apply saved theme immediately
+// Accent Color management
+const themeColors = {
+    purple: { primary: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #d946ef)' },
+    ocean: { primary: '#0ea5e9', gradient: 'linear-gradient(135deg, #0ea5e9, #3b82f6)' },
+    sunset: { primary: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #ef4444)' },
+    emerald: { primary: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #059669)' },
+    rose: { primary: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #be123c)' }
+};
+
+function applyAccentColor(colorKey) {
+    const config = themeColors[colorKey] || themeColors.purple;
+    document.documentElement.style.setProperty('--primary', config.primary);
+    document.documentElement.style.setProperty('--primary-gradient', config.gradient);
+    localStorage.setItem('accentColor', colorKey);
+
+    document.querySelectorAll('.color-swatch').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.color === colorKey);
+    });
+}
+
+// Apply saved theme & color immediately
 applyTheme(localStorage.getItem('theme') || 'dark');
+applyAccentColor(localStorage.getItem('accentColor') || 'purple');
 
 // Navigation Logic
 navItems.forEach(item => {
@@ -106,6 +127,11 @@ navItems.forEach(item => {
 // Theme toggle buttons
 document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.onclick = () => applyTheme(btn.dataset.theme);
+});
+
+// Accent color toggle buttons
+document.querySelectorAll('.color-swatch').forEach(btn => {
+    btn.onclick = () => applyAccentColor(btn.dataset.color);
 });
 
 async function loadSettings() {
@@ -331,6 +357,23 @@ let animationFrameId = null;
 let _lastRenderedManual = -1;
 let _lastRenderedAuto = -1;
 
+function updateGreeting() {
+    const greetingEl = document.getElementById('dashboardGreeting');
+    if (!greetingEl) return;
+
+    const hour = new Date().getHours();
+    let greeting = 'Good Evening';
+    if (hour >= 5 && hour < 12) greeting = 'Good Morning';
+    else if (hour >= 12 && hour < 17) greeting = 'Good Afternoon';
+
+    // Add custom messages if active
+    if (manualStatus === 'active') {
+        greetingEl.textContent = `${greeting} — Focus Mode`;
+    } else {
+        greetingEl.textContent = greeting;
+    }
+}
+
 async function updateStatus(forceSync = false) {
     const now = Date.now();
 
@@ -369,6 +412,7 @@ async function updateStatus(forceSync = false) {
                     startBtn.textContent = 'Start Session';
                     pauseBtn.style.display = 'none';
                 }
+                updateGreeting();
             });
         } catch (e) {
             console.error("Connection lost", e);
@@ -598,15 +642,15 @@ async function renderWeeklyChart() {
             const autoHiddenCls = d.auto === 0 ? 'bar-hidden' : '';
 
             return `
-                <div class="${todayColCls}" data-manual="${formatHM(d.manual)}" data-auto="${formatHM(d.auto)}">
+                <div class="${todayColCls}" 
+                     data-manual="${d.manual}" 
+                     data-auto="${d.auto}"
+                     onmouseenter="showColTooltip(event, this, '${d.label}')"
+                     onmouseleave="hideColTooltip()">
                     <div class="chart-col-top">${valLabel}</div>
                     <div class="chart-col-bars">
                         <div class="chart-bar ${manualColor} ${manualHiddenCls}" style="height: ${manualPct}%"></div>
                         <div class="chart-bar bar-auto ${autoHiddenCls}" style="height: ${autoPct}%"></div>
-                    </div>
-                    <div class="chart-tooltip">
-                        <div class="tooltip-row"><span class="tooltip-dot dot-workplace"></span>Workplace <strong>${formatHM(d.manual)}</strong></div>
-                        <div class="tooltip-row"><span class="tooltip-dot dot-day"></span>Day Hours <strong>${formatHM(d.auto)}</strong></div>
                     </div>
                 </div>
             `;
@@ -630,6 +674,84 @@ async function renderWeeklyChart() {
     }
 }
 
+// Global Tooltip Logic
+let globalTooltip = null;
+
+function createGlobalTooltip() {
+    if (!globalTooltip) {
+        globalTooltip = document.createElement('div');
+        globalTooltip.className = 'app-tooltip';
+        document.body.appendChild(globalTooltip);
+    }
+}
+
+function showColTooltip(e, el, label) {
+    createGlobalTooltip();
+    const manual = parseInt(el.getAttribute('data-manual') || '0');
+    const auto = parseInt(el.getAttribute('data-auto') || '0');
+
+    globalTooltip.innerHTML = `
+        <div class="tooltip-title">${label}</div>
+        <div style="display:flex; justify-content:space-between; gap:16px;">
+            <span style="color:var(--text-dim)">Workplace</span>
+            <span class="tooltip-value">${formatHM(manual)}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:16px;">
+            <span style="color:var(--text-dim)">Day Hours</span>
+            <span class="tooltip-value">${formatHM(auto)}</span>
+        </div>
+    `;
+
+    positionTooltip(e);
+}
+
+function hideColTooltip() {
+    if (globalTooltip) {
+        globalTooltip.classList.remove('visible');
+    }
+}
+
+function positionTooltip(e) {
+    if (!globalTooltip) return;
+
+    // Offset slightly from cursor
+    let x = e.clientX + 15;
+    let y = e.clientY - 40;
+
+    // Check boundaries
+    globalTooltip.style.visibility = 'hidden';
+    globalTooltip.style.display = 'block';
+    const rect = globalTooltip.getBoundingClientRect();
+
+    if (x + rect.width > window.innerWidth) {
+        x = e.clientX - rect.width - 15;
+    }
+    if (y < 0) {
+        y = e.clientY + 15;
+    }
+
+    globalTooltip.style.left = x + 'px';
+    globalTooltip.style.top = y + 'px';
+    globalTooltip.style.visibility = 'visible';
+
+    requestAnimationFrame(() => {
+        globalTooltip.classList.add('visible');
+    });
+}
+
+function showAppTooltip(e, appName, seconds) {
+    createGlobalTooltip();
+
+    globalTooltip.innerHTML = `
+        <div class="tooltip-title">${appName}</div>
+        <div style="display:flex; justify-content:space-between; gap:16px;">
+            <span style="color:var(--text-dim)">Time Spent</span>
+            <span class="tooltip-value" style="color:#3b82f6">${formatHM(seconds)}</span>
+        </div>
+    `;
+
+    positionTooltip(e);
+}
 
 function updateGoalRing(manualSeconds) {
     const ring = document.getElementById('ringProgress');
@@ -723,14 +845,18 @@ async function renderAppUsage() {
             const row = document.createElement('div');
             row.className = 'app-row';
             row.innerHTML = `
-                <span class="app-rank">${i + 1}</span>
-                <div class="app-info">
-                    <div class="app-name-row">
-                        <span class="app-name">${escapeHTML(app.app_name)}</span>
-                        <span class="app-time">${formatHM(app.total_seconds)}</span>
-                    </div>
-                    <div class="app-bar-track">
-                        <div class="app-bar-fill ${color}" style="width: ${pct}%"></div>
+                <div style="display:flex; width:100%; align-items:center;"
+                     onmouseenter="showAppTooltip(event, '${escapeHTML(app.app_name)}', parseInt('${app.total_seconds}'))"
+                     onmouseleave="hideColTooltip()">
+                    <span class="app-rank">${i + 1}</span>
+                    <div class="app-info">
+                        <div class="app-name-row">
+                            <span class="app-name">${escapeHTML(app.app_name)}</span>
+                            <span class="app-time">${formatHM(app.total_seconds)}</span>
+                        </div>
+                        <div class="app-bar-track">
+                            <div class="app-bar-fill ${color}" style="width: ${pct}%"></div>
+                        </div>
                     </div>
                 </div>
             `;
