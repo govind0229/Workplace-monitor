@@ -75,7 +75,10 @@ const themeColors = {
     ocean: { primary: '#0ea5e9', gradient: 'linear-gradient(135deg, #0ea5e9, #3b82f6)', r: 14, g: 165, b: 233 },
     sunset: { primary: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #ef4444)', r: 245, g: 158, b: 11 },
     emerald: { primary: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #059669)', r: 16, g: 185, b: 129 },
-    rose: { primary: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #be123c)', r: 244, g: 63, b: 94 }
+    rose: { primary: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #be123c)', r: 244, g: 63, b: 94 },
+    indigo: { primary: '#4f46e5', gradient: 'linear-gradient(135deg, #4f46e5, #7c3aed)', r: 79, g: 70, b: 229 },
+    teal: { primary: '#0d9488', gradient: 'linear-gradient(135deg, #0d9488, #0f766e)', r: 13, g: 148, b: 136 },
+    coral: { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #ea580c)', r: 249, g: 115, b: 22 }
 };
 
 function applyAccentColor(colorKey) {
@@ -85,7 +88,8 @@ function applyAccentColor(colorKey) {
     document.documentElement.style.setProperty('--primary', config.primary);
     document.documentElement.style.setProperty('--primary-gradient', config.gradient);
     document.documentElement.style.setProperty('--primary-dim', `rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.1' : '0.15'})`);
-    document.documentElement.style.setProperty('--shadow-hero', `0 8px 32px -8px rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.08' : '0.1'})`);
+    document.documentElement.style.setProperty('--shadow-hero', `0 8px 32px -8px rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.15' : '0.3'})`);
+    document.documentElement.style.setProperty('--shadow-hover', `0 6px 24px -4px rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.35' : '0.5'})`);
 
     localStorage.setItem('accentColor', colorKey);
 

@@ -5,7 +5,14 @@ All notable changes to WorkplaceMonitor will be documented in this file.
 ## [1.2.2] - 2026-02-20
 
 ### Added
-- Added Gatekeeper troubleshooting instructions for Gatekeeper quarantine flag (`xattr -cr`) bypass
+- **New Accent Colors** — Added three stunning new high-contrast accent colors specifically tailored for Light Theme: Indigo, Teal, and Coral.
+- **Dynamic Structural Colors** — Re-engineered `app.js` to intelligently compute proper rgba overlays and shadows dynamically based on the chosen Accent Color.
+- **Cache Invalidations** — Added logic to forcefully purge Apple's `WKWebsiteDataStore` disk caching, ensuring CSS style updates are immediately seen on launch.
+- Added Gatekeeper troubleshooting instructions for Gatekeeper quarantine flag (`xattr -cr`) bypass.
+
+### Fixed
+- **Light Theme Color Bleed** — Fixed an issue where the Light Theme forcefully overrode custom accent colors with static visual purple.
+- **Invisible Color Swatches** — Fixed an issue where the color selection swatches in the Settings menu rendered visually invisible as default white pills in WKWebView due to missing CSS classes.
 
 ## [1.2.1] - 2026-02-19
 
