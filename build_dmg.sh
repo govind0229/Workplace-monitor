@@ -4,7 +4,7 @@
 APP_NAME="WorkingHours"
 DMG_NAME="${APP_NAME}"
 DMG_VOLUME_NAME="Install ${APP_NAME}"
-VERSION="1.2.0"
+VERSION="1.2.2"
 
 echo "=== Building ${APP_NAME} DMG Installer ==="
 
