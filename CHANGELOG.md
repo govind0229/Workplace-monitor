@@ -4,6 +4,12 @@ All notable changes to WorkplaceMonitor will be documented in this file.
 
 ## [1.2.1] - 2026-02-19
 
+### Chart & Visual Enhancements
+- **Goal Reference Line** — Added a visual reference line for daily goals on the weekly chart
+- **Interactive Tooltips** — Added detailed hover tooltips, removing cluttered static values
+- **Improved Readability** — Increased overall chart height and explicitly centered data only when present
+- **Current Day Highlight** — Added distinct visual highlighting for the current day's column
+
 ### Performance Optimizations
 - **CSS Performance** — Added GPU acceleration with `transform: translateZ(0)` and `will-change` properties for animated elements
 - **Smooth Animations** — Replaced `setInterval` with `requestAnimationFrame` for 60fps timer updates
