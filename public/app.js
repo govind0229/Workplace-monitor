@@ -54,7 +54,7 @@ function debounce(func, wait) {
 // Utility: Throttle function
 function throttle(func, limit) {
     let inThrottle;
-    return function(...args) {
+    return function (...args) {
         if (!inThrottle) {
             func.apply(this, args);
             inThrottle = true;
@@ -117,7 +117,7 @@ async function loadSettings() {
         const breakInput = document.getElementById('breakInterval');
         if (breakInput) breakInput.value = data.breakInterval || 60;
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
-        
+
         // Load custom app categories
         try {
             customAppCategories = JSON.parse(data.customAppCategories || '{}');
@@ -125,10 +125,10 @@ async function loadSettings() {
             customAppCategories = {};
         }
         renderCategoryMappings();
-        
+
         // Load app suggestions
         loadAppSuggestions();
-        
+
         // Sync to localStorage too
         localStorage.setItem('goalHours', data.goalHours);
         localStorage.setItem('goalMinutes', data.goalMinutes);
@@ -148,7 +148,7 @@ async function loadAppSuggestions() {
         const res = await fetch(`${API_BASE}/today-apps`);
         const data = await res.json();
         if (appSuggestions) {
-            appSuggestions.innerHTML = data.apps.map(app => 
+            appSuggestions.innerHTML = data.apps.map(app =>
                 `<option value="${escapeHTML(app)}">`
             ).join('');
         }
@@ -159,21 +159,21 @@ async function loadAppSuggestions() {
 
 function renderCategoryMappings() {
     if (!categoryMappingsList) return;
-    
+
     const allMappings = [];
     for (const [category, apps] of Object.entries(customAppCategories)) {
         apps.forEach(app => {
             allMappings.push({ app, category });
         });
     }
-    
+
     if (allMappings.length === 0) {
         categoryMappingsList.innerHTML = '<div class="category-mappings-empty">No custom mappings yet. Add apps above to categorize them.</div>';
         return;
     }
-    
+
     allMappings.sort((a, b) => a.app.localeCompare(b.app));
-    
+
     const fragment = document.createDocumentFragment();
     allMappings.forEach(({ app, category }) => {
         const item = document.createElement('div');
@@ -189,11 +189,11 @@ function renderCategoryMappings() {
         `;
         fragment.appendChild(item);
     });
-    
+
     requestAnimationFrame(() => {
         categoryMappingsList.innerHTML = '';
         categoryMappingsList.appendChild(fragment);
-        
+
         // Add remove handlers
         categoryMappingsList.querySelectorAll('.category-mapping-remove').forEach(btn => {
             btn.onclick = () => {
@@ -208,12 +208,12 @@ function renderCategoryMappings() {
 function addCategoryMapping() {
     const appName = appNameInput.value.trim();
     const category = categorySelect.value;
-    
+
     if (!appName) {
         alert('Please enter an app name');
         return;
     }
-    
+
     // Remove app from all categories first
     for (const cat in customAppCategories) {
         customAppCategories[cat] = customAppCategories[cat].filter(a => a !== appName);
@@ -221,13 +221,13 @@ function addCategoryMapping() {
             delete customAppCategories[cat];
         }
     }
-    
+
     // Add to selected category
     if (!customAppCategories[category]) {
         customAppCategories[category] = [];
     }
     customAppCategories[category].push(appName);
-    
+
     // Clear input and re-render
     appNameInput.value = '';
     renderCategoryMappings();
@@ -264,32 +264,32 @@ saveSettingsBtn.onclick = async () => {
     const breakInput = document.getElementById('breakInterval');
     const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
     const linePct = goalLinePercentInput ? parseInt(goalLinePercentInput.value) || 44 : 44;
-    
+
     // Disable button to prevent double-clicks
     saveSettingsBtn.disabled = true;
     const originalText = saveSettingsBtn.textContent;
     saveSettingsBtn.textContent = 'Saving...';
-    
+
     localStorage.setItem('goalHours', h);
     localStorage.setItem('goalMinutes', m);
     localStorage.setItem('goalLinePercent', linePct);
     goalSeconds = (h * 3600) + (m * 60);
     goalLinePercent = linePct;
-    
+
     if (!domCache.goalLabel) {
         domCache.goalLabel = document.querySelector('.goal-label');
     }
     if (domCache.goalLabel) {
         domCache.goalLabel.textContent = `Goal: ${h}h ${m}m`;
     }
-    
+
     try {
         await fetch(`${API_BASE}/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                goalHours: h, 
-                goalMinutes: m, 
+            body: JSON.stringify({
+                goalHours: h,
+                goalMinutes: m,
                 breakInterval: breakMin,
                 goalLinePercent: linePct,
                 customAppCategories: JSON.stringify(customAppCategories)
@@ -403,7 +403,7 @@ async function updateStatus(forceSync = false) {
 
         const progress = Math.min((displayManual / goalSeconds) * 100, 100);
         progressBar.style.width = progress + '%';
-        
+
         if (!domCache.progressPercent) {
             domCache.progressPercent = document.querySelector('.progress-percent');
         }
@@ -456,7 +456,7 @@ function renderActiveTab() {
 
     // Use DocumentFragment for better performance
     const fragment = document.createDocumentFragment();
-    
+
     // Add header
     const header = document.createElement('div');
     header.className = 'report-item report-header';
@@ -638,12 +638,12 @@ function updateGoalRing(manualSeconds) {
     ring.style.strokeDashoffset = offset;
     pctEl.textContent = Math.floor(ratio * 100) + '%';
 
-    // Dynamic ring color: purple < goal, green >= goal, orange >= goal+1h
+    // Dynamic ring color: purple/fuchsia < goal, green >= goal, orange >= goal+1h
     const overtimeThreshold = goalSeconds + 3600;
     if (manualSeconds >= overtimeThreshold) {
-        ring.style.stroke = '#fbbf24';
+        ring.style.stroke = '#f59e0b';
     } else if (manualSeconds >= goalSeconds) {
-        ring.style.stroke = '#34d399';
+        ring.style.stroke = '#10b981';
     } else {
         ring.style.stroke = 'url(#ringGradient)';
     }
@@ -713,7 +713,7 @@ async function renderAppUsage() {
         usage.slice(0, 10).forEach((app, i) => {
             const pct = Math.max((app.total_seconds / maxSeconds) * 100, 3);
             const color = i < colorClasses.length ? colorClasses[i] : 'app-bar-default';
-            
+
             const row = document.createElement('div');
             row.className = 'app-row';
             row.innerHTML = `
@@ -754,7 +754,7 @@ async function renderCategoryChart() {
         }
 
         const total = cats.reduce((sum, c) => sum + c.seconds, 0) || 1;
-        const colors = ['#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#fb923c', '#a3e635', '#e879f9'];
+        const colors = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#f97316', '#84cc16', '#d946ef'];
 
         // Build SVG pie chart using conic segments via circle stroke-dasharray
         const radius = 50;
