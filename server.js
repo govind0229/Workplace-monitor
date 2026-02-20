@@ -8,7 +8,20 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public'))); // Serve frontend files from restricted folder
+
+// Prevent caching for all routes (important for static assets in local webview)
+app.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    next();
+});
+
+app.use(express.static(path.join(__dirname, 'public'), {
+    etag: false,
+    maxAge: 0
+})); // Serve frontend files from restricted folder
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -252,9 +265,9 @@ app.get('/settings', (req, res) => {
     const breakInterval = getSetting('breakInterval', '60');
     const goalLinePercent = getSetting('goalLinePercent', '44');
     const customAppCategories = getSetting('customAppCategories', '{}');
-    res.json({ 
-        goalHours: parseInt(goalHours), 
-        goalMinutes: parseInt(goalMinutes), 
+    res.json({
+        goalHours: parseInt(goalHours),
+        goalMinutes: parseInt(goalMinutes),
         breakInterval: parseInt(breakInterval),
         goalLinePercent: parseInt(goalLinePercent),
         customAppCategories: customAppCategories

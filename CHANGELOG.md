@@ -2,6 +2,11 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.2.2] - 2026-02-20
+
+### Added
+- Added Gatekeeper troubleshooting instructions for Gatekeeper quarantine flag (`xattr -cr`) bypass
+
 ## [1.2.1] - 2026-02-19
 
 ### Chart & Visual Enhancements

@@ -73,6 +73,10 @@ class LocalhostSchemeHandler: NSObject, WKURLSchemeHandler {
         request.httpMethod = urlSchemeTask.request.httpMethod ?? "GET"
         request.allHTTPHeaderFields = urlSchemeTask.request.allHTTPHeaderFields
         request.httpBody = urlSchemeTask.request.httpBody
+        
+        // CRITICAL: Disable Apple OS native caching for localhost requests
+        // Without this, the WKWebView will aggressively cache CSS/JS files indefinitely.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self, self.isTaskActive(taskHash) else { return }
