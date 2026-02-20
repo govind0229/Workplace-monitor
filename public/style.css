@@ -26,9 +26,6 @@
 }
 
 body[data-theme="light"] {
-  --primary: #7c3aed;
-  --primary-dim: rgba(124, 58, 237, 0.1);
-  --primary-gradient: linear-gradient(135deg, #7c3aed, #c026d3);
   --secondary: #059669;
   --secondary-dim: rgba(5, 150, 105, 0.1);
   --bg: #f8fafc;
@@ -43,7 +40,6 @@ body[data-theme="light"] {
   --danger: #dc2626;
   --blur: blur(20px);
   --shadow-glass: 0 4px 24px -8px rgba(0, 0, 0, 0.06);
-  --shadow-hero: 0 8px 32px -8px rgba(124, 58, 237, 0.08);
 }
 
 body[data-theme="light"] .sidebar {
@@ -1885,4 +1881,50 @@ input[type="text"]:focus {
 .app-usage-list {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
+}
+
+/* Accent Color Picker Styles */
+.color-picker-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--swatch-color);
+  cursor: pointer;
+  transition: all var(--transition-fast) ease;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.color-swatch:hover {
+  transform: scale(1.1);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.color-swatch.active {
+  transform: scale(1.2);
+  border-color: #fff;
+  box-shadow: 0 0 12px var(--swatch-color);
+}
+
+body[data-theme="light"] .color-swatch {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+body[data-theme="light"] .color-swatch:hover {
+  border-color: rgba(0, 0, 0, 0.4);
+}
+
+body[data-theme="light"] .color-swatch.active {
+  border-color: #0f172a;
+  box-shadow: 0 0 12px var(--swatch-color);
 }

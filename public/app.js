@@ -69,28 +69,24 @@ const domCache = {
     goalLabel: null
 };
 
-// Theme management
-function applyTheme(theme) {
-    document.body.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.theme === theme);
-    });
-}
-
 // Accent Color management
 const themeColors = {
-    purple: { primary: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #d946ef)' },
-    ocean: { primary: '#0ea5e9', gradient: 'linear-gradient(135deg, #0ea5e9, #3b82f6)' },
-    sunset: { primary: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #ef4444)' },
-    emerald: { primary: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #059669)' },
-    rose: { primary: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #be123c)' }
+    purple: { primary: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #d946ef)', r: 139, g: 92, b: 246 },
+    ocean: { primary: '#0ea5e9', gradient: 'linear-gradient(135deg, #0ea5e9, #3b82f6)', r: 14, g: 165, b: 233 },
+    sunset: { primary: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #ef4444)', r: 245, g: 158, b: 11 },
+    emerald: { primary: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #059669)', r: 16, g: 185, b: 129 },
+    rose: { primary: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #be123c)', r: 244, g: 63, b: 94 }
 };
 
 function applyAccentColor(colorKey) {
     const config = themeColors[colorKey] || themeColors.purple;
+    const isLight = document.body.getAttribute('data-theme') === 'light';
+
     document.documentElement.style.setProperty('--primary', config.primary);
     document.documentElement.style.setProperty('--primary-gradient', config.gradient);
+    document.documentElement.style.setProperty('--primary-dim', `rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.1' : '0.15'})`);
+    document.documentElement.style.setProperty('--shadow-hero', `0 8px 32px -8px rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.08' : '0.1'})`);
+
     localStorage.setItem('accentColor', colorKey);
 
     document.querySelectorAll('.color-swatch').forEach(btn => {
@@ -98,9 +94,19 @@ function applyAccentColor(colorKey) {
     });
 }
 
+// Ensure theme changes trigger accent color re-calculations for alpha differences
+function applyTheme(theme) {
+    document.body.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === theme);
+    });
+    // Refresh accent color alphas based on new theme
+    applyAccentColor(localStorage.getItem('accentColor') || 'purple');
+}
+
 // Apply saved theme & color immediately
 applyTheme(localStorage.getItem('theme') || 'dark');
-applyAccentColor(localStorage.getItem('accentColor') || 'purple');
 
 // Navigation Logic
 navItems.forEach(item => {
