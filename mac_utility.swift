@@ -153,10 +153,16 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
             return
         }
 
-        // Configure WKWebView with custom scheme handler
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "app")
+        
+        // CRITICAL: Force clear WKWebView internal caches (Memory/Disk) on every launch
+        let dataStore = WKWebsiteDataStore.default()
+        let types: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache]
+        dataStore.removeData(ofTypes: types, modifiedSince: Date.distantPast) {
+            print("WKWebView caches successfully cleared.")
+        }
 
         // Inject script to override API_BASE before app.js runs
         let overrideScript = WKUserScript(
