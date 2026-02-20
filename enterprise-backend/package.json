@@ -1,0 +1,17 @@
+{
+    "name": "workplace-monitor-enterprise",
+    "version": "1.0.0",
+    "description": "Centralized Cloud API for Workplace Monitor multi-tenant syncing",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "nodemon server.js"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "dotenv": "^16.3.1",
+        "express": "^4.18.2",
+        "jsonwebtoken": "^9.0.2",
+        "pg": "^8.11.3"
+    }
+}

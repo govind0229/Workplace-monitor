@@ -27,7 +27,8 @@ db.exec(`
     last_tick DATETIME DEFAULT CURRENT_TIMESTAMP,
     notified INTEGER DEFAULT 0,
     type TEXT DEFAULT 'manual', -- 'manual', 'automatic'
-    last_break_notify INTEGER DEFAULT 0 -- total_seconds at last break reminder
+    last_break_notify INTEGER DEFAULT 0, -- total_seconds at last break reminder
+    is_synced INTEGER DEFAULT 0 -- Enterprise cloud sync status
   );
 
   CREATE TABLE IF NOT EXISTS lock_events (
@@ -46,7 +47,8 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT DEFAULT (date('now')),
     app_name TEXT NOT NULL,
-    total_seconds INTEGER DEFAULT 0
+    total_seconds INTEGER DEFAULT 0,
+    is_synced INTEGER DEFAULT 0
   );
 
   CREATE INDEX IF NOT EXISTS idx_app_usage_date ON app_usage(date);
@@ -146,5 +148,19 @@ module.exports = {
   },
   setSetting: (key, value) => {
     db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?").run(key, String(value), String(value));
+  },
+
+  // Enterprise Cloud Sync queries
+  getUnsyncedSessions: () => {
+    // Only sync completed sessions or sessions older than 5 minutes to avoid spamming the cloud API
+    return db.prepare(`
+      SELECT * FROM sessions 
+      WHERE is_synced = 0 AND (status = 'completed' OR (strftime('%s', 'now') - strftime('%s', end_time)) > 300)
+    `).all();
+  },
+  markSessionsAsSynced: (ids) => {
+    if (!ids || ids.length === 0) return;
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`UPDATE sessions SET is_synced = 1 WHERE id IN (${placeholders})`).run(...ids);
   }
 };

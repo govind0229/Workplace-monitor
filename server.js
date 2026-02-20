@@ -1,7 +1,7 @@
 const express = require('express');
 const notifier = require('node-notifier');
 const path = require('path');
-const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
+const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getUnsyncedSessions, markSessionsAsSynced } = require('./db');
 
 const cors = require('cors');
 
@@ -86,6 +86,47 @@ function runBackgroundLoop() {
     }
 }
 setTimeout(runBackgroundLoop, 5000);
+
+// Enterprise Context: Background loop to securely sync local data to the central cloud
+async function syncToEnterpriseCloud() {
+    try {
+        const unsynced = getUnsyncedSessions();
+        if (unsynced.length === 0) {
+            setTimeout(syncToEnterpriseCloud, 60000);
+            return;
+        }
+
+        const ENTERPRISE_API = 'http://127.0.0.1:4000/api/v1/sync/sessions';
+        // Temporary mock identity until Phase 2 SSO is implemented
+        const mockUserId = '11111111-1111-1111-1111-111111111111';
+        const mockCompanyId = '22222222-2222-2222-2222-222222222222';
+
+        const response = await fetch(ENTERPRISE_API, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-mock-user-id': mockUserId,
+                'x-mock-company-id': mockCompanyId
+            },
+            body: JSON.stringify({ sessions: unsynced })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                const ids = unsynced.map(s => s.id);
+                markSessionsAsSynced(ids);
+                console.log(`[Enterprise Sync] Securely pushed ${ids.length} session(s) to cloud.`);
+            }
+        }
+    } catch (e) {
+        // Cloud offline or unreachable — data remains safe locally until next sync
+    } finally {
+        setTimeout(syncToEnterpriseCloud, 60000); // Check again in 60 seconds
+    }
+}
+setTimeout(syncToEnterpriseCloud, 15000); // Start 15s after boot
+
 
 app.post('/start', asyncHandler(async (req, res) => {
     let session = getActiveSession('manual');
@@ -252,9 +293,9 @@ app.get('/settings', (req, res) => {
     const breakInterval = getSetting('breakInterval', '60');
     const goalLinePercent = getSetting('goalLinePercent', '44');
     const customAppCategories = getSetting('customAppCategories', '{}');
-    res.json({ 
-        goalHours: parseInt(goalHours), 
-        goalMinutes: parseInt(goalMinutes), 
+    res.json({
+        goalHours: parseInt(goalHours),
+        goalMinutes: parseInt(goalMinutes),
         breakInterval: parseInt(breakInterval),
         goalLinePercent: parseInt(goalLinePercent),
         customAppCategories: customAppCategories

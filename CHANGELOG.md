@@ -2,6 +2,19 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.3.0] - 2026-02-20
+
+### Enterprise Transformation (Phase 1)
+- **Centralized Cloud Backend** — Created foundation for multi-tenant data syncing via PostgreSQL schema (`enterprise-backend` service).
+- **Background Sync Engine** — Added a silent background worker in `server.js` to securely push local SQLite tracking data to the cloud API.
+- **Sync Tracking** — Modified local SQLite schemas to securely track the sync status of local sessions and app usage.
+
+### UI Polish & Enhanced UX
+- **Interactive Tooltips** — Replaced static UI with smooth, glassmorphic tooltips on hover for weekly charts and application usage lists.
+- **Skeleton Loaders** — Implemented shimmering skeleton UI animations for all data-fetching states, replacing generic text.
+- **Dynamic Greetings** — The dashboard title now contextually updates based on the time of day and active session ("Focus Mode").
+- **Customizable Theme Accents** — Added an "Accent Color" section to Settings, allowing users to choose from 5 vibrant color gradients (Purple, Ocean, Sunset, Emerald, Rose).
+
 ## [1.2.1] - 2026-02-19
 
 ### Performance Optimizations
