@@ -54,7 +54,7 @@ function debounce(func, wait) {
 // Utility: Throttle function
 function throttle(func, limit) {
     let inThrottle;
-    return function(...args) {
+    return function (...args) {
         if (!inThrottle) {
             func.apply(this, args);
             inThrottle = true;
@@ -69,16 +69,47 @@ const domCache = {
     goalLabel: null
 };
 
-// Theme management
+// Accent Color management
+const themeColors = {
+    purple: { primary: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #d946ef)', r: 139, g: 92, b: 246 },
+    ocean: { primary: '#0ea5e9', gradient: 'linear-gradient(135deg, #0ea5e9, #3b82f6)', r: 14, g: 165, b: 233 },
+    sunset: { primary: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #ef4444)', r: 245, g: 158, b: 11 },
+    emerald: { primary: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #059669)', r: 16, g: 185, b: 129 },
+    rose: { primary: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #be123c)', r: 244, g: 63, b: 94 },
+    indigo: { primary: '#4f46e5', gradient: 'linear-gradient(135deg, #4f46e5, #7c3aed)', r: 79, g: 70, b: 229 },
+    teal: { primary: '#0d9488', gradient: 'linear-gradient(135deg, #0d9488, #0f766e)', r: 13, g: 148, b: 136 },
+    coral: { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #ea580c)', r: 249, g: 115, b: 22 }
+};
+
+function applyAccentColor(colorKey) {
+    const config = themeColors[colorKey] || themeColors.purple;
+    const isLight = document.body.getAttribute('data-theme') === 'light';
+
+    document.documentElement.style.setProperty('--primary', config.primary);
+    document.documentElement.style.setProperty('--primary-gradient', config.gradient);
+    document.documentElement.style.setProperty('--primary-dim', `rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.1' : '0.15'})`);
+    document.documentElement.style.setProperty('--shadow-hero', `0 8px 32px -8px rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.15' : '0.3'})`);
+    document.documentElement.style.setProperty('--shadow-hover', `0 6px 24px -4px rgba(${config.r}, ${config.g}, ${config.b}, ${isLight ? '0.35' : '0.5'})`);
+
+    localStorage.setItem('accentColor', colorKey);
+
+    document.querySelectorAll('.color-swatch').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.color === colorKey);
+    });
+}
+
+// Ensure theme changes trigger accent color re-calculations for alpha differences
 function applyTheme(theme) {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
     document.querySelectorAll('.theme-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === theme);
     });
+    // Refresh accent color alphas based on new theme
+    applyAccentColor(localStorage.getItem('accentColor') || 'purple');
 }
 
-// Apply saved theme immediately
+// Apply saved theme & color immediately
 applyTheme(localStorage.getItem('theme') || 'dark');
 
 // Navigation Logic
@@ -108,6 +139,11 @@ document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.onclick = () => applyTheme(btn.dataset.theme);
 });
 
+// Accent color toggle buttons
+document.querySelectorAll('.color-swatch').forEach(btn => {
+    btn.onclick = () => applyAccentColor(btn.dataset.color);
+});
+
 async function loadSettings() {
     try {
         const res = await fetch(`${API_BASE}/settings`);
@@ -117,7 +153,7 @@ async function loadSettings() {
         const breakInput = document.getElementById('breakInterval');
         if (breakInput) breakInput.value = data.breakInterval || 60;
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
-        
+
         // Load custom app categories
         try {
             customAppCategories = JSON.parse(data.customAppCategories || '{}');
@@ -125,10 +161,10 @@ async function loadSettings() {
             customAppCategories = {};
         }
         renderCategoryMappings();
-        
+
         // Load app suggestions
         loadAppSuggestions();
-        
+
         // Sync to localStorage too
         localStorage.setItem('goalHours', data.goalHours);
         localStorage.setItem('goalMinutes', data.goalMinutes);
@@ -148,7 +184,7 @@ async function loadAppSuggestions() {
         const res = await fetch(`${API_BASE}/today-apps`);
         const data = await res.json();
         if (appSuggestions) {
-            appSuggestions.innerHTML = data.apps.map(app => 
+            appSuggestions.innerHTML = data.apps.map(app =>
                 `<option value="${escapeHTML(app)}">`
             ).join('');
         }
@@ -159,21 +195,21 @@ async function loadAppSuggestions() {
 
 function renderCategoryMappings() {
     if (!categoryMappingsList) return;
-    
+
     const allMappings = [];
     for (const [category, apps] of Object.entries(customAppCategories)) {
         apps.forEach(app => {
             allMappings.push({ app, category });
         });
     }
-    
+
     if (allMappings.length === 0) {
         categoryMappingsList.innerHTML = '<div class="category-mappings-empty">No custom mappings yet. Add apps above to categorize them.</div>';
         return;
     }
-    
+
     allMappings.sort((a, b) => a.app.localeCompare(b.app));
-    
+
     const fragment = document.createDocumentFragment();
     allMappings.forEach(({ app, category }) => {
         const item = document.createElement('div');
@@ -189,11 +225,11 @@ function renderCategoryMappings() {
         `;
         fragment.appendChild(item);
     });
-    
+
     requestAnimationFrame(() => {
         categoryMappingsList.innerHTML = '';
         categoryMappingsList.appendChild(fragment);
-        
+
         // Add remove handlers
         categoryMappingsList.querySelectorAll('.category-mapping-remove').forEach(btn => {
             btn.onclick = () => {
@@ -208,12 +244,12 @@ function renderCategoryMappings() {
 function addCategoryMapping() {
     const appName = appNameInput.value.trim();
     const category = categorySelect.value;
-    
+
     if (!appName) {
         alert('Please enter an app name');
         return;
     }
-    
+
     // Remove app from all categories first
     for (const cat in customAppCategories) {
         customAppCategories[cat] = customAppCategories[cat].filter(a => a !== appName);
@@ -221,13 +257,13 @@ function addCategoryMapping() {
             delete customAppCategories[cat];
         }
     }
-    
+
     // Add to selected category
     if (!customAppCategories[category]) {
         customAppCategories[category] = [];
     }
     customAppCategories[category].push(appName);
-    
+
     // Clear input and re-render
     appNameInput.value = '';
     renderCategoryMappings();
@@ -264,32 +300,32 @@ saveSettingsBtn.onclick = async () => {
     const breakInput = document.getElementById('breakInterval');
     const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
     const linePct = goalLinePercentInput ? parseInt(goalLinePercentInput.value) || 44 : 44;
-    
+
     // Disable button to prevent double-clicks
     saveSettingsBtn.disabled = true;
     const originalText = saveSettingsBtn.textContent;
     saveSettingsBtn.textContent = 'Saving...';
-    
+
     localStorage.setItem('goalHours', h);
     localStorage.setItem('goalMinutes', m);
     localStorage.setItem('goalLinePercent', linePct);
     goalSeconds = (h * 3600) + (m * 60);
     goalLinePercent = linePct;
-    
+
     if (!domCache.goalLabel) {
         domCache.goalLabel = document.querySelector('.goal-label');
     }
     if (domCache.goalLabel) {
         domCache.goalLabel.textContent = `Goal: ${h}h ${m}m`;
     }
-    
+
     try {
         await fetch(`${API_BASE}/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                goalHours: h, 
-                goalMinutes: m, 
+            body: JSON.stringify({
+                goalHours: h,
+                goalMinutes: m,
                 breakInterval: breakMin,
                 goalLinePercent: linePct,
                 customAppCategories: JSON.stringify(customAppCategories)
@@ -328,7 +364,25 @@ let manualStatus = 'idle';
 let autoStatus = 'idle';
 let syncInterval = 10000; // Sync every 10s
 let animationFrameId = null;
-let lastDisplayUpdate = 0;
+let _lastRenderedManual = -1;
+let _lastRenderedAuto = -1;
+
+function updateGreeting() {
+    const greetingEl = document.getElementById('dashboardGreeting');
+    if (!greetingEl) return;
+
+    const hour = new Date().getHours();
+    let greeting = 'Good Evening';
+    if (hour >= 5 && hour < 12) greeting = 'Good Morning';
+    else if (hour >= 12 && hour < 17) greeting = 'Good Afternoon';
+
+    // Add custom messages if active
+    if (manualStatus === 'active') {
+        greetingEl.textContent = `${greeting} — Focus Mode`;
+    } else {
+        greetingEl.textContent = greeting;
+    }
+}
 
 async function updateStatus(forceSync = false) {
     const now = Date.now();
@@ -368,6 +422,7 @@ async function updateStatus(forceSync = false) {
                     startBtn.textContent = 'Start Session';
                     pauseBtn.style.display = 'none';
                 }
+                updateGreeting();
             });
         } catch (e) {
             console.error("Connection lost", e);
@@ -379,10 +434,7 @@ async function updateStatus(forceSync = false) {
         }
     }
 
-    // Throttle display updates to 60fps max
     const currentNow = Date.now();
-    if (currentNow - lastDisplayUpdate < 16) return; // ~60fps
-    lastDisplayUpdate = currentNow;
 
     let displayManual = baseManualSeconds;
     if (manualStatus === 'active') {
@@ -396,6 +448,14 @@ async function updateStatus(forceSync = false) {
         displayAuto = baseAutoSeconds + elapsed;
     }
 
+    // Optimization: Only update DOM if the rounded seconds have changed, drastically reducing CPU usage
+    if (!forceSync && displayManual === _lastRenderedManual && displayAuto === _lastRenderedAuto) {
+        return;
+    }
+
+    _lastRenderedManual = displayManual;
+    _lastRenderedAuto = displayAuto;
+
     // Batch all DOM updates in a single animation frame
     requestAnimationFrame(() => {
         timerDisplay.textContent = formatTime(displayManual);
@@ -403,7 +463,7 @@ async function updateStatus(forceSync = false) {
 
         const progress = Math.min((displayManual / goalSeconds) * 100, 100);
         progressBar.style.width = progress + '%';
-        
+
         if (!domCache.progressPercent) {
             domCache.progressPercent = document.querySelector('.progress-percent');
         }
@@ -456,7 +516,7 @@ function renderActiveTab() {
 
     // Use DocumentFragment for better performance
     const fragment = document.createDocumentFragment();
-    
+
     // Add header
     const header = document.createElement('div');
     header.className = 'report-item report-header';
@@ -592,15 +652,15 @@ async function renderWeeklyChart() {
             const autoHiddenCls = d.auto === 0 ? 'bar-hidden' : '';
 
             return `
-                <div class="${todayColCls}" data-manual="${formatHM(d.manual)}" data-auto="${formatHM(d.auto)}">
+                <div class="${todayColCls}" 
+                     data-manual="${d.manual}" 
+                     data-auto="${d.auto}"
+                     onmouseenter="showColTooltip(event, this, '${d.label}')"
+                     onmouseleave="hideColTooltip()">
                     <div class="chart-col-top">${valLabel}</div>
                     <div class="chart-col-bars">
                         <div class="chart-bar ${manualColor} ${manualHiddenCls}" style="height: ${manualPct}%"></div>
                         <div class="chart-bar bar-auto ${autoHiddenCls}" style="height: ${autoPct}%"></div>
-                    </div>
-                    <div class="chart-tooltip">
-                        <div class="tooltip-row"><span class="tooltip-dot dot-workplace"></span>Workplace <strong>${formatHM(d.manual)}</strong></div>
-                        <div class="tooltip-row"><span class="tooltip-dot dot-day"></span>Day Hours <strong>${formatHM(d.auto)}</strong></div>
                     </div>
                 </div>
             `;
@@ -624,6 +684,84 @@ async function renderWeeklyChart() {
     }
 }
 
+// Global Tooltip Logic
+let globalTooltip = null;
+
+function createGlobalTooltip() {
+    if (!globalTooltip) {
+        globalTooltip = document.createElement('div');
+        globalTooltip.className = 'app-tooltip';
+        document.body.appendChild(globalTooltip);
+    }
+}
+
+function showColTooltip(e, el, label) {
+    createGlobalTooltip();
+    const manual = parseInt(el.getAttribute('data-manual') || '0');
+    const auto = parseInt(el.getAttribute('data-auto') || '0');
+
+    globalTooltip.innerHTML = `
+        <div class="tooltip-title">${label}</div>
+        <div style="display:flex; justify-content:space-between; gap:16px;">
+            <span style="color:var(--text-dim)">Workplace</span>
+            <span class="tooltip-value">${formatHM(manual)}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:16px;">
+            <span style="color:var(--text-dim)">Day Hours</span>
+            <span class="tooltip-value">${formatHM(auto)}</span>
+        </div>
+    `;
+
+    positionTooltip(e);
+}
+
+function hideColTooltip() {
+    if (globalTooltip) {
+        globalTooltip.classList.remove('visible');
+    }
+}
+
+function positionTooltip(e) {
+    if (!globalTooltip) return;
+
+    // Offset slightly from cursor
+    let x = e.clientX + 15;
+    let y = e.clientY - 40;
+
+    // Check boundaries
+    globalTooltip.style.visibility = 'hidden';
+    globalTooltip.style.display = 'block';
+    const rect = globalTooltip.getBoundingClientRect();
+
+    if (x + rect.width > window.innerWidth) {
+        x = e.clientX - rect.width - 15;
+    }
+    if (y < 0) {
+        y = e.clientY + 15;
+    }
+
+    globalTooltip.style.left = x + 'px';
+    globalTooltip.style.top = y + 'px';
+    globalTooltip.style.visibility = 'visible';
+
+    requestAnimationFrame(() => {
+        globalTooltip.classList.add('visible');
+    });
+}
+
+function showAppTooltip(e, appName, seconds) {
+    createGlobalTooltip();
+
+    globalTooltip.innerHTML = `
+        <div class="tooltip-title">${appName}</div>
+        <div style="display:flex; justify-content:space-between; gap:16px;">
+            <span style="color:var(--text-dim)">Time Spent</span>
+            <span class="tooltip-value" style="color:#3b82f6">${formatHM(seconds)}</span>
+        </div>
+    `;
+
+    positionTooltip(e);
+}
 
 function updateGoalRing(manualSeconds) {
     const ring = document.getElementById('ringProgress');
@@ -638,12 +776,12 @@ function updateGoalRing(manualSeconds) {
     ring.style.strokeDashoffset = offset;
     pctEl.textContent = Math.floor(ratio * 100) + '%';
 
-    // Dynamic ring color: purple < goal, green >= goal, orange >= goal+1h
+    // Dynamic ring color: purple/fuchsia < goal, green >= goal, orange >= goal+1h
     const overtimeThreshold = goalSeconds + 3600;
     if (manualSeconds >= overtimeThreshold) {
-        ring.style.stroke = '#fbbf24';
+        ring.style.stroke = '#f59e0b';
     } else if (manualSeconds >= goalSeconds) {
-        ring.style.stroke = '#34d399';
+        ring.style.stroke = '#10b981';
     } else {
         ring.style.stroke = 'url(#ringGradient)';
     }
@@ -713,18 +851,22 @@ async function renderAppUsage() {
         usage.slice(0, 10).forEach((app, i) => {
             const pct = Math.max((app.total_seconds / maxSeconds) * 100, 3);
             const color = i < colorClasses.length ? colorClasses[i] : 'app-bar-default';
-            
+
             const row = document.createElement('div');
             row.className = 'app-row';
             row.innerHTML = `
-                <span class="app-rank">${i + 1}</span>
-                <div class="app-info">
-                    <div class="app-name-row">
-                        <span class="app-name">${escapeHTML(app.app_name)}</span>
-                        <span class="app-time">${formatHM(app.total_seconds)}</span>
-                    </div>
-                    <div class="app-bar-track">
-                        <div class="app-bar-fill ${color}" style="width: ${pct}%"></div>
+                <div style="display:flex; width:100%; align-items:center;"
+                     onmouseenter="showAppTooltip(event, '${escapeHTML(app.app_name)}', parseInt('${app.total_seconds}'))"
+                     onmouseleave="hideColTooltip()">
+                    <span class="app-rank">${i + 1}</span>
+                    <div class="app-info">
+                        <div class="app-name-row">
+                            <span class="app-name">${escapeHTML(app.app_name)}</span>
+                            <span class="app-time">${formatHM(app.total_seconds)}</span>
+                        </div>
+                        <div class="app-bar-track">
+                            <div class="app-bar-fill ${color}" style="width: ${pct}%"></div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -754,7 +896,7 @@ async function renderCategoryChart() {
         }
 
         const total = cats.reduce((sum, c) => sum + c.seconds, 0) || 1;
-        const colors = ['#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#fb923c', '#a3e635', '#e879f9'];
+        const colors = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#f97316', '#84cc16', '#d946ef'];
 
         // Build SVG pie chart using conic segments via circle stroke-dasharray
         const radius = 50;

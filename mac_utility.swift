@@ -73,6 +73,10 @@ class LocalhostSchemeHandler: NSObject, WKURLSchemeHandler {
         request.httpMethod = urlSchemeTask.request.httpMethod ?? "GET"
         request.allHTTPHeaderFields = urlSchemeTask.request.allHTTPHeaderFields
         request.httpBody = urlSchemeTask.request.httpBody
+        
+        // CRITICAL: Disable Apple OS native caching for localhost requests
+        // Without this, the WKWebView will aggressively cache CSS/JS files indefinitely.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self, self.isTaskActive(taskHash) else { return }
@@ -149,10 +153,16 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
             return
         }
 
-        // Configure WKWebView with custom scheme handler
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "app")
+        
+        // CRITICAL: Force clear WKWebView internal caches (Memory/Disk) on every launch
+        let dataStore = WKWebsiteDataStore.default()
+        let types: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache]
+        dataStore.removeData(ofTypes: types, modifiedSince: Date.distantPast) {
+            print("WKWebView caches successfully cleared.")
+        }
 
         // Inject script to override API_BASE before app.js runs
         let overrideScript = WKUserScript(
