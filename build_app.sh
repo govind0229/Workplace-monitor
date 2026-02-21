@@ -3,7 +3,7 @@
 # Configuration
 APP_NAME="WorkingHours"
 IDENTIFIER="com.user.workinghours"
-VERSION="1.2.2"
+VERSION="${VERSION:-1.2.2}"
 
 # Allow custom output directory (used by build_dmg.sh)
 OUTPUT_DIR="${1:-payload}"
