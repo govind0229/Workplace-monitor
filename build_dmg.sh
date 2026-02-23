@@ -118,6 +118,26 @@ rm -f "${DMG_NAME}-temp.dmg"
 # 7. Clean up staging
 rm -rf "dmg_staging"
 
+# 8. Sign the DMG
+if [ -n "$APPLE_CERT_USER" ]; then
+    echo "Step 8: Signing DMG with Apple Developer ID..."
+    codesign --force --sign "$APPLE_CERT_USER" "${DMG_NAME}.dmg"
+fi
+
+# 9. Notarize the DMG
+if [ -n "$APPLE_CERT_USER" ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+    echo "Step 9: Submitting for Apple Notarization..."
+    # Submit to notarytool and wait for results
+    xcrun notarytool submit "${DMG_NAME}.dmg" \
+        --apple-id "$APPLE_ID" \
+        --password "$APPLE_PASSWORD" \
+        --team-id "$APPLE_TEAM_ID" \
+        --wait
+    
+    echo "Step 10: Stapling Notarization Ticket to DMG..."
+    xcrun stapler staple "${DMG_NAME}.dmg"
+fi
+
 echo ""
 echo "=== DMG Installer Created ==="
 echo "  File: ${DMG_NAME}.dmg"

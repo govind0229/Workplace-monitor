@@ -60,8 +60,14 @@ cp -R node_modules "$OUTPUT_DIR/$APP_NAME.app/Contents/Resources/app/"
 cp bundled_node/node "$OUTPUT_DIR/$APP_NAME.app/Contents/Resources/app/node"
 chmod +x "$OUTPUT_DIR/$APP_NAME.app/Contents/Resources/app/node"
 
-# 5. Ad-hoc sign the app (prevents some permission issues)
-codesign --force --deep --sign - "$OUTPUT_DIR/$APP_NAME.app"
+# 5. Sign the app
+if [ -n "$APPLE_CERT_USER" ]; then
+    echo "  Signing app with Apple Developer ID: $APPLE_CERT_USER"
+    codesign --force --deep --options runtime --timestamp --sign "$APPLE_CERT_USER" "$OUTPUT_DIR/$APP_NAME.app"
+else
+    echo "  Ad-hoc signing the app (local only, will trigger Gatekeeper elsewhere)"
+    codesign --force --deep --sign - "$OUTPUT_DIR/$APP_NAME.app"
+fi
 
 # 6. Zip the app (only when using default output dir)
 if [ "$OUTPUT_DIR" = "payload" ]; then
