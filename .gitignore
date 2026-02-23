@@ -90,3 +90,5 @@ Icon?
 *.temp
 *.bak
 *.orig
+node
+kill_server.sh

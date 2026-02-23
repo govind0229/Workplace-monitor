@@ -1,7 +1,7 @@
 const express = require('express');
 const notifier = require('node-notifier');
 const path = require('path');
-const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
+const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
 
 const cors = require('cors');
 
@@ -62,7 +62,11 @@ function runBackgroundLoop() {
                     const goalH = parseInt(getSetting('goalHours', '4'));
                     const goalM = parseInt(getSetting('goalMinutes', '10'));
                     const goalSec = (goalH * 3600) + (goalM * 60);
-                    if (updated.total_seconds >= goalSec && !updated.notified) {
+
+                    const todayTotal = getTodayManualTotal();
+                    const alreadyNotified = hasNotifiedToday();
+
+                    if (todayTotal >= goalSec && !alreadyNotified) {
                         notifier.notify({
                             title: 'Goal Achieved!',
                             message: `You've completed ${goalH}h ${goalM}m in the office.`,
@@ -166,20 +170,28 @@ app.get('/status', (req, res) => {
     const manual = getActiveSession('manual') || { status: 'idle', total_seconds: 0 };
     const automatic = getTodayAutomaticSession();
 
+    const baseManualSeconds = getTodayManualTotal();
+
     // Live interpolation for manual session (capped to 10s to exclude sleep time)
     if (manual.status === 'active') {
         const lastTickStr = manual.last_tick;
         const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
         const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 10);
-        if (delta > 0) manual.total_seconds += delta;
+        manual.total_seconds = baseManualSeconds + Math.max(0, delta);
+    } else {
+        manual.total_seconds = baseManualSeconds;
     }
+
+    const baseAutoSeconds = getTodayTotal();
 
     // Live interpolation for automatic session (capped to 10s to exclude sleep time)
     if (automatic.status === 'active') {
         const lastTickStr = automatic.last_tick;
         const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
         const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 10);
-        if (delta > 0) automatic.total_seconds += delta;
+        automatic.total_seconds = baseAutoSeconds + Math.max(0, delta);
+    } else {
+        automatic.total_seconds = baseAutoSeconds;
     }
 
     res.json({

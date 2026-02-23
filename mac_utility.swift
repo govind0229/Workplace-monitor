@@ -350,12 +350,6 @@ class MenuBarUtility: NSObject {
 
         menu.addItem(NSMenuItem.separator())
 
-        let browserItem = NSMenuItem(title: "Open in Browser", action: #selector(openInBrowser), keyEquivalent: "b")
-        browserItem.target = self
-        menu.addItem(browserItem)
-
-        menu.addItem(NSMenuItem.separator())
-
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -523,12 +517,6 @@ class MenuBarUtility: NSObject {
 
     @objc func openDashboard() {
         showDashboard()
-    }
-
-    @objc func openInBrowser() {
-        if let url = URL(string: serverURL) {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     @objc func quitApp() {

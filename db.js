@@ -121,9 +121,17 @@ module.exports = {
       LIMIT 12
     `).all();
   },
+  getTodayManualTotal: () => {
+    const result = db.prepare("SELECT SUM(total_seconds) as sum FROM sessions WHERE date = date('now') AND type = 'manual'").get();
+    return result ? (result.sum || 0) : 0;
+  },
+  hasNotifiedToday: () => {
+    const result = db.prepare("SELECT SUM(notified) as sum FROM sessions WHERE date = date('now') AND type = 'manual'").get();
+    return result && result.sum > 0;
+  },
   getTodayTotal: () => {
-    const result = db.prepare("SELECT total_seconds FROM sessions WHERE date = date('now') AND type = 'automatic' LIMIT 1").get();
-    return result ? (result.total_seconds || 0) : 0;
+    const result = db.prepare("SELECT SUM(total_seconds) as sum FROM sessions WHERE date = date('now') AND type = 'automatic'").get();
+    return result ? (result.sum || 0) : 0;
   },
   recordAppUsage: (appName, seconds) => {
     db.prepare(`
