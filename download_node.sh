@@ -7,7 +7,7 @@
 if command -v node >/dev/null 2>&1; then
     NODE_VERSION="$(node --version)"
 else
-    NODE_VERSION="v24.11.1"
+    NODE_VERSION="v24.13.1"
 fi
 OUTPUT_DIR="${1:-.}"
 
