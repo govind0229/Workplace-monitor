@@ -2,6 +2,17 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.2.3] - 2026-03-01
+
+### Added
+- **Dynamic Session Icons** — The active tracking logo now visually switches between "Office" and "Home" (WFH) depending on whether the manual session is running.
+- **Combined Daily Chart Label** — The top label of the "Last 7 Days" chart columns now shows the combined total duration of both Workplace and WFH hours instead of just the higher of the two.
+
+### Changed
+- **WFH Priority** — Automatically pausing the background "WFH" tracker while a manual "Workplace" session is actively running so both timers don't overlap simultaneously.
+- **Terminology Updates** — Renamed all user-facing instances of "Day Working" and "Day Total" to "WFH" (Work From Home) for clearer distinction.
+- **Simplified Chart Legends** — Removed unnecessary color dots from the "Last 7 Days" chart legend and removed the goal dot helper icon for a cleaner interface.
+
 ## [1.2.2] - 2026-02-20
 
 ### Added

@@ -50,6 +50,17 @@ function runBackgroundLoop() {
                 // means the system was asleep and that time should NOT be counted
                 const delta = Math.min(rawDelta, 10);
 
+                // For automatic session, only count time if manual session is NOT active
+                if (type === 'automatic') {
+                    const manualSession = getActiveSession('manual');
+                    if (manualSession && manualSession.status === 'active') {
+                        // Skip incrementing automatic time, but still update the last_tick
+                        // so it doesn't build up a huge delta when manual stops
+                        db.prepare("UPDATE sessions SET last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(activeSession.id);
+                        return; // exit the forEach callback for this type
+                    }
+                }
+
                 if (delta > 0) {
                     updateSessionSeconds(activeSession.id, delta);
                 }
@@ -185,7 +196,8 @@ app.get('/status', (req, res) => {
     const baseAutoSeconds = getTodayTotal();
 
     // Live interpolation for automatic session (capped to 10s to exclude sleep time)
-    if (automatic.status === 'active') {
+    // Only interpolate if manual session is NOT active
+    if (automatic.status === 'active' && !(manual && manual.status === 'active')) {
         const lastTickStr = automatic.last_tick;
         const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
         const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 10);

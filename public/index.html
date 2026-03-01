@@ -5,14 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Office Hours Monitor</title>
-    <link rel="stylesheet" href="style.css?v=1.2.2">
+    <link rel="stylesheet" href="style.css?v=1.2.3">
 </head>
 
 <body>
     <div class="sidebar">
-        <div class="logo">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="url(#logoGrad)" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
+        <div class="logo" id="mainLogoContainer">
+            <svg id="logoOffice" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="url(#logoGrad)"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <defs>
                     <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                         <stop offset="0%" stop-color="#bb86fc" />
@@ -21,6 +21,17 @@
                 </defs>
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <svg id="logoHome" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="url(#logoGradHome)"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                <defs>
+                    <linearGradient id="logoGradHome" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#4facfe" />
+                        <stop offset="100%" stop-color="#00f2fe" />
+                    </linearGradient>
+                </defs>
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
             </svg>
             <span>WorkMonitor</span>
         </div>
@@ -54,7 +65,7 @@
             </button>
         </nav>
         <div class="sidebar-footer">
-            <span class="version-badge">v1.2.2</span>
+            <span class="version-badge">v1.2.3</span>
         </div>
     </div>
 
@@ -142,8 +153,8 @@
                             Last 7 Days
                         </div>
                         <div class="chart-legend">
-                            <span class="legend-dot legend-workplace"></span><span class="legend-label">Workplace</span>
-                            <span class="legend-dot legend-day"></span><span class="legend-label">Day Hours</span>
+                            <span class="legend-label">Workplace</span>
+                            <span class="legend-label">Day Hours</span>
                         </div>
                     </div>
                     <div id="weeklyChart" class="weekly-chart">
@@ -469,7 +480,7 @@
         </div>
     </main>
 
-    <script src="app.js?v=1.2.2"></script>
+    <script src="app.js?v=1.2.3"></script>
 </body>
 
 </html>

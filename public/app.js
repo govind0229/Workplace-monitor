@@ -411,16 +411,30 @@ async function updateStatus(forceSync = false) {
                     startBtn.classList.add('pulse');
                     startBtn.textContent = 'Session Active';
                     pauseBtn.style.display = '';
+
+                    // Show Office Logo
+                    document.getElementById('logoOffice').style.display = 'block';
+                    document.getElementById('logoHome').style.display = 'none';
+
                 } else if (manualStatus === 'paused') {
                     startBtn.disabled = false;
                     startBtn.classList.remove('pulse');
                     startBtn.textContent = 'Resume';
                     pauseBtn.style.display = 'none';
+
+                    // Show Home Logo since workplace is not running
+                    document.getElementById('logoOffice').style.display = 'none';
+                    document.getElementById('logoHome').style.display = 'block';
+
                 } else {
                     startBtn.disabled = false;
                     startBtn.classList.remove('pulse');
                     startBtn.textContent = 'Start Session';
                     pauseBtn.style.display = 'none';
+
+                    // Show Home Logo since workplace is not running
+                    document.getElementById('logoOffice').style.display = 'none';
+                    document.getElementById('logoHome').style.display = 'block';
                 }
                 updateGreeting();
             });
@@ -639,8 +653,8 @@ async function renderWeeklyChart() {
             else if (d.manual >= goalSeconds) manualColor = 'bar-green';
 
             const hasData = d.manual > 0 || d.auto > 0;
-            const topVal = d.manual >= d.auto ? d.manual : d.auto;
-            const topCls = d.manual >= d.auto ? '' : 'bar-value-auto';
+            const topVal = d.manual + d.auto;
+            const topCls = ''; // No specific color for the sum
             const valLabel = hasData
                 ? `<span class="chart-bar-value ${topCls}">${formatHM(topVal)}</span>`
                 : `<span class="chart-bar-value chart-bar-value-empty"></span>`;
