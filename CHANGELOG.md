@@ -5,6 +5,7 @@ All notable changes to WorkplaceMonitor will be documented in this file.
 ## [1.2.3] - 2026-03-01
 
 ### Added
+- **Mac Widget Dynamic Icons** — The macOS menu bar widget now dynamically displays an outline of the office icon and workplace timer when working in the office, and automatically switches back to the home icon and daily timer otherwise.
 - **Dynamic Session Icons** — The active tracking logo now visually switches between "Office" and "Home" (WFH) depending on whether the manual session is running.
 - **Combined Daily Chart Label** — The top label of the "Last 7 Days" chart columns now shows the combined total duration of both Workplace and WFH hours instead of just the higher of the two.
 

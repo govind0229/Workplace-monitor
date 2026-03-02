@@ -317,9 +317,11 @@ class MenuBarUtility: NSObject {
     var pollTimer: Timer?
     var uiTimer: Timer?
     var appTrackTimer: Timer?
-    var baseSeconds: Int = 0
+    var manualSeconds: Int = 0
+    var manualStatus: String = "idle"
+    var autoSeconds: Int = 0
+    var autoStatus: String = "idle"
     var lastSyncTime: Date = Date()
-    var currentStatus: String = "idle"
     var dashboardController: DashboardWindowController?
     var isScreenLocked: Bool = false
     var lastTrackedApp: String = ""
@@ -407,24 +409,33 @@ class MenuBarUtility: NSObject {
     }
 
     func updateUI() {
-        var displaySeconds = self.baseSeconds
-        if self.currentStatus == "active" {
-            let elapsed = Int(Date().timeIntervalSince(self.lastSyncTime))
-            displaySeconds = self.baseSeconds + elapsed
+        let elapsed = Int(Date().timeIntervalSince(self.lastSyncTime))
+        
+        var currentManualSeconds = self.manualSeconds
+        if self.manualStatus == "active" {
+            currentManualSeconds += elapsed
         }
         
-        let timeStr = self.formatTime(displaySeconds)
+        var currentAutoSeconds = self.autoSeconds
+        if self.autoStatus == "active" && self.manualStatus != "active" {
+            currentAutoSeconds += elapsed
+        }
+        
         DispatchQueue.main.async {
-            if let button = self.statusItem.button {
-                if self.currentStatus == "active" {
-                    button.title = "🕒 \(timeStr)"
-                } else if self.currentStatus == "paused" {
-                    button.title = "🕒 \(timeStr) (Paused)"
-                } else if self.currentStatus == "offline" {
-                    button.title = "🕒 Offline"
-                } else {
-                    button.title = "🕒 Idle"
-                }
+            guard let button = self.statusItem.button else { return }
+            
+            if self.manualStatus == "active" {
+                button.title = "🏢 \(self.formatTime(currentManualSeconds))"
+            } else if self.autoStatus == "active" {
+                button.title = "🏠 \(self.formatTime(currentAutoSeconds))"
+            } else if self.manualStatus == "paused" {
+                button.title = "🏢 \(self.formatTime(currentManualSeconds)) (Paused)"
+            } else if self.autoStatus == "paused" {
+                button.title = "🏠 \(self.formatTime(currentAutoSeconds)) (Paused)"
+            } else if self.manualStatus == "offline" {
+                button.title = "🕒 Offline"
+            } else {
+                button.title = "🕒 Idle"
             }
         }
     }
@@ -433,19 +444,27 @@ class MenuBarUtility: NSObject {
         guard let url = URL(string: "\(serverURL)/status") else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             if let _ = error {
-                self.currentStatus = "offline"
+                DispatchQueue.main.async {
+                    self.manualStatus = "offline"
+                    self.autoStatus = "offline"
+                    self.updateUI()
+                }
                 return
             }
             
             guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let manual = json["manual"] as? [String: Any] else { return }
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             
-            // Align ground truth and capture the sync moment immediately
             DispatchQueue.main.async {
-                self.baseSeconds = manual["total_seconds"] as? Int ?? 0
+                if let manual = json["manual"] as? [String: Any] {
+                    self.manualSeconds = manual["total_seconds"] as? Int ?? 0
+                    self.manualStatus = manual["status"] as? String ?? "idle"
+                }
+                if let automatic = json["automatic"] as? [String: Any] {
+                    self.autoSeconds = automatic["total_seconds"] as? Int ?? 0
+                    self.autoStatus = automatic["status"] as? String ?? "idle"
+                }
                 self.lastSyncTime = Date()
-                self.currentStatus = manual["status"] as? String ?? "idle"
                 self.updateUI() // Immediate update after sync
             }
         }.resume()
