@@ -1,12 +1,29 @@
 # WorkMonitor — Working Hours Tracker
 
-A professional, secure, and automated time tracking application for macOS with a native dashboard, app usage analytics, and smart sleep detection.
+A professional, secure, and automated time tracking application for macOS with a native dashboard, app usage analytics, GPS-based location automation, and smart sleep detection.
+
+## Screenshots
+
+| Dashboard | Location Automation |
+|:---------:|:-------------------:|
+| ![Dashboard](screenshots/dashboard.png) | ![Location](screenshots/location.png) |
+
+| History | Settings |
+|:-------:|:--------:|
+| ![History](screenshots/history.png) | ![Settings](screenshots/settings.png) |
 
 ## Key Features
 
 ### Dual-Mode Time Tracking
 - **Workplace Duration** — Manual start/stop/pause for focused work sessions with a configurable daily goal.
 - **Day Working Hours** — Automatic tracking that starts on screen unlock and pauses on lock/sleep. Sleep-aware: time is never counted while the Mac is asleep.
+
+### 🆕 Location-Based Automation (GPS)
+- **Automatic Timer Switching** — Automatically starts the Workplace timer when you arrive at the office and finishes it when you leave.
+- **Interactive Map View** — Dedicated Location page with a Leaflet-powered map showing your office geofence circle and current position.
+- **Configurable Geofence** — Set your office coordinates with a single click and adjust the radius (50–2000m).
+- **CoreLocation Integration** — Uses native macOS `CLLocationManager` for efficient background location tracking.
+- **Stale Session Recovery** — Server automatically completes orphaned sessions on startup if they've been idle for 30+ minutes.
 
 ### Native macOS App
 - **Menu Bar Widget** — Real-time timer displayed in the macOS menu bar.
@@ -31,6 +48,7 @@ A professional, secure, and automated time tracking application for macOS with a
 
 ### Work History
 - **Daily, Weekly, Monthly** reports showing both Workplace Duration and Day Working Hours.
+- **CSV Export** — Download any report period as a CSV file.
 - Data stored locally in SQLite — never leaves your machine.
 
 ### Configurable Goal
@@ -61,12 +79,24 @@ A professional, secure, and automated time tracking application for macOS with a
    ```
 4. Access the dashboard at `http://127.0.0.1:3000`.
 
+> **Note:** `start.sh` automatically builds a local `.app` bundle so macOS grants Location permissions during development.
+
 ### Build from Source
 ```bash
 ./build_app.sh    # Builds WorkingHours.app and WorkingHours.zip
 ./build_pkg.sh    # Builds WorkingHours.pkg installer
 ./build_dmg.sh    # Builds WorkingHours.dmg drag-and-drop installer
 ```
+
+## Location Automation Setup
+
+1. Open the Dashboard and navigate to the **Location** tab.
+2. Click **Set Current Location as Office** — this uses your browser's GPS to capture your office coordinates.
+3. Adjust the **Radius** if needed (default: 200m).
+4. Grant Location permission when macOS prompts.
+5. The system will now automatically:
+   - **Start** the Workplace timer when you enter the geofence.
+   - **Finish** the Workplace timer when you leave the geofence.
 
 ## Uninstallation
 
@@ -79,34 +109,36 @@ This removes the application and all background LaunchAgents.
 
 ```
 ├── mac_utility.swift    # Native macOS app: menu bar, WKWebView dashboard,
-│                        #   lock/unlock/sleep detection, app usage polling
-├── server.js            # Express backend: session management, app heartbeat,
+│                        #   lock/unlock/sleep detection, CoreLocation, app usage
+├── server.js            # Express backend: session management, location geofencing,
 │                        #   reports, background timer loop
 ├── db.js                # SQLite schema, migrations, and query functions
 ├── public/
-│   ├── index.html       # Dashboard HTML with charts and controls
-│   ├── style.css        # Dark theme UI with modern glass-card design
-│   └── app.js           # Frontend logic: timer, charts, app usage, auto-refresh
+│   ├── index.html       # Dashboard HTML with charts, controls, and map view
+│   ├── style.css        # Dark/Light theme UI with modern glass-card design
+│   └── app.js           # Frontend logic: timer, charts, Leaflet map, auto-refresh
+├── screenshots/         # README screenshots
 ├── build_app.sh         # Compile Swift + bundle into .app
 ├── build_pkg.sh         # Compile Swift + create .pkg installer
 ├── build_dmg.sh         # Create drag-and-drop DMG installer
 ├── launcher.sh          # Entry point for .app bundle
-├── start.sh             # Dev start script
+├── start.sh             # Dev start script (builds local .app for Location access)
 ├── uninstall.sh         # Clean removal script
-├── Info.plist           # macOS app bundle configuration
+├── Info.plist           # macOS app bundle configuration (includes Location keys)
 └── package.json         # Node.js dependencies
 ```
 
 ## Tech Stack
 
-- **Frontend** — Vanilla HTML/CSS/JS, SVG icons, CSS grid/flexbox
+- **Frontend** — Vanilla HTML/CSS/JS, SVG icons, Leaflet.js (maps), CSS grid/flexbox
 - **Backend** — Node.js, Express, better-sqlite3
-- **Native** — Swift, AppKit, WebKit (WKWebView with custom URL scheme handler)
+- **Native** — Swift, AppKit, WebKit (WKWebView), CoreLocation
 - **Database** — SQLite (stored in `~/Library/Application Support/WorkingHours/`)
 
 ## Security
 
 This application is designed with privacy in mind:
 - Binds strictly to `127.0.0.1` — data never leaves your machine.
-- No external network requests or telemetry.
+- No external network requests or telemetry (map tiles loaded from OpenStreetMap CDN).
 - Database stored locally in Application Support.
+- Location data is only sent to the local server, never to any external service.

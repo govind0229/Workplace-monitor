@@ -58,6 +58,11 @@ db.exec(`
   );
 `);
 
+// Migrations for existing databases
+try { db.exec("ALTER TABLE sessions ADD COLUMN type TEXT DEFAULT 'manual'"); } catch (e) { }
+try { db.exec("ALTER TABLE sessions ADD COLUMN notified INTEGER DEFAULT 0"); } catch (e) { }
+try { db.exec("ALTER TABLE sessions ADD COLUMN last_break_notify INTEGER DEFAULT 0"); } catch (e) { }
+
 module.exports = {
   db,
   startSession: (type = 'manual') => {

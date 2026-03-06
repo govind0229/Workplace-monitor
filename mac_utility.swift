@@ -1,7 +1,7 @@
-import Foundation
 import AppKit
 import WebKit
 import CoreGraphics
+import CoreLocation
 
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -322,6 +322,10 @@ class MenuBarUtility: NSObject {
     var autoSeconds: Int = 0
     var autoStatus: String = "idle"
     var lastSyncTime: Date = Date()
+    
+    // Location Manager
+    var locationManager: CLLocationManager?
+    
     var dashboardController: DashboardWindowController?
     var isScreenLocked: Bool = false
     var lastTrackedApp: String = ""
@@ -334,6 +338,7 @@ class MenuBarUtility: NSObject {
         dashboardController = DashboardWindowController(serverURL: serverURL)
         setupStatusItem()
         setupNotifications()
+        setupLocationManager()
         startTimers()
     }
 
@@ -381,6 +386,18 @@ class MenuBarUtility: NSObject {
             self.isScreenLocked = false
             self.sendEvent("unlock")
         }
+    }
+
+    func setupLocationManager() {
+        locationManager = CLLocationManager()
+        locationManager?.delegate = self
+        locationManager?.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        locationManager?.distanceFilter = 50 // Send updates when moved > 50 meters
+        
+        // Request authorization then start updating
+        print("Requesting Location Authorization...")
+        locationManager?.requestAlwaysAuthorization()
+        locationManager?.startUpdatingLocation()
     }
 
     func startTimers() {
@@ -540,6 +557,53 @@ class MenuBarUtility: NSObject {
 
     @objc func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+}
+
+// MARK: - CoreLocation Delegate
+extension MenuBarUtility: CLLocationManagerDelegate {
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        
+        print("Location updated: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+        
+        // Send location to local server for automation rule processing
+        guard let url = URL(string: "\(serverURL)/location") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let json: [String: Any] = [
+            "latitude": location.coordinate.latitude,
+            "longitude": location.coordinate.longitude
+        ]
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: json)
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("Failed to send location to server: \(error.localizedDescription)")
+            } else if let httpResponse = response as? HTTPURLResponse {
+                print("Server responded to location update with status: \(httpResponse.statusCode)")
+            }
+        }.resume()
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Location update failed: \(error.localizedDescription)")
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        print("Location authorization changed to: \(manager.authorizationStatus.rawValue)")
+        if #available(macOS 11.0, *) {
+            switch manager.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse:
+                print("Starting location updates...")
+                manager.startUpdatingLocation()
+            default:
+                print("Location not authorized.")
+                break
+            }
+        }
     }
 }
 

@@ -2,6 +2,25 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.3.0] - 2026-03-06
+
+### Added
+- **GPS Location Automation** — Automatically start the Workplace timer when arriving at the office and finish it when leaving, using native macOS `CoreLocation` geofencing.
+- **Interactive Map View** — New dedicated "Location" page in the sidebar with a Leaflet-powered interactive map showing the office geofence radius and your current position.
+- **Set Office Location** — One-click button to capture your current GPS coordinates as the office location using the browser's Geolocation API.
+- **Configurable Geofence Radius** — Adjustable radius (50–2000m) for defining the office boundary.
+- **Clear Office Location** — Button to disable location automation and clear saved coordinates.
+- **Stale Session Recovery** — Server automatically completes orphaned manual sessions on startup if they've been idle for more than 30 minutes (safety net for missed location updates).
+- **Location Info Cards** — Dashboard cards showing Office Coordinates, Geofence Radius, and monitoring Status.
+- **README Screenshots** — Added screenshots of Dashboard, Location, History, and Settings views.
+
+### Changed
+- **start.sh Rewrite** — Development script now builds a minimal `.app` bundle so macOS properly grants Location permissions during development.
+- **kill_server.sh** — Now also terminates the dev `.app` bundle and `mac_utility` processes.
+- **Info.plist** — Added `NSLocationAlwaysUsageDescription`, `NSLocationWhenInUseUsageDescription`, and `NSLocationAlwaysAndWhenInUseUsageDescription` keys.
+- **Database Migrations** — Added automatic column migrations for `type`, `notified`, and `last_break_notify` in the sessions table to support older databases.
+- **Timer Completion** — Office timer now properly finishes (completes the session) instead of pausing when leaving the geofence.
+
 ## [1.2.3] - 2026-03-01
 
 ### Added

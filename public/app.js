@@ -18,6 +18,12 @@ const goalMinutesInput = document.getElementById('goalMinutes');
 const goalLinePercentInput = document.getElementById('goalLinePercent');
 const saveSettingsBtn = document.getElementById('saveSettings');
 
+// Location
+const locationStatusBadge = document.getElementById('locationStatusBadge');
+const setOfficeLocationBtn = document.getElementById('setOfficeLocationBtn');
+const officeRadiusInput = document.getElementById('officeRadiusInput');
+const clearOfficeLocationBtn = document.getElementById('clearOfficeLocationBtn');
+
 // Category Mapping
 const appNameInput = document.getElementById('appNameInput');
 const categorySelect = document.getElementById('categorySelect');
@@ -131,6 +137,7 @@ navItems.forEach(item => {
         // Trigger fetches if needed
         if (targetView === 'history') fetchReports();
         if (targetView === 'settings') loadSettings();
+        if (targetView === 'location') initLocationView();
     };
 });
 
@@ -153,6 +160,26 @@ async function loadSettings() {
         const breakInput = document.getElementById('breakInterval');
         if (breakInput) breakInput.value = data.breakInterval || 60;
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
+
+        if (officeRadiusInput && data.officeRadius) {
+            officeRadiusInput.value = data.officeRadius;
+        }
+
+        if (locationStatusBadge) {
+            if (data.officeLat && data.officeLng) {
+                locationStatusBadge.textContent = 'Office Location Configured ✓';
+                locationStatusBadge.className = 'status-badge status-active';
+                setOfficeLocationBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                    </svg>
+                    Update to Current Location
+                `;
+            } else {
+                locationStatusBadge.textContent = 'Not Configured';
+                locationStatusBadge.className = 'status-badge status-offline';
+            }
+        }
 
         // Load custom app categories
         try {
@@ -300,6 +327,7 @@ saveSettingsBtn.onclick = async () => {
     const breakInput = document.getElementById('breakInterval');
     const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
     const linePct = goalLinePercentInput ? parseInt(goalLinePercentInput.value) || 44 : 44;
+    const radius = officeRadiusInput ? parseInt(officeRadiusInput.value) || 200 : 200;
 
     // Disable button to prevent double-clicks
     saveSettingsBtn.disabled = true;
@@ -328,6 +356,7 @@ saveSettingsBtn.onclick = async () => {
                 goalMinutes: m,
                 breakInterval: breakMin,
                 goalLinePercent: linePct,
+                officeRadius: radius,
                 customAppCategories: JSON.stringify(customAppCategories)
             })
         });
@@ -342,6 +371,215 @@ saveSettingsBtn.onclick = async () => {
         saveSettingsBtn.textContent = originalText;
     }
 };
+
+if (setOfficeLocationBtn) {
+    setOfficeLocationBtn.onclick = async () => {
+        setOfficeLocationBtn.disabled = true;
+        setOfficeLocationBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
+            Getting Location...
+        `;
+
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            resetLocationBtn();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            const radius = officeRadiusInput ? parseInt(officeRadiusInput.value) || 200 : 200;
+
+            try {
+                await fetch(`${API_BASE}/set-office-location`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ latitude, longitude, radius })
+                });
+
+                alert('Office location successfully set!');
+                if (locationStatusBadge) {
+                    locationStatusBadge.textContent = 'Office Location Configured ✓';
+                    locationStatusBadge.className = 'status-badge status-active';
+                }
+                setOfficeLocationBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                    </svg>
+                    Update to Current Location
+                `;
+                setOfficeLocationBtn.disabled = false;
+                // Refresh the map view
+                if (locationMap) loadLocationData();
+            } catch (e) {
+                console.error(e);
+                alert('Failed to save office location.');
+                resetLocationBtn();
+            }
+        }, (error) => {
+            console.error(error);
+            alert(`Location access denied or unavailable: ${error.message}`);
+            resetLocationBtn();
+        }, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        });
+    };
+}
+
+if (clearOfficeLocationBtn) {
+    clearOfficeLocationBtn.onclick = async () => {
+        if (!confirm('Are you sure you want to clear the office location? Auto-tracking to the Workplace timer will be disabled.')) return;
+
+        clearOfficeLocationBtn.disabled = true;
+        try {
+            await fetch(`${API_BASE}/clear-office-location`, { method: 'POST' });
+            alert('Office location cleared.');
+            resetLocationBtn();
+            if (locationStatusBadge) {
+                locationStatusBadge.textContent = 'Not Configured';
+                locationStatusBadge.className = 'status-badge status-offline';
+            }
+            // Refresh the map view
+            if (locationMap) {
+                if (officeMarker) locationMap.removeLayer(officeMarker);
+                if (officeCircle) locationMap.removeLayer(officeCircle);
+                officeMarker = null;
+                officeCircle = null;
+                document.getElementById('officeCoords').textContent = '—';
+                document.getElementById('locationAutoStatus').textContent = 'Inactive';
+                document.getElementById('locationAutoStatus').style.color = '';
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Failed to clear location.');
+        } finally {
+            clearOfficeLocationBtn.disabled = false;
+        }
+    };
+}
+
+function resetLocationBtn() {
+    if (!setOfficeLocationBtn) return;
+    setOfficeLocationBtn.disabled = false;
+    setOfficeLocationBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3"/>
+        </svg>
+        Set Current Location as Office
+    `;
+}
+
+// ===== LOCATION MAP VIEW =====
+let locationMap = null;
+let officeMarker = null;
+let officeCircle = null;
+let userMarker = null;
+
+function initLocationView() {
+    // Initialize map if not already done
+    if (!locationMap) {
+        locationMap = L.map('locationMap').setView([28.6, 77.2], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap',
+            maxZoom: 19
+        }).addTo(locationMap);
+    }
+
+    // Fix tile rendering after view switch
+    setTimeout(() => locationMap.invalidateSize(), 200);
+
+    // Load current settings and render
+    loadLocationData();
+}
+
+async function loadLocationData() {
+    try {
+        const res = await fetch(`${API_BASE}/settings`);
+        const data = await res.json();
+
+        const lat = parseFloat(data.officeLat);
+        const lng = parseFloat(data.officeLng);
+        const radius = parseInt(data.officeRadius) || 200;
+
+        if (officeRadiusInput) officeRadiusInput.value = radius;
+        document.getElementById('officeRadiusDisplay').textContent = radius + 'm';
+
+        if (!isNaN(lat) && !isNaN(lng) && data.officeLat !== '') {
+            renderOfficeOnMap(lat, lng, radius);
+            document.getElementById('officeCoords').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            locationStatusBadge.textContent = 'Office Location Configured ✓';
+            locationStatusBadge.className = 'status-badge status-active';
+            document.getElementById('locationAutoStatus').textContent = 'Active — Monitoring';
+            document.getElementById('locationAutoStatus').style.color = 'var(--primary)';
+        } else {
+            document.getElementById('officeCoords').textContent = '—';
+            locationStatusBadge.textContent = 'Not Configured';
+            locationStatusBadge.className = 'status-badge status-offline';
+            document.getElementById('locationAutoStatus').textContent = 'Inactive';
+            document.getElementById('locationAutoStatus').style.color = '';
+        }
+
+        // Also show current location on the map
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const userLat = pos.coords.latitude;
+                const userLng = pos.coords.longitude;
+
+                if (userMarker) locationMap.removeLayer(userMarker);
+                userMarker = L.marker([userLat, userLng], {
+                    icon: L.divIcon({
+                        className: 'user-location-marker',
+                        html: '<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 8px rgba(59,130,246,0.6);"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    })
+                }).addTo(locationMap).bindPopup('📍 You are here');
+
+                // If no office is set, center on user
+                if (isNaN(lat) || data.officeLat === '') {
+                    locationMap.setView([userLat, userLng], 15);
+                }
+            }, () => { }, { enableHighAccuracy: true, timeout: 5000 });
+        }
+    } catch (e) {
+        console.error('Failed to load location data:', e);
+    }
+}
+
+function renderOfficeOnMap(lat, lng, radius) {
+    // Remove old markers
+    if (officeMarker) locationMap.removeLayer(officeMarker);
+    if (officeCircle) locationMap.removeLayer(officeCircle);
+
+    // Add office marker
+    officeMarker = L.marker([lat, lng], {
+        icon: L.divIcon({
+            className: 'office-location-marker',
+            html: '<div style="width:18px;height:18px;background:var(--primary, #8b5cf6);border:3px solid white;border-radius:50%;box-shadow:0 0 12px rgba(139,92,246,0.5);"></div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        })
+    }).addTo(locationMap).bindPopup('🏢 Office Location');
+
+    // Add geofence circle
+    officeCircle = L.circle([lat, lng], {
+        color: '#8b5cf6',
+        fillColor: '#8b5cf6',
+        fillOpacity: 0.12,
+        radius: radius,
+        weight: 2,
+        dashArray: '6 4'
+    }).addTo(locationMap);
+
+    // Fit map to the circle bounds
+    locationMap.fitBounds(officeCircle.getBounds().pad(0.3));
+}
 
 function escapeHTML(str) {
     const div = document.createElement('div');
@@ -416,6 +654,12 @@ async function updateStatus(forceSync = false) {
                     document.getElementById('logoOffice').style.display = 'block';
                     document.getElementById('logoHome').style.display = 'none';
 
+                    if (data.officeLat && data.officeLng) {
+                        document.getElementById('aiIndicator').style.display = 'block';
+                    } else {
+                        document.getElementById('aiIndicator').style.display = 'none';
+                    }
+
                 } else if (manualStatus === 'paused') {
                     startBtn.disabled = false;
                     startBtn.classList.remove('pulse');
@@ -425,6 +669,7 @@ async function updateStatus(forceSync = false) {
                     // Show Home Logo since workplace is not running
                     document.getElementById('logoOffice').style.display = 'none';
                     document.getElementById('logoHome').style.display = 'block';
+                    document.getElementById('aiIndicator').style.display = 'none';
 
                 } else {
                     startBtn.disabled = false;
@@ -435,6 +680,7 @@ async function updateStatus(forceSync = false) {
                     // Show Home Logo since workplace is not running
                     document.getElementById('logoOffice').style.display = 'none';
                     document.getElementById('logoHome').style.display = 'block';
+                    document.getElementById('aiIndicator').style.display = 'none';
                 }
                 updateGreeting();
             });

@@ -19,5 +19,13 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>NSLocationUsageDescription</key>
+    <string>To automatically switch timers when you arrive at or leave the office.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>We need your location in the background to automatically switch timers.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>To automatically switch timers when you arrive at or leave the office.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>We need your location in the background to automatically switch timers.</string>
 </dict>
 </plist>
