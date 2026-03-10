@@ -1034,7 +1034,7 @@ function updateGoalRing(manualSeconds) {
     const offset = circumference - (pct * circumference);
 
     ring.style.strokeDashoffset = offset;
-    pctEl.textContent = Math.floor(ratio * 100) + '%';
+    pctEl.textContent = Math.floor(pct * 100) + '%';
 
     // Dynamic ring color: purple/fuchsia < goal, green >= goal, orange >= goal+1h
     const overtimeThreshold = goalSeconds + 3600;
