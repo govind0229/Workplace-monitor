@@ -41,7 +41,7 @@ const asyncHandler = fn => (req, res, next) => {
     if (!officeLat || !officeLng) return; // Location automation not enabled
 
     const session = getActiveSession('manual');
-    if (!session || session.status !== 'active') return;
+    if (!session) return; // 'manual' includes both 'active' and 'paused' based on db.js logic
 
     // If last tick is more than 30 minutes ago, the user likely left and the app didn't catch it
     const lastTickStr = session.last_tick;
@@ -50,7 +50,7 @@ const asyncHandler = fn => (req, res, next) => {
 
     if (staleMinutes > 30) {
         completeSession(session.id);
-        console.log(`[Startup] Auto-completed stale manual session #${session.id} (inactive for ${Math.round(staleMinutes)} minutes).`);
+        console.log(`[Startup] Auto-completed stale manual session #${session.id} (status: ${session.status}, inactive for ${Math.round(staleMinutes)} minutes).`);
     }
 })();
 
@@ -242,13 +242,15 @@ app.post('/location', asyncHandler(async (req, res) => {
         }
     } else {
         // Stop office timer, start home timer
-        if (manualSession && manualSession.status === 'active') {
-            const lastTickStr = manualSession.last_tick;
-            const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : Date.now();
-            const delta = Math.floor((Date.now() - lastUpdate) / 1000);
-            updateSessionSeconds(manualSession.id, Math.max(0, delta));
+        if (manualSession) {
+            if (manualSession.status === 'active') {
+                const lastTickStr = manualSession.last_tick;
+                const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : Date.now();
+                const delta = Math.floor((Date.now() - lastUpdate) / 1000);
+                updateSessionSeconds(manualSession.id, Math.max(0, delta));
+            }
             completeSession(manualSession.id);
-            console.log(`[Location] Left office (Distance: ${Math.round(distance)}m). Finishing Office Timer.`);
+            console.log(`[Location] Left office (Distance: ${Math.round(distance)}m). Finishing Office Timer (status was: ${manualSession.status}).`);
         }
     }
 
