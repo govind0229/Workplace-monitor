@@ -23,6 +23,11 @@ const locationStatusBadge = document.getElementById('locationStatusBadge');
 const setOfficeLocationBtn = document.getElementById('setOfficeLocationBtn');
 const officeRadiusInput = document.getElementById('officeRadiusInput');
 const clearOfficeLocationBtn = document.getElementById('clearOfficeLocationBtn');
+const officeRadiusSlider = document.getElementById('officeRadiusSlider');
+const radiusDecrease = document.getElementById('radiusDecrease');
+const radiusIncrease = document.getElementById('radiusIncrease');
+const radiusValDisplay = document.getElementById('radiusValDisplay');
+const gaugeProgress = document.getElementById('gaugeProgress');
 
 // Category Mapping
 const appNameInput = document.getElementById('appNameInput');
@@ -446,11 +451,9 @@ if (clearOfficeLocationBtn) {
             }
             // Refresh the map view
             if (locationMap) {
-                if (officeMarker) locationMap.removeLayer(officeMarker);
                 if (officeCircle) locationMap.removeLayer(officeCircle);
                 officeMarker = null;
                 officeCircle = null;
-                document.getElementById('officeCoords').textContent = '—';
                 document.getElementById('locationAutoStatus').textContent = 'Inactive';
                 document.getElementById('locationAutoStatus').style.color = '';
             }
@@ -479,16 +482,35 @@ function resetLocationBtn() {
 let locationMap = null;
 let officeMarker = null;
 let officeCircle = null;
+let officeOuterCircle = null;
 let userMarker = null;
+let currentBaseLayer = null;
+
+const mapTiles = {
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    street: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+};
 
 function initLocationView() {
     // Initialize map if not already done
     if (!locationMap) {
-        locationMap = L.map('locationMap').setView([28.6, 77.2], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap',
-            maxZoom: 19
+        locationMap = L.map('locationMap', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([28.6, 77.2], 12);
+        
+        switchMapType('street');
+
+        L.control.zoom({
+            position: 'bottomright'
         }).addTo(locationMap);
+
+        // Add Map Type Switcher Listeners
+        document.querySelectorAll('.map-type-btn').forEach(btn => {
+            btn.onclick = () => switchMapType(btn.dataset.type);
+        });
     }
 
     // Fix tile rendering after view switch
@@ -499,6 +521,32 @@ function initLocationView() {
 }
 
 async function loadLocationData() {
+    console.log('[Location] Loading location data and requesting permission...');
+
+    // Request current location immediately and in parallel
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const userLat = pos.coords.latitude;
+            const userLng = pos.coords.longitude;
+            console.log('[Location] Current position acquired:', userLat, userLng);
+
+            if (userMarker) locationMap.removeLayer(userMarker);
+            userMarker = L.marker([userLat, userLng], {
+                icon: L.divIcon({
+                    className: 'user-location-marker',
+                    html: '<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 8px rgba(59,130,246,0.6);"></div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                })
+            }).addTo(locationMap).bindPopup('📍 You are here');
+
+            // Center on user if no office set (checked later after fetch)
+            window._lastUserPos = { lat: userLat, lng: userLng };
+        }, (err) => {
+            console.warn('[Location] Geolocation error:', err.message);
+        }, { enableHighAccuracy: true, timeout: 10000 });
+    }
+
     try {
         const res = await fetch(`${API_BASE}/settings`);
         const data = await res.json();
@@ -508,44 +556,26 @@ async function loadLocationData() {
         const radius = parseInt(data.officeRadius) || 200;
 
         if (officeRadiusInput) officeRadiusInput.value = radius;
-        document.getElementById('officeRadiusDisplay').textContent = radius + 'm';
+        updateRadiusUI(radius);
 
         if (!isNaN(lat) && !isNaN(lng) && data.officeLat !== '') {
             renderOfficeOnMap(lat, lng, radius);
-            document.getElementById('officeCoords').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
             locationStatusBadge.textContent = 'Office Location Configured ✓';
             locationStatusBadge.className = 'status-badge status-active';
-            document.getElementById('locationAutoStatus').textContent = 'Active — Monitoring';
-            document.getElementById('locationAutoStatus').style.color = 'var(--primary)';
+            document.getElementById('locationAutoStatus').textContent = 'Live Monitoring Active';
+            document.getElementById('locationAutoStatus').parentElement.classList.add('pulse-active');
+            document.getElementById('locationAutoStatus').style.color = 'var(--secondary)';
         } else {
-            document.getElementById('officeCoords').textContent = '—';
             locationStatusBadge.textContent = 'Not Configured';
             locationStatusBadge.className = 'status-badge status-offline';
-            document.getElementById('locationAutoStatus').textContent = 'Inactive';
+            document.getElementById('locationAutoStatus').textContent = 'Monitoring Inactive';
+            document.getElementById('locationAutoStatus').parentElement.classList.remove('pulse-active');
             document.getElementById('locationAutoStatus').style.color = '';
-        }
-
-        // Also show current location on the map
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                const userLat = pos.coords.latitude;
-                const userLng = pos.coords.longitude;
-
-                if (userMarker) locationMap.removeLayer(userMarker);
-                userMarker = L.marker([userLat, userLng], {
-                    icon: L.divIcon({
-                        className: 'user-location-marker',
-                        html: '<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 8px rgba(59,130,246,0.6);"></div>',
-                        iconSize: [20, 20],
-                        iconAnchor: [10, 10]
-                    })
-                }).addTo(locationMap).bindPopup('📍 You are here');
-
-                // If no office is set, center on user
-                if (isNaN(lat) || data.officeLat === '') {
-                    locationMap.setView([userLat, userLng], 15);
-                }
-            }, () => { }, { enableHighAccuracy: true, timeout: 5000 });
+            
+            // If office not configured and we have user pos, center on user
+            if (window._lastUserPos) {
+                locationMap.setView([window._lastUserPos.lat, window._lastUserPos.lng], 15);
+            }
         }
     } catch (e) {
         console.error('Failed to load location data:', e);
@@ -556,29 +586,146 @@ function renderOfficeOnMap(lat, lng, radius) {
     // Remove old markers
     if (officeMarker) locationMap.removeLayer(officeMarker);
     if (officeCircle) locationMap.removeLayer(officeCircle);
+    if (officeOuterCircle) locationMap.removeLayer(officeOuterCircle);
 
-    // Add office marker
+    // Add office marker with premium pin and label
+    const pinSVG = `
+        <div class="office-marker-wrapper">
+            <div class="marker-base-glow"></div>
+            <svg class="marker-pin-svg" viewBox="0 0 24 24" fill="none">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="url(#pinGradient)"/>
+                <circle cx="12" cy="10" r="3" fill="white"/>
+                <defs>
+                    <linearGradient id="pinGradient" x1="12" y1="3" x2="12" y2="23" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#a78bfa"/>
+                        <stop offset="1" stop-color="#7c3aed"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
+    `;
+
     officeMarker = L.marker([lat, lng], {
         icon: L.divIcon({
-            className: 'office-location-marker',
-            html: '<div style="width:18px;height:18px;background:var(--primary, #8b5cf6);border:3px solid white;border-radius:50%;box-shadow:0 0 12px rgba(139,92,246,0.5);"></div>',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
+            className: 'custom-office-marker',
+            html: pinSVG,
+            iconSize: [40, 40],
+            iconAnchor: [20, 35]
         })
-    }).addTo(locationMap).bindPopup('🏢 Office Location');
+    }).addTo(locationMap);
 
-    // Add geofence circle
+    const popupContent = `
+        <div class="premium-popup-inner">
+            <span class="popup-title">WorkingHours Office</span>
+            <span class="popup-address">Custom Location Set</span>
+        </div>
+    `;
+
+    officeMarker.bindPopup(popupContent, {
+        className: 'premium-popup',
+        offset: [0, -30],
+        closeButton: false
+    }).openPopup();
+
+    // Add geofence circle with high contrast and subtle inner fill
     officeCircle = L.circle([lat, lng], {
-        color: '#8b5cf6',
-        fillColor: '#8b5cf6',
+        color: '#a78bfa',
+        fillColor: '#a78bfa',
         fillOpacity: 0.12,
         radius: radius,
-        weight: 2,
-        dashArray: '6 4'
+        weight: 1,
+        dashArray: '4 4'
+    }).addTo(locationMap);
+
+    // Add an outer border for that crisp edge in the mockup
+    officeOuterCircle = L.circle([lat, lng], {
+        color: '#a78bfa',
+        fill: false,
+        radius: radius,
+        weight: 3,
+        opacity: 0.4
     }).addTo(locationMap);
 
     // Fit map to the circle bounds
     locationMap.fitBounds(officeCircle.getBounds().pad(0.3));
+}
+
+function switchMapType(type) {
+    if (!locationMap || !mapTiles[type]) return;
+
+    if (currentBaseLayer) {
+        locationMap.removeLayer(currentBaseLayer);
+    }
+
+    currentBaseLayer = L.tileLayer(mapTiles[type], {
+        maxZoom: type === 'satellite' ? 18 : 20,
+        attribution: type === 'street' ? '&copy; OpenStreetMap' : ''
+    }).addTo(locationMap);
+
+    // Update UI
+    document.querySelectorAll('.map-type-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === type);
+    });
+
+    // Bring markers to front if needed
+    if (officeCircle) officeCircle.bringToFront();
+    if (officeMarker) officeMarker.bringToFront();
+}
+
+function updateRadiusUI(radius) {
+    if (!radiusValDisplay || !officeRadiusSlider) return;
+    
+    radius = Math.max(100, Math.min(1000, parseInt(radius)));
+    
+    radiusValDisplay.textContent = radius;
+    officeRadiusSlider.value = radius;
+    if (officeRadiusInput) officeRadiusInput.value = radius;
+    
+    const displayLabel = document.getElementById('officeRadiusDisplay');
+    if (displayLabel) displayLabel.textContent = radius + 'm';
+    
+    if (gaugeProgress) {
+        const percent = (radius - 100) / 900;
+        const dashOffset = 251.3 * (1 - percent);
+        gaugeProgress.style.strokeDashoffset = dashOffset;
+    }
+    
+    if (officeCircle) officeCircle.setRadius(radius);
+    if (officeOuterCircle) officeOuterCircle.setRadius(radius);
+    
+    // Auto-save to server
+    saveRadiusToServer(radius);
+}
+
+const saveRadiusToServer = debounce(async (radius) => {
+    try {
+        await fetch(`${API_BASE}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ officeRadius: radius })
+        });
+        console.log('Radius auto-saved:', radius);
+    } catch (e) {
+        console.error('Failed to auto-save radius:', e);
+    }
+}, 1000);
+
+if (officeRadiusSlider) {
+    officeRadiusSlider.oninput = (e) => updateRadiusUI(e.target.value);
+}
+
+if (radiusDecrease) {
+    radiusDecrease.onclick = () => {
+        const val = parseInt(officeRadiusSlider.value) - 10;
+        updateRadiusUI(val);
+    };
+}
+
+if (radiusIncrease) {
+    radiusIncrease.onclick = () => {
+        const val = parseInt(officeRadiusSlider.value) + 10;
+        updateRadiusUI(val);
+    };
 }
 
 function escapeHTML(str) {

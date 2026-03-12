@@ -2,6 +2,30 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.3.2] - 2026-03-13
+
+### Added
+- **Premium Location Page Design** — New immersive split-screen layout with high-end glassmorphic controls and centered panels.
+- **Interactive Radius Gauge** — Dynamic SVG-based gauge that provides real-time visual feedback for the geofence boundary.
+- **Custom Precision Slider** — Bespoke range slider with interactive -/+ buttons for precise radius adjustments.
+- **Map Type Switcher** — New floating control to toggle between Dark Matter, Positron, Street, and Satellite map styles (Street view now default).
+- **High-Fidelity Office Marker** — Premium custom purple pin with a pulsing base glow and professional HUD-style location labels.
+- **Refined Geofence Visuals** — Dual-circle geofences with high-contrast borders for better definition against dark and satellite maps.
+- **Geofence Auto-Save** — Geofence radius changes are now automatically synchronized with the server via debounced auto-save logic.
+
+### Fixed
+- **Location Permission Prompts** — Fixed an issue where the app would stop asking for location permissions; the request is now triggered proactively on page load.
+
+<!-- ## [1.3.1] - 2026-03-12
+
+### Added
+- **Native macOS Notifications** — Goal completion alerts now use native macOS `UserNotifications` for a premium system experience, including standard banner styles, system sounds, and Notification Center persistence.
+- **Notification Permissions** — The app now properly requests user permission for notifications upon first launch.
+
+### Changed
+- **Enhanced Status API** — The backend `/status` endpoint now exposes goal settings and notification state to the native Swift utility.
+- **Unified Notification Logic** — Moved notification triggers from Node.js to Swift to ensure native appearance and behavior. -->
+
 ## [1.3.0] - 2026-03-06
 
 ### Added
