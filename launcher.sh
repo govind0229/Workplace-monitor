@@ -71,6 +71,7 @@ echo "Using Node.js at: $NODE_PATH" >> server.log
 
 # Kill any existing server on port 3000 to prevent duplicates
 lsof -ti :3000 | xargs kill 2>/dev/null
+pkill -f mac_utility 2>/dev/null
 sleep 0.5
 
 # Start Node.js server
