@@ -11,9 +11,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         menuBarUtility = MenuBarUtility()
         requestNotificationPermission()
-        
-        // Open dashboard on launch
-        menuBarUtility.showDashboard()
     }
 
     private func requestNotificationPermission() {
