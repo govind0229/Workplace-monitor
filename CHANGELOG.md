@@ -2,16 +2,6 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
-## [1.3.1] - 2026-03-12
-
-### Added
-- **Native macOS Notifications** — Goal completion alerts now use native macOS `UserNotifications` for a premium system experience, including standard banner styles, system sounds, and Notification Center persistence.
-- **Notification Permissions** — The app now properly requests user permission for notifications upon first launch.
-
-### Changed
-- **Enhanced Status API** — The backend `/status` endpoint now exposes goal settings and notification state to the native Swift utility.
-- **Unified Notification Logic** — Moved notification triggers from Node.js to Swift to ensure native appearance and behavior.
-
 ## [1.3.0] - 2026-03-06
 
 ### Added

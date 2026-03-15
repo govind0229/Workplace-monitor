@@ -98,8 +98,6 @@ function runBackgroundLoop() {
                     const alreadyNotified = hasNotifiedToday();
 
                     if (todayTotal >= goalSec && !alreadyNotified) {
-                        /* 
-                        // Disabling node-notifier in server.js to use native Swift notifications
                         notifier.notify({
                             title: 'Goal Achieved!',
                             message: `You've completed ${goalH}h ${goalM}m in the office.`,
@@ -107,9 +105,7 @@ function runBackgroundLoop() {
                         }, (err) => {
                             if (err) console.error("Notification failed:", err);
                         });
-                        */
                         db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(updated.id);
-                        console.log(`[Goal] Goal for today (${goalH}h ${goalM}m) reached. Notifying...`);
                     }
 
                     // Break reminder: every breakInterval minutes of continuous work
@@ -335,19 +331,12 @@ app.get('/status', (req, res) => {
         // We'll refine this later by actually persisting the "ai_started" flag in sessions DB if needed.
     }
 
-    const goalHours = parseInt(getSetting('goalHours', '4'));
-    const goalMinutes = parseInt(getSetting('goalMinutes', '10'));
-    const alreadyNotified = hasNotifiedToday();
-
     res.json({
         manual,
         automatic,
         officeLat,
         officeLng,
-        officeRadius: parseInt(officeRadius),
-        goalHours,
-        goalMinutes,
-        notified: alreadyNotified
+        officeRadius: parseInt(officeRadius)
     });
 });
 

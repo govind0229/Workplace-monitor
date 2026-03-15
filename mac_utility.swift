@@ -2,7 +2,6 @@ import AppKit
 import WebKit
 import CoreGraphics
 import CoreLocation
-import UserNotifications
 
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -10,20 +9,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         menuBarUtility = MenuBarUtility()
-        requestNotificationPermission()
-    }
-
-    private func requestNotificationPermission() {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if granted {
-                print("Notification permission granted.")
-            } else if let error = error {
-                print("Notification permission error: \(error.localizedDescription)")
-            } else {
-                print("Notification permission denied.")
-            }
-        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -347,11 +332,6 @@ class MenuBarUtility: NSObject {
     var idleCheckTimer: Timer?
     var isIdle: Bool = false
     let idleThresholdSeconds: Double = 300 // 5 minutes
-    
-    // Goal tracking
-    var goalHours: Int = 0
-    var goalMinutes: Int = 0
-    var hasNotifiedToday: Bool = false
 
     override init() {
         super.init()
@@ -501,14 +481,8 @@ class MenuBarUtility: NSObject {
                     self.autoSeconds = automatic["total_seconds"] as? Int ?? 0
                     self.autoStatus = automatic["status"] as? String ?? "idle"
                 }
-
-                self.goalHours = json["goalHours"] as? Int ?? 4
-                self.goalMinutes = json["goalMinutes"] as? Int ?? 10
-                self.hasNotifiedToday = json["notified"] as? Bool ?? false
-
                 self.lastSyncTime = Date()
                 self.updateUI() // Immediate update after sync
-                self.checkGoalCompletion()
             }
         }.resume()
     }
@@ -567,42 +541,6 @@ class MenuBarUtility: NSObject {
         let m = (seconds % 3600) / 60
         let s = seconds % 60
         return String(format: "%02d:%02d:%02d", h, m, s)
-    }
-
-    func checkGoalCompletion() {
-        let goalSeconds = (goalHours * 3600) + (goalMinutes * 60)
-        
-        // Show notification if goal reached but not notified today
-        if manualSeconds >= goalSeconds && !hasNotifiedToday && goalSeconds > 0 {
-            sendNotification(
-                title: "Goal Achieved!",
-                body: "You've completed \(goalHours)h \(goalMinutes)m of focused work today."
-            )
-            // Note: server.js will mark 'notified=1' in the DB after its next tick
-            // so hasNotifiedToday will become true on the next poll.
-            hasNotifiedToday = true 
-        }
-    }
-
-    func sendNotification(title: String, body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-
-        let request = UNNotificationRequest(
-            identifier: "GoalCompletion-\(Date().timeIntervalSince1970)",
-            content: content,
-            trigger: nil // Deliver immediately
-        )
-
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Error sending native notification: \(error.localizedDescription)")
-            } else {
-                print("Native notification sent successfully.")
-            }
-        }
     }
 
     func showDashboard() {
