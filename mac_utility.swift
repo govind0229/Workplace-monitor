@@ -9,11 +9,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var menuBarUtility: MenuBarUtility!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if Bundle.main.bundleIdentifier == nil {
-            print("\n⚠️ WARNING: Running without a bundle identifier. Notification permissions and Location services won't work correctly.")
-            print("Please run this utility inside an .app bundle via './start.sh' or the built DMG.\n")
-        }
-        
         menuBarUtility = MenuBarUtility()
         requestNotificationPermission()
     }
@@ -25,10 +20,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("Notification permission granted.")
             } else if let error = error {
                 print("Notification permission error: \(error.localizedDescription)")
-                if (error as NSError).code == 1 {
-                    print("\n⚠️ macOS denied notification permissions. This usually happens when running the binary directly outside of an .app bundle.")
-                    print("To fix this, build and run the app bundle using './start.sh' or build the dmg with './build_dmg.sh'.\n")
-                }
             } else {
                 print("Notification permission denied.")
             }
