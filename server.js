@@ -1,8 +1,18 @@
 const express = require('express');
-const notifier = require('node-notifier');
 const path = require('path');
-const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
+const { exec } = require('child_process');
 
+function sendNativeNotification(title, message) {
+    const escapedMessage = message.replace(/"/g, '\\"');
+    const escapedTitle = title.replace(/"/g, '\\"');
+    // Using osascript triggers a standard macOS notification that looks native
+    const script = `display notification "${escapedMessage}" with title "WorkingHours" subtitle "${escapedTitle}"`;
+    exec(`osascript -e '${script}'`, (err) => {
+        if (err) console.error("Native notification failed:", err);
+    });
+}
+
+const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
 const cors = require('cors');
 
 const app = express();
@@ -98,13 +108,7 @@ function runBackgroundLoop() {
                     const alreadyNotified = hasNotifiedToday();
 
                     if (todayTotal >= goalSec && !alreadyNotified) {
-                        notifier.notify({
-                            title: 'Goal Achieved!',
-                            message: `You've completed ${goalH}h ${goalM}m in the office.`,
-                            sound: true
-                        }, (err) => {
-                            if (err) console.error("Notification failed:", err);
-                        });
+                        sendNativeNotification('Goal Achieved!', `You've completed ${goalH}h ${goalM}m in the office.`);
                         db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(updated.id);
                     }
 
@@ -114,13 +118,7 @@ function runBackgroundLoop() {
                         const breakSec = breakMin * 60;
                         const lastBreak = updated.last_break_notify || 0;
                         if (updated.total_seconds - lastBreak >= breakSec) {
-                            notifier.notify({
-                                title: 'Time for a Break!',
-                                message: `You've been working for ${breakMin} minutes. Stand up, stretch, and rest your eyes.`,
-                                sound: true
-                            }, (err) => {
-                                if (err) console.error("Break notification failed:", err);
-                            });
+                            sendNativeNotification('Time for a Break!', `You've been working for ${breakMin} minutes. Stand up, stretch, and rest your eyes.`);
                             db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?").run(updated.total_seconds, updated.id);
                         }
                     }
@@ -132,13 +130,7 @@ function runBackgroundLoop() {
                             const breakSec = wfhBreakMin * 60;
                             const lastBreak = updatedAuto.last_break_notify || 0;
                             if (updatedAuto.total_seconds - lastBreak >= breakSec) {
-                                notifier.notify({
-                                    title: 'Time for a Break! (WFH)',
-                                    message: `You've been active for ${wfhBreakMin} minutes. Stand up, stretch, and get some water.`,
-                                    sound: true
-                                }, (err) => {
-                                    if (err) console.error("WFH Break notification failed:", err);
-                                });
+                                sendNativeNotification('Time for a Break! (WFH)', `You've been active for ${wfhBreakMin} minutes. Stand up, stretch, and get some water.`);
                                 db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?").run(updatedAuto.total_seconds, updatedAuto.id);
                             }
                         }
@@ -255,11 +247,11 @@ app.post('/location', asyncHandler(async (req, res) => {
             const id = startSession('manual');
             manualSession = { id, status: 'active', total_seconds: 0, type: 'manual' };
             console.log(`[Location] Arrived at office (Distance: ${Math.round(distance)}m). Starting Office Timer.`);
-            notifier.notify({ title: 'Workplace Monitor', message: 'Arrived at the office. Workplace tracking started.', sound: true });
+            sendNativeNotification('Workplace Monitor', 'Arrived at the office. Workplace tracking started.');
         } else if (manualSession.status !== 'active') {
             db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
             console.log(`[Location] Re-entered office (Distance: ${Math.round(distance)}m). Resuming Office Timer.`);
-            notifier.notify({ title: 'Workplace Monitor', message: 'Re-entered the office. Workplace tracking resumed.', sound: true });
+            sendNativeNotification('Workplace Monitor', 'Re-entered the office. Workplace tracking resumed.');
         }
     } else {
         // Stop office timer, start home timer
