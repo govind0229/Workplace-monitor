@@ -2,6 +2,16 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.3.3] - 2026-03-16
+
+### Added
+- **WFH Break Notifications** — Added customizable break reminders specifically for work-from-home sessions.
+- **Location Arrival Notifications** — Added native notifications when arriving at the configured office location.
+- **Goal Completion Notifications** — Restored native notifications for daily goal completion.
+
+### Fixed
+- **Notification Crash** — Replaced direct macOS Swift `UNUserNotificationCenter` calls with `node-notifier` to fix a silent crash on first launch outside of the App bundle.
+
 ## [1.3.2] - 2026-03-13
 
 ### Added

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Office Hours Monitor</title>
-    <link rel="stylesheet" href="style.css?v=1.3.2">
+    <link rel="stylesheet" href="style.css?v=1.3.3">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
@@ -75,7 +75,7 @@
             </button>
         </nav>
         <div class="sidebar-footer">
-            <span class="version-badge">v1.3.2</span>
+            <span class="version-badge">v1.3.3</span>
         </div>
     </div>
 
@@ -401,13 +401,17 @@
                         <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
                         <line x1="12" y1="2" x2="12" y2="12" />
                     </svg>
-                    Break Reminder
+                    Break Reminders
                 </div>
                 <div class="setting-group">
                     <div class="input-row">
                         <div class="input-field">
-                            <label>Remind every (minutes)</label>
+                            <label>Office Break (minutes)</label>
                             <input type="number" id="breakInterval" value="60" min="0" max="480">
+                        </div>
+                        <div class="input-field">
+                            <label>WFH Break (minutes)</label>
+                            <input type="number" id="wfhBreakInterval" value="60" min="0" max="480">
                         </div>
                     </div>
                     <p class="setting-hint">Set to 0 to disable. You'll get a notification after this many minutes of
@@ -595,7 +599,7 @@
         </div>
     </main>
 
-    <script src="app.js?v=1.3.2"></script>
+    <script src="app.js?v=1.3.3"></script>
 </body>
 
 </html>

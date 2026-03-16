@@ -164,6 +164,8 @@ async function loadSettings() {
         goalMinutesInput.value = data.goalMinutes;
         const breakInput = document.getElementById('breakInterval');
         if (breakInput) breakInput.value = data.breakInterval || 60;
+        const wfhBreakInput = document.getElementById('wfhBreakInterval');
+        if (wfhBreakInput) wfhBreakInput.value = data.wfhBreakInterval || 60;
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
 
         if (officeRadiusInput && data.officeRadius) {
@@ -330,7 +332,9 @@ saveSettingsBtn.onclick = async () => {
     const h = parseInt(goalHoursInput.value);
     const m = parseInt(goalMinutesInput.value);
     const breakInput = document.getElementById('breakInterval');
+    const wfhBreakInput = document.getElementById('wfhBreakInterval');
     const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
+    const wfhBreakMin = wfhBreakInput ? parseInt(wfhBreakInput.value) || 0 : 60;
     const linePct = goalLinePercentInput ? parseInt(goalLinePercentInput.value) || 44 : 44;
     const radius = officeRadiusInput ? parseInt(officeRadiusInput.value) || 200 : 200;
 
@@ -360,6 +364,7 @@ saveSettingsBtn.onclick = async () => {
                 goalHours: h,
                 goalMinutes: m,
                 breakInterval: breakMin,
+                wfhBreakInterval: wfhBreakMin,
                 goalLinePercent: linePct,
                 officeRadius: radius,
                 customAppCategories: JSON.stringify(customAppCategories)

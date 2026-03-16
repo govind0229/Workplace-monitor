@@ -124,6 +124,25 @@ function runBackgroundLoop() {
                             db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?").run(updated.total_seconds, updated.id);
                         }
                     }
+                } else if (type === 'automatic') {
+                    const updatedAuto = getTodayAutomaticSession();
+                    if (updatedAuto && updatedAuto.status === 'active') {
+                        const wfhBreakMin = parseInt(getSetting('wfhBreakInterval', '60'));
+                        if (wfhBreakMin > 0) {
+                            const breakSec = wfhBreakMin * 60;
+                            const lastBreak = updatedAuto.last_break_notify || 0;
+                            if (updatedAuto.total_seconds - lastBreak >= breakSec) {
+                                notifier.notify({
+                                    title: 'Time for a Break! (WFH)',
+                                    message: `You've been active for ${wfhBreakMin} minutes. Stand up, stretch, and get some water.`,
+                                    sound: true
+                                }, (err) => {
+                                    if (err) console.error("WFH Break notification failed:", err);
+                                });
+                                db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?").run(updatedAuto.total_seconds, updatedAuto.id);
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -236,9 +255,11 @@ app.post('/location', asyncHandler(async (req, res) => {
             const id = startSession('manual');
             manualSession = { id, status: 'active', total_seconds: 0, type: 'manual' };
             console.log(`[Location] Arrived at office (Distance: ${Math.round(distance)}m). Starting Office Timer.`);
+            notifier.notify({ title: 'Workplace Monitor', message: 'Arrived at the office. Workplace tracking started.', sound: true });
         } else if (manualSession.status !== 'active') {
             db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
             console.log(`[Location] Re-entered office (Distance: ${Math.round(distance)}m). Resuming Office Timer.`);
+            notifier.notify({ title: 'Workplace Monitor', message: 'Re-entered the office. Workplace tracking resumed.', sound: true });
         }
     } else {
         // Stop office timer, start home timer
@@ -415,6 +436,7 @@ app.get('/settings', (req, res) => {
     const goalHours = getSetting('goalHours', '4');
     const goalMinutes = getSetting('goalMinutes', '10');
     const breakInterval = getSetting('breakInterval', '60');
+    const wfhBreakInterval = getSetting('wfhBreakInterval', '60');
     const goalLinePercent = getSetting('goalLinePercent', '44');
     const customAppCategories = getSetting('customAppCategories', '{}');
     const officeLat = getSetting('officeLat', '');
@@ -425,6 +447,7 @@ app.get('/settings', (req, res) => {
         goalHours: parseInt(goalHours),
         goalMinutes: parseInt(goalMinutes),
         breakInterval: parseInt(breakInterval),
+        wfhBreakInterval: parseInt(wfhBreakInterval),
         goalLinePercent: parseInt(goalLinePercent),
         customAppCategories: customAppCategories,
         officeLat: officeLat,
@@ -434,10 +457,11 @@ app.get('/settings', (req, res) => {
 });
 
 app.post('/settings', asyncHandler(async (req, res) => {
-    const { goalHours, goalMinutes, breakInterval, goalLinePercent, customAppCategories, officeRadius } = req.body;
+    const { goalHours, goalMinutes, breakInterval, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius } = req.body;
     if (goalHours !== undefined) setSetting('goalHours', goalHours);
     if (goalMinutes !== undefined) setSetting('goalMinutes', goalMinutes);
     if (breakInterval !== undefined) setSetting('breakInterval', breakInterval);
+    if (wfhBreakInterval !== undefined) setSetting('wfhBreakInterval', wfhBreakInterval);
     if (goalLinePercent !== undefined) setSetting('goalLinePercent', goalLinePercent);
     if (customAppCategories !== undefined) setSetting('customAppCategories', customAppCategories);
     if (officeRadius !== undefined) setSetting('officeRadius', officeRadius);
