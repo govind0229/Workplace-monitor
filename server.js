@@ -76,9 +76,10 @@ function runBackgroundLoop() {
                 const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
                 const rawDelta = Math.floor((now - lastUpdate) / 1000);
 
-                // Cap delta to 10s — the loop runs every 5s, so anything larger
-                // means the system was asleep and that time should NOT be counted
-                const delta = Math.min(rawDelta, 10);
+                // Cap delta to 300s to prevent huge jumps from system sleep (if lock event missed).
+                // Increased from 10s because macOS "App Nap" throttles background Node.js
+                // timers severely when the app has no active UI, which caused lost work time.
+                const delta = Math.min(rawDelta, 300);
 
                 // For automatic session, only count time if manual session is NOT active
                 if (type === 'automatic') {
@@ -315,7 +316,7 @@ app.get('/status', (req, res) => {
     if (manual.status === 'active') {
         const lastTickStr = manual.last_tick;
         const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
-        const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 10);
+        const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 300);
         manual.total_seconds = baseManualSeconds + Math.max(0, delta);
     } else {
         manual.total_seconds = baseManualSeconds;
@@ -328,7 +329,7 @@ app.get('/status', (req, res) => {
     if (automatic.status === 'active' && !(manual && manual.status === 'active')) {
         const lastTickStr = automatic.last_tick;
         const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
-        const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 10);
+        const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 300);
         automatic.total_seconds = baseAutoSeconds + Math.max(0, delta);
     } else {
         automatic.total_seconds = baseAutoSeconds;

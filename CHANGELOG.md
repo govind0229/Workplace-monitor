@@ -11,6 +11,7 @@ All notable changes to WorkplaceMonitor will be documented in this file.
 
 ### Fixed
 - **Notification Crash** — Replaced direct macOS Swift `UNUserNotificationCenter` calls with `node-notifier` to fix a silent crash on first launch outside of the App bundle.
+- **macOS App Nap** — Fixed an issue where macOS throttled the background timers when the app window was hidden, leading to lost time. Background compensation cap was increased to ensure timers tick accurately.
 
 ## [1.3.2] - 2026-03-13
 
