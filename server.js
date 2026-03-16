@@ -151,8 +151,10 @@ app.post('/start', asyncHandler(async (req, res) => {
     if (!session) {
         const id = startSession('manual');
         session = { id, status: 'active', total_seconds: 0, type: 'manual' };
+        sendNativeNotification('Workplace Monitor', 'Manual tracking started.');
     } else {
         db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+        sendNativeNotification('Workplace Monitor', 'Manual tracking resumed.');
     }
     res.json({ success: true, session });
 }));
@@ -161,6 +163,7 @@ app.post('/pause', asyncHandler(async (req, res) => {
     const session = getActiveSession('manual');
     if (session && session.status === 'active') {
         db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+        sendNativeNotification('Workplace Monitor', 'Tracking paused.');
         res.json({ success: true });
     } else {
         res.status(404).json({ error: 'No active session to pause' });
@@ -171,6 +174,7 @@ app.post('/stop', asyncHandler(async (req, res) => {
     const session = getActiveSession('manual');
     if (session) {
         completeSession(session.id);
+        sendNativeNotification('Workplace Monitor', 'Tracking stopped for the day.');
         res.json({ success: true });
     } else {
         res.status(404).json({ error: 'No active session' });
