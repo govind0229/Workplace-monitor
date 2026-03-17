@@ -3,8 +3,8 @@ const path = require('path');
 const notificationQueue = [];
 
 function sendNativeNotification(title, message) {
-    console.log(`[Queueing Notification] ${title}: ${message}`);
     notificationQueue.push({ title, message });
+    console.log(`[Queueing Notification] ${title}: ${message} (Queue length: ${notificationQueue.length})`);
 }
 
 const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
@@ -104,8 +104,10 @@ function runBackgroundLoop() {
                     const alreadyNotified = hasNotifiedToday();
 
                     if (todayTotal >= goalSec && !alreadyNotified) {
+                        console.log(`[Goal] Goal achieved: ${todayTotal} >= ${goalSec}. Sending notification.`);
                         sendNativeNotification('Goal Achieved!', `You've completed ${goalH}h ${goalM}m in the office.`);
-                        db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(updated.id);
+                        // Mark the current session as notified to update hasNotifiedToday()
+                        db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(activeSession.id);
                     }
 
                     // Break reminder: every breakInterval minutes of continuous work
@@ -147,9 +149,11 @@ app.post('/start', asyncHandler(async (req, res) => {
     if (!session) {
         const id = startSession('manual');
         session = { id, status: 'active', total_seconds: 0, type: 'manual' };
+        console.log(`[Manual] Session started: ${id}`);
         sendNativeNotification('Workplace Monitor', 'Manual tracking started.');
     } else {
         db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+        console.log(`[Manual] Session resumed: ${session.id}`);
         sendNativeNotification('Workplace Monitor', 'Manual tracking resumed.');
     }
     res.json({ success: true, session });
@@ -170,7 +174,8 @@ app.post('/stop', asyncHandler(async (req, res) => {
     const session = getActiveSession('manual');
     if (session) {
         completeSession(session.id);
-        sendNativeNotification('Workplace Monitor', 'Tracking stopped for the day.');
+        console.log(`[Manual] Session stopped: ${session.id}`);
+        sendNativeNotification('Workplace Monitor', 'Workplace session finished. Great work!');
         res.json({ success: true });
     } else {
         res.status(404).json({ error: 'No active session' });
@@ -344,9 +349,13 @@ app.get('/status', (req, res) => {
         // We'll refine this later by actually persisting the "ai_started" flag in sessions DB if needed.
     }
 
-    // Take the first notification from the queue if any
-    const pendingNotification = notificationQueue.shift() || null;
+    // Take the first notification from the queue if any and if consumer is native app
+    const consume = req.query.consume === 'true';
+    const pendingNotification = (consume && notificationQueue.length > 0) ? notificationQueue.shift() : (notificationQueue[0] || null);
 
+    if (consume && pendingNotification) {
+        console.log(`[Notification] Shifted from queue: ${pendingNotification.title}`);
+    }
     res.json({
         manual,
         automatic,

@@ -2,6 +2,19 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.3.4] - 2026-03-17
+
+### Added
+- **Native macOS Architecture** — Migrated to a true native entry point where `mac_utility` (Swift) acts as the primary executable, significantly improving system stability and resolving "damaged bundle" false-positives.
+- **Internal Backend Spawning** — The Swift application now automatically spawns and manages the Node.js server lifecycle internally.
+- **Auto-Persistence** — Integrated seamless LaunchAgent registration within the Swift binary for automatic startup out-of-the-box.
+- **Enhanced Polling Frequency** — Notification check interval increased to 1 second for near-instant system alerts on session start/stop.
+
+### Fixed
+- **Notification Reliability** — Fixed a "queue theft" bug where the web dashboard would clear the server-side notification queue before the native macOS app could display the banners.
+- **Bundle Integrity** — Corrected `Info.plist` and directory structures to align with strict macOS Application Bundle standards, fixing permission errors.
+- **Start/Stop Attribution** — Guaranteed 100% native system attribution for "Start Workplace", "Finish Day", and "Goal Achieved" notifications.
+
 ## [1.3.3] - 2026-03-16
 
 ### Added

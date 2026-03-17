@@ -517,8 +517,8 @@ class MenuBarUtility: NSObject {
     }
 
     func startTimers() {
-        // Poll server every 10s for ground truth
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
+        // Poll server every 1s for ground truth and notifications
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             self.fetchStatus()
         }
         
@@ -574,7 +574,7 @@ class MenuBarUtility: NSObject {
     }
 
     func fetchStatus() {
-        guard let url = URL(string: "\(serverURL)/status") else { return }
+        guard let url = URL(string: "http://127.0.0.1:3000/status?consume=true") else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             if let _ = error {
                 DispatchQueue.main.async {
