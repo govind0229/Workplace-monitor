@@ -47,10 +47,9 @@ fi
 cp Info.plist "$OUTPUT_DIR/$APP_NAME.app/Contents/"
 [ -f "AppIcon.icns" ] && cp AppIcon.icns "$OUTPUT_DIR/$APP_NAME.app/Contents/Resources/"
 
-cp launcher.sh "$OUTPUT_DIR/$APP_NAME.app/Contents/MacOS/"
-chmod +x "$OUTPUT_DIR/$APP_NAME.app/Contents/MacOS/launcher.sh"
+cp mac_utility "$OUTPUT_DIR/$APP_NAME.app/Contents/MacOS/"
+chmod +x "$OUTPUT_DIR/$APP_NAME.app/Contents/MacOS/mac_utility"
 
-cp mac_utility "$OUTPUT_DIR/$APP_NAME.app/Contents/Resources/app/"
 cp server.js "$OUTPUT_DIR/$APP_NAME.app/Contents/Resources/app/"
 cp db.js "$OUTPUT_DIR/$APP_NAME.app/Contents/Resources/app/"
 cp package.json "$OUTPUT_DIR/$APP_NAME.app/Contents/Resources/app/"

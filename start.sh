@@ -19,14 +19,11 @@ mkdir -p "$DEV_APP/Contents/Resources"
 # Copy Info.plist (contains NSLocationUsageDescription keys)
 cp Info.plist "$DEV_APP/Contents/"
 
-# Create a minimal launcher that runs mac_utility from the project directory
-PROJ_DIR="$(pwd)"
-cat > "$DEV_APP/Contents/MacOS/launcher.sh" << LAUNCHER
-#!/bin/bash
-cd "$PROJ_DIR"
-exec "$PROJ_DIR/mac_utility"
-LAUNCHER
-chmod +x "$DEV_APP/Contents/MacOS/launcher.sh"
+# Copy the binary directly into the bundle
+cp mac_utility "$DEV_APP/Contents/MacOS/"
+
+# The Info.plist now correctly points to mac_utility as the executable
+# So we don't need the launcher.sh script anymore.
 
 # Ad-hoc sign the dev bundle
 codesign --force --deep --sign - "$DEV_APP" 2>/dev/null

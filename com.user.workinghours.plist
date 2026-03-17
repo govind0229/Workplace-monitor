@@ -6,13 +6,13 @@
     <string>com.user.workinghours</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Applications/WorkingHours.app/Contents/MacOS/launcher.sh</string>
+        <string>/Applications/WorkingHours.app/Contents/MacOS/mac_utility</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>WorkingDirectory</key>
-    <string>/Applications/WorkingHours.app/Contents/Resources/app</string>
+    <string>/Applications/WorkingHours.app/Contents/MacOS</string>
 </dict>
 </plist>

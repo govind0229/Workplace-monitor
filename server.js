@@ -1,15 +1,10 @@
 const express = require('express');
 const path = require('path');
-const { exec } = require('child_process');
+const notificationQueue = [];
 
 function sendNativeNotification(title, message) {
-    const escapedMessage = message.replace(/"/g, '\\"');
-    const escapedTitle = title.replace(/"/g, '\\"');
-    // Using osascript triggers a standard macOS notification that looks native
-    const script = `display notification "${escapedMessage}" with title "WorkingHours" subtitle "${escapedTitle}"`;
-    exec(`osascript -e '${script}'`, (err) => {
-        if (err) console.error("Native notification failed:", err);
-    });
+    console.log(`[Queueing Notification] ${title}: ${message}`);
+    notificationQueue.push({ title, message });
 }
 
 const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
@@ -349,12 +344,16 @@ app.get('/status', (req, res) => {
         // We'll refine this later by actually persisting the "ai_started" flag in sessions DB if needed.
     }
 
+    // Take the first notification from the queue if any
+    const pendingNotification = notificationQueue.shift() || null;
+
     res.json({
         manual,
         automatic,
         officeLat,
         officeLng,
-        officeRadius: parseInt(officeRadius)
+        officeRadius: parseInt(officeRadius),
+        pending_notification: pendingNotification
     });
 });
 

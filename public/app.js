@@ -4,8 +4,6 @@ const progressBar = document.getElementById('progressBar');
 const startBtn = document.getElementById('startBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const stopBtn = document.getElementById('stopBtn');
-const todayTotalDisplay = document.getElementById('todayTotalDisplay');
-
 // Navigation
 const navItems = document.querySelectorAll('.nav-item');
 const views = document.querySelectorAll('.view');
@@ -77,7 +75,9 @@ function throttle(func, limit) {
 // Cache DOM elements
 const domCache = {
     progressPercent: null,
-    goalLabel: null
+    goalLabel: null,
+    heroLabelText: null,
+    heroLabelIcon: null
 };
 
 // Accent Color management
@@ -870,9 +870,33 @@ async function updateStatus(forceSync = false) {
 
     // Batch all DOM updates in a single animation frame
     requestAnimationFrame(() => {
-        timerDisplay.textContent = formatTime(displayManual);
-        todayTotalDisplay.textContent = formatTime(displayAuto);
+        // --- UI AUTOMATION: Toggle Hero Context ---
+        const heroLabelText = domCache.heroLabelText || (domCache.heroLabelText = document.getElementById('heroLabelText'));
+        const heroLabelIcon = domCache.heroLabelIcon || (domCache.heroLabelIcon = document.getElementById('heroLabelIcon'));
 
+        let heroSeconds = displayManual;
+        let isWorkplace = true;
+
+        // If workplace (manual) is NOT active, but home (auto) IS active, show WFH in the hero card
+        if (manualStatus !== 'active' && autoStatus === 'active') {
+            heroSeconds = displayAuto;
+            isWorkplace = false;
+        }
+
+        if (heroLabelText) {
+            heroLabelText.textContent = isWorkplace ? 'Workplace Duration' : 'WFH Duration';
+        }
+
+        if (heroLabelIcon) {
+            heroLabelIcon.innerHTML = isWorkplace 
+                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>'
+                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>';
+        }
+
+        // Update the main timer display with the hero's time
+        timerDisplay.textContent = formatTime(heroSeconds);
+
+        // Goal progress is ALWAYS based on Workplace (manual) duration only
         const progress = Math.min((displayManual / goalSeconds) * 100, 100);
         progressBar.style.width = progress + '%';
 
@@ -883,7 +907,7 @@ async function updateStatus(forceSync = false) {
             domCache.progressPercent.textContent = Math.floor(progress) + '%';
         }
 
-        // Update goal ring
+        // Update goal ring (always workplace time)
         if (typeof updateGoalRing === 'function') updateGoalRing(displayManual);
     });
 }

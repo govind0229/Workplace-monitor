@@ -90,11 +90,13 @@
             <div class="hero-card glass-card">
                 <div class="hero-top">
                     <div class="hero-label">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                        </svg>
-                        Workplace Duration
+                        <span id="heroLabelIcon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                            </svg>
+                        </span>
+                        <span id="heroLabelText">Workplace Duration</span>
                     </div>
                     <div id="statusBadge" class="status-badge">Checking...</div>
                 </div>
@@ -138,22 +140,7 @@
                 </div>
             </div>
 
-            <div class="stats-row">
-                <div class="stat-card glass-card">
-                    <div class="stat-icon auto-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <polyline points="12 6 12 12 16 14" />
-                        </svg>
-                    </div>
-                    <div class="stat-info">
-                        <span class="stat-label">Day Working Hours</span>
-                        <span id="todayTotalDisplay" class="stat-value">00:00:00</span>
-                    </div>
-                    <div class="stat-hint">Auto-tracked on unlock</div>
-                </div>
-            </div>
+
 
             <div class="dashboard-grid">
                 <div class="glass-card chart-card">

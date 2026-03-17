@@ -2,13 +2,129 @@ import AppKit
 import WebKit
 import CoreGraphics
 import CoreLocation
+import UserNotifications
 
 // MARK: - App Delegate
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var menuBarUtility: MenuBarUtility!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // First run setup
+        registerLaunchAgent()
+        
+        // Start the Node.js server first
+        spawnServer()
+        
         menuBarUtility = MenuBarUtility()
+        
+        // Setup Notifications
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                print("Notification permission granted.")
+            } else if let error = error {
+                print("Notification permission error: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func spawnServer() {
+        // Find the resources directory
+        guard let resourcePath = Bundle.main.resourcePath else {
+            print("Error: Could not find resource path")
+            return
+        }
+        
+        let appPath = "\(resourcePath)/app"
+        let nodePath = "\(appPath)/node"
+        let serverScriptPath = "\(appPath)/server.js"
+        
+        // Check if files exist
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: nodePath) else {
+            print("Error: Bundled Node.js not found at \(nodePath)")
+            return
+        }
+        guard fileManager.fileExists(atPath: serverScriptPath) else {
+            print("Error: server.js not found at \(serverScriptPath)")
+            return
+        }
+        
+        print("Starting Node.js server from: \(appPath)")
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: nodePath)
+        process.arguments = [serverScriptPath]
+        process.currentDirectoryURL = URL(fileURLWithPath: appPath)
+        
+        // Redirect output to a log file in the app support directory or resources
+        // For development simplicity, we'll just let it run. In a real app, we'd handle pipes.
+        
+        do {
+            try process.run()
+            print("Server process started with PID: \(process.processIdentifier)")
+        } catch {
+            print("Failed to start server process: \(error.localizedDescription)")
+        }
+    }
+
+    func registerLaunchAgent() {
+        let label = "com.user.workinghours"
+        let plistName = "\(label).plist"
+        let fileManager = FileManager.default
+        
+        let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+        let launchAgentsDir = homeDirectory.appendingPathComponent("Library/LaunchAgents")
+        let destPlistURL = launchAgentsDir.appendingPathComponent(plistName)
+        
+        // Only register if not already present
+        if fileManager.fileExists(atPath: destPlistURL.path) {
+            return
+        }
+        
+        print("First run: Registering LaunchAgent...")
+        
+        // Find bundled plist
+        guard let resourcePath = Bundle.main.resourcePath else { return }
+        let sourcePlistPath = "\(resourcePath)/app/\(plistName)"
+        guard fileManager.fileExists(atPath: sourcePlistPath) else {
+            print("Error: source plist not found at \(sourcePlistPath)")
+            return
+        }
+        
+        do {
+            try fileManager.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true)
+            
+            // Read source plist
+            var plistContent = try String(contentsOfFile: sourcePlistPath, encoding: .utf8)
+            
+            // Perform substitution: Replace /Applications/WorkingHours.app with actual bundle path
+            let bundlePath = Bundle.main.bundlePath
+            plistContent = plistContent.replacingOccurrences(of: "/Applications/WorkingHours.app", with: bundlePath)
+            
+            // Write to destination
+            try plistContent.write(to: destPlistURL, atomically: true, encoding: .utf8)
+            
+            // Load the agent
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            process.arguments = ["load", destPlistURL.path]
+            try process.run()
+            
+            print("LaunchAgent registered successfully.")
+        } catch {
+            print("Failed to register LaunchAgent: \(error.localizedDescription)")
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Show banner even when app is in foreground
+        if #available(macOS 11.0, *) {
+            completionHandler([.banner, .sound])
+        } else {
+            completionHandler([.alert, .sound])
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -481,10 +597,32 @@ class MenuBarUtility: NSObject {
                     self.autoSeconds = automatic["total_seconds"] as? Int ?? 0
                     self.autoStatus = automatic["status"] as? String ?? "idle"
                 }
+
+                // Handle Pending Notifications relayed from server
+                if let notify = json["pending_notification"] as? [String: Any],
+                   let title = notify["title"] as? String,
+                   let message = notify["message"] as? String {
+                    self.showNotification(title: title, message: message)
+                }
+
                 self.lastSyncTime = Date()
                 self.updateUI() // Immediate update after sync
             }
         }.resume()
+    }
+
+    func showNotification(title: String, message: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = message
+        content.sound = .default
+        
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Failed to show native notification: \(error.localizedDescription)")
+            }
+        }
     }
 
     func trackFrontmostApp() {
