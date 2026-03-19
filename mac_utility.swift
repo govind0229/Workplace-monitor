@@ -449,6 +449,16 @@ class MenuBarUtility: NSObject {
     var isIdle: Bool = false
     let idleThresholdSeconds: Double = 300 // 5 minutes
 
+    // Optimized URLSession: short timeout, persistent connection, no caching
+    lazy var localSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest  = 3   // 3s max per request
+        config.timeoutIntervalForResource = 5
+        config.requestCachePolicy         = .reloadIgnoringLocalCacheData
+        config.httpMaximumConnectionsPerHost = 1 // Only one connection to localhost
+        return URLSession(configuration: config)
+    }()
+
     override init() {
         super.init()
         dashboardController = DashboardWindowController(serverURL: serverURL)
@@ -596,7 +606,7 @@ class MenuBarUtility: NSObject {
 
     func fetchStatus() {
         guard let url = URL(string: "http://127.0.0.1:3000/status?consume=true") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        localSession.dataTask(with: url) { data, _, error in
             if let _ = error {
                 DispatchQueue.main.async {
                     self.manualStatus = "offline"

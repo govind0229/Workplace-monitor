@@ -2,6 +2,20 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.3.7] - 2026-03-19
+
+### Performance
+- **Pre-compiled DB statements** — Hot-path SQLite `UPDATE` queries in the background loop are now pre-compiled at startup, eliminating query re-parsing every 5 seconds.
+- **Settings cache (30s TTL)** — Goal and break settings are now cached for 30 seconds, reducing 4 DB reads per background tick to zero. Cache is immediately invalidated when settings are saved.
+- **Removed double DB query in background loop** — Both session types are now fetched upfront in a single pass, instead of calling `getActiveSession()` twice for the manual session.
+- **Status interpolation cap corrected** — Live time interpolation in `/status` was still using a 300-second cap (bug), now correctly using 30s, consistent with the background loop.
+- **Removed dead code from `/status`** — Cleaned up an empty `isAtOffice` block that ran on every status request with no effect.
+- **Optimized URLSession (Swift)** — `fetchStatus()` now uses a pre-configured `URLSession` with `ephemeral` config, 3s timeout, and a single persistent connection to localhost, reducing connection overhead on 2-second polling.
+
+### Fixed
+- **Widget timer lag** — `uiTimer` now renders at 0.25s intervals (4× per second) for smooth display. Server `pollTimer` reduced to 2s and is fully decoupled from rendering — no more stutter from double `updateUI()` calls.
+- **Session start/stop notifications not received** — Added missing `🏠 WFH Session Started` notification on screen unlock, `🏠 WFH Session Paused` on screen lock, and improved manual session notification titles to `🏢 Workplace Session Started` and `✅ Finish Day Session`.
+
 ## [1.3.6] - 2026-03-19
 
 ### Added
