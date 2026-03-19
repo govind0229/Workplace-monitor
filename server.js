@@ -7,8 +7,128 @@ function sendNativeNotification(title, message) {
     console.log(`[Queueing Notification] ${title}: ${message} (Queue length: ${notificationQueue.length})`);
 }
 
-const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
+const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent } = require('./db');
 const cors = require('cors');
+
+
+// --- Tracery-Powered Dynamic Break Messages ---
+const tracery = require('tracery-grammar');
+
+// Shared grammar rules used across all time slots
+const SHARED_RULES = {
+    duration:    ['2 minutes', '5 minutes', 'a few seconds', '60 seconds', 'a minute'],
+    body_part:   ['your back', 'your neck', 'your shoulders', 'your wrists', 'your eyes'],
+    benefit:     ['boosts focus', 'reduces tension', 'recharges energy', 'prevents strain', 'improves circulation', 'clears your mind'],
+    water_size:  ['a glass', 'a full glass', 'a mug'],
+};
+
+// Per-slot grammar rules layered on top of shared rules
+const SLOT_RULES = {
+    morning: {
+        ...SHARED_RULES,
+        verb:    ['stretch', 'breathe deeply', 'hydrate', 'plan your day', 'step outside briefly'],
+        context: ['before your first meeting', 'before you dive in', 'to start strong', 'as a morning ritual'],
+        tip:     [
+            '#verb# for #duration# #context# — it #benefit#.',
+            'Drink #water_size# now. Starting hydrated keeps #benefit# through to lunch.',
+            'Take #duration# to check your posture and breathe. It #benefit#.',
+            'Set your top 3 goals for today before checking messages.',
+            'Look out a window for 30 seconds. Your eyes need a distance reset every hour.',
+            'Roll your shoulders back — #body_part# needs a reset after the morning commute.',
+        ],
+        slot_title: ['🌅 Morning Boost', '💧 Morning Hydration', '🌤️ Wake Up Break', '✅ Morning Intention', '🚶 Morning Move'],
+    },
+    lunch: {
+        ...SHARED_RULES,
+        meal_tip: [
+            'Step fully away from your desk — a proper lunch break #benefit#.',
+            'Try a screen-free lunch. Your eyes will thank you this afternoon.',
+            'Eat outside or near a window. Fresh air and daylight #benefit#.',
+            'A 10-minute walk after lunch fights the afternoon energy dip.',
+            'Drink #water_size# with your lunch to stay sharp for the afternoon.',
+            'Chat with someone during lunch. Social breaks restore mental energy.',
+        ],
+        slot_title: ['🍽️ Lunch Break', '☀️ Midday Reset', '🚶 Post-Lunch Walk', '📵 Screen-Free Lunch', '💧 Midday Hydration'],
+    },
+    afternoon: {
+        ...SHARED_RULES,
+        slump_tip: [
+            'Feeling the 3pm slump? Cold water and a quick walk beat coffee every time.',
+            'Stand up and #verb# for #duration# — it #benefit# more than a snack.',
+            'Look at something far away for 20 seconds. The 20-20-20 rule reduces eye strain.',
+            'Roll your wrists 10 times each way — a small move that prevents big problems.',
+            'Drink #water_size#. Afternoon dehydration is a major focus killer.',
+            'Quick posture reset: feet flat, screen at eye level, shoulders relaxed.',
+            'A healthy snack now — nuts, fruit, or yoghurt — keeps your brain fueled.',
+        ],
+        verb:    ['stretch', 'walk around', 'breathe', 'reset your posture'],
+        slot_title: ['😴 Afternoon Reset', '👁️ Eye Break', '🙆 Stretch Time', '💧 Hydration Check', '🧠 Focus Reset', '🍎 Snack Break'],
+    },
+    late_afternoon: {
+        ...SHARED_RULES,
+        wind_tip: [
+            'Start finishing open tasks so you can close the day cleanly.',
+            'Take #duration# to write down what you finished today and what carries to tomorrow.',
+            'Drink #water_size# — your last hydration push before end of day.',
+            'Close your eyes for 30 seconds and take 3 slow, deep breaths.',
+            'One last #body_part# stretch before you wrap up for the evening.',
+            'Review your task list and drag unfinished items to tomorrow deliberately.',
+        ],
+        slot_title: ['📋 Wind-Down Time', '👀 Eye Rest', '📝 Day Review', '💧 Final Hydration', '🙆 Last Stretch'],
+    },
+    evening: {
+        ...SHARED_RULES,
+        eve_tip: [
+            'Set a firm stop time tonight and protect it. Rest is part of performance.',
+            'Enable Night Shift or reduce screen brightness — warmer tones help your sleep.',
+            "Working late? Don't skip dinner. Recovery starts tonight.",
+            'Think of one thing that went well today. Small wins build momentum.',
+            'Decide your top priority for tomorrow, then close your laptop guilt-free.',
+            'Drink #water_size# before you log off. Evening hydration aids sleep quality.',
+        ],
+        slot_title: ['🌙 Evening Wind-Down', '💡 Eye Strain Alert', '🍽️ Dinner Reminder', '⏰ Stop-Time Check', '🌟 Evening Reflection'],
+    },
+};
+
+function buildGrammar(slot) {
+    const rules = SLOT_RULES[slot] || SLOT_RULES.afternoon;
+    const bodyKey = { morning: 'tip', lunch: 'meal_tip', afternoon: 'slump_tip', late_afternoon: 'wind_tip', evening: 'eve_tip' }[slot];
+    return tracery.createGrammar({
+        ...rules,
+        origin: [`#${bodyKey}#`],
+    });
+}
+
+function getSmartBreakMessage(sessionType = 'manual') {
+    const now = new Date();
+    const hour = now.getHours();
+    const min  = now.getMinutes();
+    const t    = hour + (min / 60);
+
+    const slot = t < 11 ? 'morning'
+               : t < 13.5 ? 'lunch'
+               : t < 16   ? 'afternoon'
+               : t < 18.5 ? 'late_afternoon'
+               :             'evening';
+
+    const grammar = buildGrammar(slot);
+    grammar.addModifiers(tracery.baseEngModifiers);
+
+    const body   = grammar.flatten('#origin#');
+    const titles = SLOT_RULES[slot].slot_title;
+    const title  = titles[Math.floor(Math.random() * titles.length)];
+
+    // Generate a stable key from the content for dedup tracking
+    const key = `${slot}_${body.substring(0, 20).replace(/\W+/g, '_').toLowerCase()}`;
+    markMessageSent(key);
+
+    const prefix = sessionType === 'automatic' ? '(WFH) ' : '';
+    console.log(`[Tracery Break] Slot: ${slot}, Key: ${key}`);
+
+    return { title, body: `${prefix}${body}` };
+}
+
+
 
 const app = express();
 app.use(cors());
@@ -59,6 +179,26 @@ const asyncHandler = fn => (req, res, next) => {
     }
 })();
 
+// On startup: complete any orphaned sessions from previous dates
+// These can happen if the machine slept suddenly and missed the lock event
+(function cleanupPreviousDaySessions() {
+    const orphaned = db.prepare(`
+        SELECT id, date, type, status FROM sessions
+        WHERE status IN ('active', 'paused')
+          AND date < date('now', 'localtime')
+    `).all();
+
+    if (orphaned.length > 0) {
+        db.prepare(`
+            UPDATE sessions
+            SET status = 'completed', end_time = CURRENT_TIMESTAMP
+            WHERE status IN ('active', 'paused')
+              AND date < date('now', 'localtime')
+        `).run();
+        console.log(`[Startup] Cleaned up ${orphaned.length} orphaned session(s) from previous days:`, orphaned.map(s => `#${s.id} (${s.date} ${s.type})`).join(', '));
+    }
+})();
+
 // Background loop to increment time if active (recursive setTimeout prevents overlap)
 function runBackgroundLoop() {
     try {
@@ -71,10 +211,9 @@ function runBackgroundLoop() {
                 const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
                 const rawDelta = Math.floor((now - lastUpdate) / 1000);
 
-                // Cap delta to 300s to prevent huge jumps from system sleep (if lock event missed).
-                // Increased from 10s because macOS "App Nap" throttles background Node.js
-                // timers severely when the app has no active UI, which caused lost work time.
-                const delta = Math.min(rawDelta, 300);
+                // Cap delta to 30s max — this prevents time accumulation during sleep
+                // gaps when the lock event is missed. Worst case we lose ~30s per sleep cycle.
+                const delta = Math.min(rawDelta, 30);
 
                 // For automatic session, only count time if manual session is NOT active
                 if (type === 'automatic') {
@@ -116,7 +255,8 @@ function runBackgroundLoop() {
                         const breakSec = breakMin * 60;
                         const lastBreak = updated.last_break_notify || 0;
                         if (updated.total_seconds - lastBreak >= breakSec) {
-                            sendNativeNotification('Time for a Break!', `You've been working for ${breakMin} minutes. Stand up, stretch, and rest your eyes.`);
+                            const msg = getSmartBreakMessage('manual');
+                            sendNativeNotification(msg.title, msg.body);
                             db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?").run(updated.total_seconds, updated.id);
                         }
                     }
@@ -128,7 +268,8 @@ function runBackgroundLoop() {
                             const breakSec = wfhBreakMin * 60;
                             const lastBreak = updatedAuto.last_break_notify || 0;
                             if (updatedAuto.total_seconds - lastBreak >= breakSec) {
-                                sendNativeNotification('Time for a Break! (WFH)', `You've been active for ${wfhBreakMin} minutes. Stand up, stretch, and get some water.`);
+                                const msg = getSmartBreakMessage('automatic');
+                                sendNativeNotification(msg.title, msg.body);
                                 db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?").run(updatedAuto.total_seconds, updatedAuto.id);
                             }
                         }

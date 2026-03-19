@@ -456,6 +456,11 @@ class MenuBarUtility: NSObject {
         setupNotifications()
         setupLocationManager()
         startTimers()
+        // Send initial screen-lock state to server after it's ready
+        // This ensures the automatic session is not marked 'active' while screen is locked
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+            self.syncInitialScreenState()
+        }
     }
 
     func setupStatusItem() {
@@ -517,13 +522,14 @@ class MenuBarUtility: NSObject {
     }
 
     func startTimers() {
-        // Poll server every 1s for ground truth and notifications
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        // Sync with server every 5s for ground truth — less frequent = less jitter
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             self.fetchStatus()
         }
         
-        // Update UI every 1s for smoothness
-        uiTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        // Render UI 4x per second for smooth, lag-free display
+        // The uiTimer interpolates elapsed time between server syncs
+        uiTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
             self.updateUI()
         }
 
@@ -539,6 +545,21 @@ class MenuBarUtility: NSObject {
         
         // Initial fetch
         self.fetchStatus()
+    }
+
+    /// Called once on startup to ensure the server knows the current screen-lock state.
+    /// Without this, if the machine was sleeping before the app started, the server
+    /// would keep the automatic session 'paused' until the next real unlock event.
+    func syncInitialScreenState() {
+        // Try to detect screen lock via idle time as a proxy:
+        // If the user has been idle for more than 30 seconds, treat as locked.
+        let idleTime = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
+        let idleKey  = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+        let minIdle  = min(idleTime, idleKey)
+
+        let event = (isScreenLocked || minIdle > 30) ? "lock" : "unlock"
+        print("[Startup] Syncing initial screen state: \(event) (idle: \(Int(minIdle))s, locked: \(isScreenLocked))")
+        sendEvent(event)
     }
 
     func updateUI() {
@@ -606,7 +627,8 @@ class MenuBarUtility: NSObject {
                 }
 
                 self.lastSyncTime = Date()
-                self.updateUI() // Immediate update after sync
+                // Don't call updateUI() here — the uiTimer owns all rendering.
+                // Calling it here too causes a double-render and visible stutter.
             }
         }.resume()
     }

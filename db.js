@@ -56,6 +56,15 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS suggestion_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_key TEXT NOT NULL,
+    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_suggestion_history_key ON suggestion_history(message_key);
+  CREATE INDEX IF NOT EXISTS idx_suggestion_history_sent ON suggestion_history(sent_at);
 `);
 
 // Migrations for existing databases
@@ -75,8 +84,10 @@ module.exports = {
   getTodayAutomaticSession: () => {
     let session = db.prepare("SELECT * FROM sessions WHERE date = date('now') AND type = 'automatic' LIMIT 1").get();
     if (!session) {
-      const id = module.exports.startSession('automatic');
-      session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id);
+      // Start as PAUSED — the Swift app will send 'unlock' to activate it.
+      // This prevents time from accumulating overnight when the machine is asleep.
+      const info = db.prepare("INSERT INTO sessions (status, last_tick, type) VALUES ('paused', CURRENT_TIMESTAMP, 'automatic')").run();
+      session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(info.lastInsertRowid);
     }
     return session;
   },
@@ -159,5 +170,16 @@ module.exports = {
   },
   setSetting: (key, value) => {
     db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?").run(key, String(value), String(value));
+  },
+  getRecentlySentMessages: (days = 7) => {
+    const rows = db.prepare(
+      `SELECT message_key FROM suggestion_history
+       WHERE sent_at >= datetime('now', ? || ' days')
+       ORDER BY sent_at DESC`
+    ).all(`-${days}`);
+    return rows.map(r => r.message_key);
+  },
+  markMessageSent: (messageKey) => {
+    db.prepare("INSERT INTO suggestion_history (message_key) VALUES (?)").run(messageKey);
   }
 };

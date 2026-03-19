@@ -2,6 +2,30 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.3.6] - 2026-03-19
+
+### Added
+- **Tracery Grammar-Powered Break Notifications** — Replaced the static break message pool with [tracery-grammar](https://www.npmjs.com/package/tracery-grammar), a combinatorial natural-language generator. Each break now generates a fresh, uniquely worded message by randomly combining grammar rules (verbs, durations, benefits, context phrases). Produces thousands of unique combinations per time slot — fully offline, no AI or API required.
+
+### Fixed
+- **WFH Timer Running Overnight** — Root cause fixed: automatic WFH sessions now start with `status = 'paused'` instead of `active`. The timer only starts counting when a genuine screen-unlock event is received, preventing overnight accumulation.
+- **Startup Screen-State Sync** — `mac_utility.swift` now sends an initial `lock` or `unlock` event to the server 4 seconds after launch, ensuring the server's session state matches the actual screen lock state at startup.
+
+## [1.3.5] - 2026-03-18
+
+### Added
+- **Smart Time-Aware Break Notifications** — Break reminders are now contextually intelligent. The app selects the most appropriate message based on the current time of day:
+  - **Morning (7–11am):** Hydration, goal-setting, posture, and energy tips.
+  - **Lunch (11am–1:30pm):** Lunch break, step-outside, and social connection reminders.
+  - **Afternoon (1:30–4pm):** Energy dip, 20-20-20 eye rule, snack, and focus reset prompts.
+  - **Late Afternoon (4–6pm):** Wind-down, end-of-day review, and final hydration reminders.
+  - **Evening (6pm+):** Disconnect, reduce screen brightness, and dinner reminders.
+- **Non-Repeating Messages** — A `suggestion_history` database table tracks all sent break messages. The app will never repeat the same message within a **7-day window**.
+
+### Fixed
+- **WFH Timer Overcount on Screen Lock** — The background timer delta cap was reduced from 300s to 30s, preventing large time jumps when the machine wakes from sleep and the lock event was missed.
+- **Orphaned Sessions from Previous Days** — On startup, any sessions from previous dates that were accidentally left in `active` or `paused` state are now automatically marked as `completed`.
+
 ## [1.3.4] - 2026-03-17
 
 ### Added
