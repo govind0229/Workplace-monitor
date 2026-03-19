@@ -123,7 +123,7 @@ function buildGrammar(slot) {
 }
 
 function getSmartBreakMessage(sessionType = 'manual') {
-    const now = new Date();
+    const now  = new Date();
     const hour = now.getHours();
     const min  = now.getMinutes();
     const t    = hour + (min / 60);
@@ -137,16 +137,26 @@ function getSmartBreakMessage(sessionType = 'manual') {
     const grammar = buildGrammar(slot);
     grammar.addModifiers(tracery.baseEngModifiers);
 
-    const body   = grammar.flatten('#origin#');
-    const titles = SLOT_RULES[slot].slot_title;
-    const title  = titles[Math.floor(Math.random() * titles.length)];
+    // Load the 7-day sent history upfront
+    const recentKeys = new Set(getRecentlySentMessages(7));
 
-    // Generate a stable key from the content for dedup tracking
-    const key = `${slot}_${body.substring(0, 20).replace(/\W+/g, '_').toLowerCase()}`;
+    // Try up to 8 times to generate a message not seen in the past 7 days
+    let body, title, key;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 8;
+
+    do {
+        body  = grammar.flatten('#origin#');
+        // Use full body as key for reliable dedup (not just first 20 chars)
+        key   = `${slot}_${body.trim().toLowerCase().replace(/\W+/g, '_').substring(0, 40)}`;
+        title = SLOT_RULES[slot].slot_title[Math.floor(Math.random() * SLOT_RULES[slot].slot_title.length)];
+        attempts++;
+    } while (recentKeys.has(key) && attempts < MAX_ATTEMPTS);
+
     markMessageSent(key);
 
     const prefix = sessionType === 'automatic' ? '(WFH) ' : '';
-    console.log(`[Tracery Break] Slot: ${slot}, Key: ${key}`);
+    console.log(`[Tracery Break] Slot: ${slot}, Attempts: ${attempts}, Key: ${key}`);
 
     return { title, body: `${prefix}${body}` };
 }
