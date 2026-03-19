@@ -522,8 +522,8 @@ class MenuBarUtility: NSObject {
     }
 
     func startTimers() {
-        // Sync with server every 5s for ground truth — less frequent = less jitter
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+        // Sync with server every 2s — fast enough for timely notifications, slow enough to avoid jitter
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             self.fetchStatus()
         }
         

@@ -291,11 +291,11 @@ app.post('/start', asyncHandler(async (req, res) => {
         const id = startSession('manual');
         session = { id, status: 'active', total_seconds: 0, type: 'manual' };
         console.log(`[Manual] Session started: ${id}`);
-        sendNativeNotification('Workplace Monitor', 'Manual tracking started.');
+        sendNativeNotification('🏢 Workplace Session Started', 'Manual tracking is now active. Good luck!');
     } else {
         db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
         console.log(`[Manual] Session resumed: ${session.id}`);
-        sendNativeNotification('Workplace Monitor', 'Manual tracking resumed.');
+        sendNativeNotification('🏢 Tracking Resumed', 'Manual session resumed. Welcome back!');
     }
     res.json({ success: true, session });
 }));
@@ -316,7 +316,7 @@ app.post('/stop', asyncHandler(async (req, res) => {
     if (session) {
         completeSession(session.id);
         console.log(`[Manual] Session stopped: ${session.id}`);
-        sendNativeNotification('Workplace Monitor', 'Workplace session finished. Great work!');
+        sendNativeNotification('✅ Finish Day Session', 'Workplace session finished. Great work today!');
         res.json({ success: true });
     } else {
         res.status(404).json({ error: 'No active session' });
@@ -332,9 +332,20 @@ app.post('/event', asyncHandler(async (req, res) => {
 
     // 1. Handle Automatic Session (Always responds to lock/unlock)
     const autoSession = getTodayAutomaticSession();
+    const wasAutoStatus = autoSession.status;
     const autoStatus = event === 'lock' ? 'paused' : 'active';
     db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
     addEvent(autoSession.id, event);
+
+    // Send notification for automatic session state changes
+    if (event === 'unlock' && wasAutoStatus !== 'active' && !autoSession.notified) {
+        console.log('[Auto] Screen unlocked — automatic session started.');
+        sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
+        db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
+    } else if (event === 'lock' && wasAutoStatus === 'active') {
+        console.log('[Auto] Screen locked — automatic session paused.');
+        sendNativeNotification('🏠 WFH Session Paused', 'Screen locked. Timer paused.');
+    }
 
     // 2. Handle Manual Session (Only pauses if active, does NOT auto-resume)
     const manualSession = getActiveSession('manual');
