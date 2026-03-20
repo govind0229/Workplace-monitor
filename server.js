@@ -147,8 +147,8 @@ function getSmartBreakMessage(sessionType = 'manual') {
 
     do {
         body  = grammar.flatten('#origin#');
-        // Use full body as key for reliable dedup (not just first 20 chars)
-        key   = `${slot}_${body.trim().toLowerCase().replace(/\W+/g, '_').substring(0, 40)}`;
+        // Use longer body string as key for reliable dedup
+        key   = `${slot}_${body.trim().toLowerCase().replace(/\W+/g, '_').substring(0, 100)}`;
         title = SLOT_RULES[slot].slot_title[Math.floor(Math.random() * SLOT_RULES[slot].slot_title.length)];
         attempts++;
     } while (recentKeys.has(key) && attempts < MAX_ATTEMPTS);

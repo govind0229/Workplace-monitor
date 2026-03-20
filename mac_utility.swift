@@ -53,6 +53,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         
         print("Starting Node.js server from: \(appPath)")
         
+        // Terminate any existing server.js instances to avoid duplicate zombies
+        let killProcess = Process()
+        killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        killProcess.arguments = ["-f", "server.js"]
+        try? killProcess.run()
+        killProcess.waitUntilExit()
+        
         let process = Process()
         process.executableURL = URL(fileURLWithPath: nodePath)
         process.arguments = [serverScriptPath]
