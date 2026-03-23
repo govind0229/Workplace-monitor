@@ -364,10 +364,15 @@ app.post('/event', asyncHandler(async (req, res) => {
     addEvent(autoSession.id, event);
 
     // Send notification for automatic session state changes
-    if (event === 'unlock' && wasAutoStatus !== 'active' && !autoSession.notified) {
-        console.log('[Auto] Screen unlocked — automatic session started.');
-        sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
-        db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
+    if (event === 'unlock' && wasAutoStatus !== 'active') {
+        if (!autoSession.notified) {
+            console.log('[Auto] Screen unlocked — automatic session started.');
+            sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
+            db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
+        } else {
+            console.log('[Auto] Screen unlocked — automatic session resumed.');
+            sendNativeNotification('🏠 WFH Session Resumed', 'Screen unlocked. Timer resumed.');
+        }
     } else if (event === 'lock' && wasAutoStatus === 'active') {
         console.log('[Auto] Screen locked — automatic session paused.');
         sendNativeNotification('🏠 WFH Session Paused', 'Screen locked. Timer paused.');
