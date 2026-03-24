@@ -75,6 +75,14 @@ body[data-theme="light"] .ring-bg {
   stroke: rgba(0, 0, 0, 0.08);
 }
 
+body[data-theme="light"] .progress-container {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+body[data-theme="light"] .gauge-bg {
+  stroke: rgba(0, 0, 0, 0.08);
+}
+
 body[data-theme="light"] input[type="number"],
 body[data-theme="light"] input[type="text"],
 body[data-theme="light"] select {
