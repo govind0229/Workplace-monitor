@@ -36,6 +36,7 @@ const appSuggestions = document.getElementById('appSuggestions');
 let customAppCategories = {};
 
 let currentTab = 'daily';
+let currentStatsRange = 7;
 let reportsData = null;
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
 let goalLinePercent = getStoredInt('goalLinePercent', 44);
@@ -136,6 +137,17 @@ navItems.forEach(item => {
             view.classList.remove('active');
             if (view.id === targetView + 'View') {
                 view.classList.add('active');
+                
+                // Trigger staggered animations for child cards/elements
+                const animatedElements = view.querySelectorAll('.glass-card, .view-title, .status-card');
+                animatedElements.forEach((el, index) => {
+                    el.classList.remove('animate-in', 'delay-1', 'delay-2', 'delay-3', 'delay-4', 'delay-5');
+                    // Force reflow
+                    void el.offsetWidth;
+                    el.classList.add('animate-in');
+                    if (index < 5) el.classList.add(`delay-${index + 1}`);
+                    else el.classList.add('delay-5');
+                });
             }
         });
 
@@ -373,6 +385,7 @@ saveSettingsBtn.onclick = async () => {
         alert('Settings saved!');
         // Refresh charts to reflect changes
         renderWeeklyChart();
+        renderStatsChart(currentStatsRange);
         renderCategoryChart();
     } catch (e) {
         alert('Settings saved locally (server connection failed)');
@@ -1372,6 +1385,7 @@ async function renderCategoryChart() {
 
 async function loadDashboardCharts() {
     renderWeeklyChart();
+    renderStatsChart(currentStatsRange);
     renderAppUsage();
     renderCategoryChart();
     renderActivityTimeline();
@@ -1445,3 +1459,165 @@ window.addEventListener('beforeunload', () => {
         cancelAnimationFrame(animationFrameId);
     }
 });
+
+// --- NEW STATS CHART LOGIC ---
+
+
+document.querySelectorAll('.stats-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.stats-tab-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        currentStatsRange = parseInt(e.target.dataset.range);
+        renderStatsChart(currentStatsRange);
+    });
+});
+
+async function renderStatsChart(rangeDays) {
+    try {
+        let data;
+        const now = Date.now();
+        if (chartDataCache && (now - chartDataCacheTime < CHART_CACHE_DURATION)) {
+            data = chartDataCache;
+        } else {
+            const res = await fetch(`${API_BASE}/reports`);
+            data = await res.json();
+            chartDataCache = data;
+            chartDataCacheTime = now;
+        }
+        
+        const daily = data.daily || [];
+        const days = [];
+        const today = new Date();
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
+        // Build the days array for the selected range
+        for (let i = rangeDays - 1; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            const found = daily.find(r => r.date === dateStr);
+            days.push({
+                dateObj: d,
+                label: dayNames[d.getDay()],
+                num: d.getDate(),
+                manual: found ? found.manual_total : 0,
+                auto: found ? found.auto_total : 0,
+                isToday: i === 0
+            });
+        }
+
+        // 1. Populate Date Scroller
+        const scroller = document.getElementById('statsDateScroller');
+        if (scroller) {
+            scroller.innerHTML = days.map(d => `
+                <div class="date-capsule ${d.isToday ? 'active' : ''}">
+                    <span class="date-num">${d.num < 10 ? '0'+d.num : d.num}</span>
+                    <span class="date-day">${d.label}</span>
+                </div>
+            `).join('');
+            
+            setTimeout(() => {
+                scroller.scrollLeft = scroller.scrollWidth;
+            }, 10);
+        }
+
+        // 2. Draw SVG Spline Chart
+        const svgW = 800;
+        const svgH = 250;
+        const padX = 40;
+        const padYTop = 20;
+        const padYBot = 40; 
+        
+        // Find max seconds to dynamically scale Y-Axis
+        let maxSecsInWindow = Math.max(...days.map(d => Math.max(d.manual, d.auto)), 4 * 3600);
+        let maxHrs = Math.ceil(maxSecsInWindow / 3600);
+        if (maxHrs < 4) maxHrs = 4;
+        const maxSecs = maxHrs * 3600;
+        
+        const drawH = svgH - padYTop - padYBot;
+        const drawW = svgW - padX * 2;
+        
+        const stepX = days.length > 1 ? drawW / (days.length - 1) : 0;
+        
+        let manualPoints = [];
+        let autoPoints = [];
+        
+        days.forEach((d, i) => {
+            const x = padX + i * stepX;
+            const mSecs = Math.min(d.manual, maxSecs);
+            const aSecs = Math.min(d.auto, maxSecs);
+            
+            const mY = (padYTop + drawH) - ((mSecs / maxSecs) * drawH);
+            const aY = (padYTop + drawH) - ((aSecs / maxSecs) * drawH);
+            
+            manualPoints.push({x, y: mY});
+            autoPoints.push({x, y: aY});
+        });
+
+        // Catmull-Rom to Cubic Bezier spline algorithm
+        function getPathData(pts) {
+            if (pts.length === 0) return '';
+            if (pts.length === 1) return `M ${pts[0].x},${pts[0].y}`;
+            let d = `M ${pts[0].x},${pts[0].y}`;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const tension = 0.2;
+                const p0 = i === 0 ? pts[0] : pts[i - 1];
+                const p1 = pts[i];
+                const p2 = pts[i + 1];
+                const p3 = i + 2 < pts.length ? pts[i + 2] : p2;
+                
+                const cp1x = p1.x + (p2.x - p0.x) * tension;
+                const cp1y = p1.y + (p2.y - p0.y) * tension;
+                const cp2x = p2.x - (p3.x - p1.x) * tension;
+                const cp2y = p2.y - (p3.y - p1.y) * tension;
+                
+                d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+            }
+            return d;
+        }
+
+        const solidPath = document.getElementById('splineSolidPath');
+        if (solidPath) solidPath.setAttribute('d', getPathData(manualPoints));
+        
+        const dashedPath = document.getElementById('splineDashedPath');
+        if (dashedPath) dashedPath.setAttribute('d', getPathData(autoPoints));
+        
+        const gradPath = document.getElementById('splineGradientPath');
+        if (gradPath && manualPoints.length > 0) {
+            const pathD = getPathData(manualPoints);
+            const gradD = pathD + ` L ${manualPoints[manualPoints.length-1].x},${padYTop + drawH} L ${manualPoints[0].x},${padYTop + drawH} Z`;
+            gradPath.setAttribute('d', gradD);
+        }
+        
+        const xAxisGrp = document.getElementById('splineXAxis');
+        if (xAxisGrp) {
+            xAxisGrp.innerHTML = days.map((d, i) => {
+                const x = padX + i * stepX;
+                const showLabel = days.length <= 7 || (i % Math.ceil(days.length/7) === 0) || i === days.length - 1;
+                if (!showLabel) return '';
+                return `
+                    <circle cx="${x}" cy="${padYTop + drawH}" r="3" fill="var(--border)" />
+                    <text x="${x}" y="${padYTop + drawH + 20}" class="chart-label p-center">${d.num} ${d.label.substring(0,1)}</text>
+                `;
+            }).join('');
+        }
+
+        const yAxisGrp = document.getElementById('splineYAxis');
+        if (yAxisGrp) {
+            let yLabelsHtml = '';
+            // Generate dynamic labels based on maxHrs
+            for (let i = maxHrs; i > 0; i -= Math.max(1, Math.floor(maxHrs/4))) {
+                const yPos = (padYTop + drawH) - ((i / maxHrs) * drawH);
+                yLabelsHtml += `
+                    <line x1="${padX}" y1="${yPos}" x2="${svgW}" y2="${yPos}" class="chart-grid-line" />
+                    <text x="${padX - 10}" y="${yPos + 4}" class="chart-label p-right">${i}h</text>
+                `;
+            }
+            yAxisGrp.innerHTML = yLabelsHtml;
+        }
+
+    } catch (e) {
+        console.error('Failed to render stats chart', e);
+    }
+}
+
