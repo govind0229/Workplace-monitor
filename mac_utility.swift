@@ -455,6 +455,8 @@ class MenuBarUtility: NSObject {
     var idleCheckTimer: Timer?
     var isIdle: Bool = false
     let idleThresholdSeconds: Double = 300 // 5 minutes
+    
+    var appMenu: NSMenu!
 
     // Optimized URLSession: short timeout, persistent connection, no caching
     lazy var localSession: URLSession = {
@@ -483,8 +485,9 @@ class MenuBarUtility: NSObject {
     func setupStatusItem() {
         if let button = statusItem.button {
             button.title = "🕒 00:00:00"
-            button.action = #selector(menuBarClicked)
+            button.action = #selector(menuBarClicked(_:))
             button.target = self
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         
         let menu = NSMenu()
@@ -499,7 +502,7 @@ class MenuBarUtility: NSObject {
         quitItem.target = self
         menu.addItem(quitItem)
 
-        statusItem.menu = menu
+        self.appMenu = menu
     }
 
     func setupNotifications() {
@@ -724,8 +727,19 @@ class MenuBarUtility: NSObject {
         dashboardController?.showWindow()
     }
 
-    @objc func menuBarClicked() {
-        // Fallback if no menu
+    @objc func menuBarClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else { return }
+        
+        if event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
+            statusItem.menu = appMenu
+            statusItem.button?.performClick(nil)
+            // Remove menu aggressively so next click is captured by button
+            DispatchQueue.main.async {
+                self.statusItem.menu = nil
+            }
+        } else {
+            showDashboard()
+        }
     }
 
     @objc func openDashboard() {
