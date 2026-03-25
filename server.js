@@ -122,17 +122,18 @@ function buildGrammar(slot) {
     });
 }
 
-function getSmartBreakMessage(sessionType = 'manual') {
+function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
     const now  = new Date();
     const hour = now.getHours();
     const min  = now.getMinutes();
     const t    = hour + (min / 60);
 
-    const slot = t < 11 ? 'morning'
+    const slot = overrideSlot || (
+                 t < 11 ? 'morning'
                : t < 13.5 ? 'lunch'
                : t < 16   ? 'afternoon'
                : t < 18.5 ? 'late_afternoon'
-               :             'evening';
+               :             'evening');
 
     const grammar = buildGrammar(slot);
     grammar.addModifiers(tracery.baseEngModifiers);
@@ -233,12 +234,12 @@ const asyncHandler = fn => (req, res, next) => {
 })();
 
 const TIME_SCHEDULE = [
-    { hour: 9,  id: 'breakfast', title: '🍳 Breakfast Time', body: "Take a break and grab some breakfast! A good meal fuels your morning focus." },
-    { hour: 11, id: 'mid_morning', title: '☕ Coffee Break', body: "It's mid-morning! Time to stay hydrated or grab a quick coffee/tea." },
-    { hour: 13, id: 'lunch',     title: '🍽️ Lunch Time', body: "Time for lunch! Step fully away from your desk and enjoy your meal." },
-    { hour: 16, id: 'afternoon', title: '🍪 Afternoon Snack', body: "Afternoon dip? Stand up, stretch, and maybe grab a quick snack." },
-    { hour: 19, id: 'dinner',    title: '🍲 Dinner Time', body: "It's getting late! Make sure to take a break for dinner." },
-    { hour: 23, id: 'late_night',title: '🌙 Late Night Alert', body: "Still working? Don't forget to rest. Good sleep is essential for productivity!" }
+    { hour: 9,  id: 'breakfast',   slot: 'morning' },
+    { hour: 11, id: 'mid_morning', slot: 'morning' },
+    { hour: 13, id: 'lunch',       slot: 'lunch' },
+    { hour: 16, id: 'afternoon',   slot: 'afternoon' },
+    { hour: 19, id: 'dinner',      slot: 'evening' },
+    { hour: 23, id: 'late_night',  slot: 'evening' }
 ];
 
 function checkTimeBasedNotifications() {
@@ -259,9 +260,10 @@ function checkTimeBasedNotifications() {
             const cacheKey = `last_meal_notify_${meal.id}`;
             const lastSent = getSetting(cacheKey, '');
             if (lastSent !== todayStr) {
-                // Determine prefix
-                const prefix = (isAutoActive && !isManualActive) ? '(WFH) ' : '';
-                sendNativeNotification(meal.title, `${prefix}${meal.body}`);
+                // Generate a smart, non-repeating message for the corresponding slot
+                const sessionType = isManualActive ? 'manual' : 'automatic';
+                const msg = getSmartBreakMessage(sessionType, meal.slot);
+                sendNativeNotification(msg.title, msg.body);
                 setSetting(cacheKey, todayStr);
                 console.log(`[Time-Based] Sent ${meal.id} notification for ${todayStr}`);
             }
