@@ -233,12 +233,12 @@ const asyncHandler = fn => (req, res, next) => {
 })();
 
 const TIME_SCHEDULE = [
-    { hour: 9,  id: 'breakfast', title: '🍳 Breakfast Time', body: 'Take a break and grab some breakfast! A good meal fuels your morning focus.' },
-    { hour: 11, id: 'mid_morning', title: '☕ Coffee Break', body: 'It\\'s mid-morning! Time to stay hydrated or grab a quick coffee/tea.' },
-    { hour: 13, id: 'lunch',     title: '🍽️ Lunch Time', body: 'Time for lunch! Step fully away from your desk and enjoy your meal.' },
-    { hour: 16, id: 'afternoon', title: '🍪 Afternoon Snack', body: 'Afternoon dip? Stand up, stretch, and maybe grab a quick snack.' },
-    { hour: 19, id: 'dinner',    title: '🍲 Dinner Time', body: 'It\\'s getting late! Make sure to take a break for dinner.' },
-    { hour: 23, id: 'late_night',title: '🌙 Late Night Alert', body: 'Still working? Don\\'t forget to rest. Good sleep is essential for productivity!' }
+    { hour: 9,  id: 'breakfast', title: '🍳 Breakfast Time', body: "Take a break and grab some breakfast! A good meal fuels your morning focus." },
+    { hour: 11, id: 'mid_morning', title: '☕ Coffee Break', body: "It's mid-morning! Time to stay hydrated or grab a quick coffee/tea." },
+    { hour: 13, id: 'lunch',     title: '🍽️ Lunch Time', body: "Time for lunch! Step fully away from your desk and enjoy your meal." },
+    { hour: 16, id: 'afternoon', title: '🍪 Afternoon Snack', body: "Afternoon dip? Stand up, stretch, and maybe grab a quick snack." },
+    { hour: 19, id: 'dinner',    title: '🍲 Dinner Time', body: "It's getting late! Make sure to take a break for dinner." },
+    { hour: 23, id: 'late_night',title: '🌙 Late Night Alert', body: "Still working? Don't forget to rest. Good sleep is essential for productivity!" }
 ];
 
 function checkTimeBasedNotifications() {
