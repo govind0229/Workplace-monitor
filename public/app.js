@@ -152,7 +152,10 @@ navItems.forEach(item => {
         });
 
         // Trigger fetches if needed
-        if (targetView === 'history') fetchReports();
+        if (targetView === 'history') {
+            fetchReports();
+            renderStatsChart(currentStatsRange);
+        }
         if (targetView === 'settings') loadSettings();
         if (targetView === 'location') initLocationView();
     };
