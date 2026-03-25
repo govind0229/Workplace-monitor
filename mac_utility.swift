@@ -85,12 +85,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         let launchAgentsDir = homeDirectory.appendingPathComponent("Library/LaunchAgents")
         let destPlistURL = launchAgentsDir.appendingPathComponent(plistName)
         
-        // Only register if not already present
+        // Check if plist exists and needs updating
+        var needsUpdate = true
         if fileManager.fileExists(atPath: destPlistURL.path) {
+            if let existingContent = try? String(contentsOf: destPlistURL, encoding: .utf8),
+               existingContent.contains("mac_utility") {
+                needsUpdate = false
+            } else {
+                print("Found outdated LaunchAgent (likely launcher.sh), will update...")
+                // Unload old agent before overwriting
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+                process.arguments = ["unload", destPlistURL.path]
+                try? process.run()
+                process.waitUntilExit()
+            }
+        }
+        
+        if !needsUpdate {
             return
         }
         
-        print("First run: Registering LaunchAgent...")
+        print("Registering LaunchAgent...")
         
         // Find bundled plist
         guard let resourcePath = Bundle.main.resourcePath else { return }
