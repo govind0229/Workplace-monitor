@@ -1,9 +1,168 @@
 const express = require('express');
-const notifier = require('node-notifier');
 const path = require('path');
-const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting } = require('./db');
+const notificationQueue = [];
 
+function sendNativeNotification(title, message) {
+    notificationQueue.push({ title, message });
+    console.log(`[Queueing Notification] ${title}: ${message} (Queue length: ${notificationQueue.length})`);
+}
+
+const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent } = require('./db');
 const cors = require('cors');
+
+// Pre-compiled prepared statements for hot paths (avoids SQLite re-planning on every tick)
+const stmtUpdateLastTick     = db.prepare("UPDATE sessions SET last_tick = CURRENT_TIMESTAMP WHERE id = ?");
+const stmtSetStatus          = db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?");
+const stmtSetNotified        = db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?");
+const stmtSetBreakNotify     = db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?");
+
+// Settings cache — settings rarely change mid-session, so we cache them for 30 seconds
+let _settingsCache = {};
+let _settingsCacheTime = 0;
+const SETTINGS_CACHE_TTL = 30000; // 30 seconds
+function getCachedSetting(key, defaultValue = null) {
+    const now = Date.now();
+    if (now - _settingsCacheTime > SETTINGS_CACHE_TTL) {
+        _settingsCache = {}; // invalidate
+        _settingsCacheTime = now;
+    }
+    if (!(key in _settingsCache)) {
+        _settingsCache[key] = getSetting(key, defaultValue);
+    }
+    return _settingsCache[key];
+}
+function invalidateSettingsCache() { _settingsCache = {}; _settingsCacheTime = 0; }
+
+
+// --- Tracery-Powered Dynamic Break Messages ---
+const tracery = require('tracery-grammar');
+
+// Shared grammar rules used across all time slots
+const SHARED_RULES = {
+    duration:    ['2 minutes', '5 minutes', 'a few seconds', '60 seconds', 'a minute'],
+    body_part:   ['your back', 'your neck', 'your shoulders', 'your wrists', 'your eyes'],
+    benefit:     ['boosts focus', 'reduces tension', 'recharges energy', 'prevents strain', 'improves circulation', 'clears your mind'],
+    water_size:  ['a glass', 'a full glass', 'a mug'],
+};
+
+// Per-slot grammar rules layered on top of shared rules
+const SLOT_RULES = {
+    morning: {
+        ...SHARED_RULES,
+        verb:    ['stretch', 'breathe deeply', 'hydrate', 'plan your day', 'step outside briefly'],
+        context: ['before your first meeting', 'before you dive in', 'to start strong', 'as a morning ritual'],
+        tip:     [
+            '#verb# for #duration# #context# — it #benefit#.',
+            'Drink #water_size# now. Starting hydrated keeps #benefit# through to lunch.',
+            'Take #duration# to check your posture and breathe. It #benefit#.',
+            'Set your top 3 goals for today before checking messages.',
+            'Look out a window for 30 seconds. Your eyes need a distance reset every hour.',
+            'Roll your shoulders back — #body_part# needs a reset after the morning commute.',
+        ],
+        slot_title: ['🌅 Morning Boost', '💧 Morning Hydration', '🌤️ Wake Up Break', '✅ Morning Intention', '🚶 Morning Move'],
+    },
+    lunch: {
+        ...SHARED_RULES,
+        meal_tip: [
+            'Step fully away from your desk — a proper lunch break #benefit#.',
+            'Try a screen-free lunch. Your eyes will thank you this afternoon.',
+            'Eat outside or near a window. Fresh air and daylight #benefit#.',
+            'A 10-minute walk after lunch fights the afternoon energy dip.',
+            'Drink #water_size# with your lunch to stay sharp for the afternoon.',
+            'Chat with someone during lunch. Social breaks restore mental energy.',
+        ],
+        slot_title: ['🍽️ Lunch Break', '☀️ Midday Reset', '🚶 Post-Lunch Walk', '📵 Screen-Free Lunch', '💧 Midday Hydration'],
+    },
+    afternoon: {
+        ...SHARED_RULES,
+        slump_tip: [
+            'Feeling the 3pm slump? Cold water and a quick walk beat coffee every time.',
+            'Stand up and #verb# for #duration# — it #benefit# more than a snack.',
+            'Look at something far away for 20 seconds. The 20-20-20 rule reduces eye strain.',
+            'Roll your wrists 10 times each way — a small move that prevents big problems.',
+            'Drink #water_size#. Afternoon dehydration is a major focus killer.',
+            'Quick posture reset: feet flat, screen at eye level, shoulders relaxed.',
+            'A healthy snack now — nuts, fruit, or yoghurt — keeps your brain fueled.',
+        ],
+        verb:    ['stretch', 'walk around', 'breathe', 'reset your posture'],
+        slot_title: ['😴 Afternoon Reset', '👁️ Eye Break', '🙆 Stretch Time', '💧 Hydration Check', '🧠 Focus Reset', '🍎 Snack Break'],
+    },
+    late_afternoon: {
+        ...SHARED_RULES,
+        wind_tip: [
+            'Start finishing open tasks so you can close the day cleanly.',
+            'Take #duration# to write down what you finished today and what carries to tomorrow.',
+            'Drink #water_size# — your last hydration push before end of day.',
+            'Close your eyes for 30 seconds and take 3 slow, deep breaths.',
+            'One last #body_part# stretch before you wrap up for the evening.',
+            'Review your task list and drag unfinished items to tomorrow deliberately.',
+        ],
+        slot_title: ['📋 Wind-Down Time', '👀 Eye Rest', '📝 Day Review', '💧 Final Hydration', '🙆 Last Stretch'],
+    },
+    evening: {
+        ...SHARED_RULES,
+        eve_tip: [
+            'Set a firm stop time tonight and protect it. Rest is part of performance.',
+            'Enable Night Shift or reduce screen brightness — warmer tones help your sleep.',
+            "Working late? Don't skip dinner. Recovery starts tonight.",
+            'Think of one thing that went well today. Small wins build momentum.',
+            'Decide your top priority for tomorrow, then close your laptop guilt-free.',
+            'Drink #water_size# before you log off. Evening hydration aids sleep quality.',
+        ],
+        slot_title: ['🌙 Evening Wind-Down', '💡 Eye Strain Alert', '🍽️ Dinner Reminder', '⏰ Stop-Time Check', '🌟 Evening Reflection'],
+    },
+};
+
+function buildGrammar(slot) {
+    const rules = SLOT_RULES[slot] || SLOT_RULES.afternoon;
+    const bodyKey = { morning: 'tip', lunch: 'meal_tip', afternoon: 'slump_tip', late_afternoon: 'wind_tip', evening: 'eve_tip' }[slot];
+    return tracery.createGrammar({
+        ...rules,
+        origin: [`#${bodyKey}#`],
+    });
+}
+
+function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
+    const now  = new Date();
+    const hour = now.getHours();
+    const min  = now.getMinutes();
+    const t    = hour + (min / 60);
+
+    const slot = overrideSlot || (
+                 t < 11 ? 'morning'
+               : t < 13.5 ? 'lunch'
+               : t < 16   ? 'afternoon'
+               : t < 18.5 ? 'late_afternoon'
+               :             'evening');
+
+    const grammar = buildGrammar(slot);
+    grammar.addModifiers(tracery.baseEngModifiers);
+
+    // Load the 7-day sent history upfront
+    const recentKeys = new Set(getRecentlySentMessages(7));
+
+    // Try up to 8 times to generate a message not seen in the past 7 days
+    let body, title, key;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 8;
+
+    do {
+        body  = grammar.flatten('#origin#');
+        // Use longer body string as key for reliable dedup
+        key   = `${slot}_${body.trim().toLowerCase().replace(/\W+/g, '_').substring(0, 100)}`;
+        title = SLOT_RULES[slot].slot_title[Math.floor(Math.random() * SLOT_RULES[slot].slot_title.length)];
+        attempts++;
+    } while (recentKeys.has(key) && attempts < MAX_ATTEMPTS);
+
+    markMessageSent(key);
+
+    const prefix = sessionType === 'automatic' ? '(WFH) ' : '';
+    console.log(`[Tracery Break] Slot: ${slot}, Attempts: ${attempts}, Key: ${key}`);
+
+    return { title, body: `${prefix}${body}` };
+}
+
+
 
 const app = express();
 app.use(cors());
@@ -54,79 +213,137 @@ const asyncHandler = fn => (req, res, next) => {
     }
 })();
 
+// On startup: complete any orphaned sessions from previous dates
+// These can happen if the machine slept suddenly and missed the lock event
+(function cleanupPreviousDaySessions() {
+    const orphaned = db.prepare(`
+        SELECT id, date, type, status FROM sessions
+        WHERE status IN ('active', 'paused')
+          AND date < date('now', 'localtime')
+    `).all();
+
+    if (orphaned.length > 0) {
+        db.prepare(`
+            UPDATE sessions
+            SET status = 'completed', end_time = CURRENT_TIMESTAMP
+            WHERE status IN ('active', 'paused')
+              AND date < date('now', 'localtime')
+        `).run();
+        console.log(`[Startup] Cleaned up ${orphaned.length} orphaned session(s) from previous days:`, orphaned.map(s => `#${s.id} (${s.date} ${s.type})`).join(', '));
+    }
+})();
+
+const TIME_SCHEDULE = [
+    { hour: 9,  id: 'breakfast',   slot: 'morning' },
+    { hour: 11, id: 'mid_morning', slot: 'morning' },
+    { hour: 13, id: 'lunch',       slot: 'lunch' },
+    { hour: 16, id: 'afternoon',   slot: 'afternoon' },
+    { hour: 19, id: 'dinner',      slot: 'evening' },
+    { hour: 23, id: 'late_night',  slot: 'evening' }
+];
+
+function checkTimeBasedNotifications() {
+    const manualSession = getActiveSession('manual');
+    const automaticSession = getTodayAutomaticSession();
+    const isManualActive = manualSession && manualSession.status === 'active';
+    const isAutoActive = automaticSession && automaticSession.status === 'active';
+    
+    // Only remind if they are currently working (in the office or WFH)
+    if (!isManualActive && !isAutoActive) return;
+
+    const now = new Date();
+    const currentHour = now.getHours();
+    const todayStr = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`; // Local date string
+
+    for (const meal of TIME_SCHEDULE) {
+        if (currentHour === meal.hour) {
+            const cacheKey = `last_meal_notify_${meal.id}`;
+            const lastSent = getSetting(cacheKey, '');
+            if (lastSent !== todayStr) {
+                // Generate a smart, non-repeating message for the corresponding slot
+                const sessionType = isManualActive ? 'manual' : 'automatic';
+                const msg = getSmartBreakMessage(sessionType, meal.slot);
+                sendNativeNotification(msg.title, msg.body);
+                setSetting(cacheKey, todayStr);
+                console.log(`[Time-Based] Sent ${meal.id} notification for ${todayStr}`);
+            }
+        }
+    }
+}
+
 // Background loop to increment time if active (recursive setTimeout prevents overlap)
 function runBackgroundLoop() {
     try {
+        checkTimeBasedNotifications();
+        
         const types = ['manual', 'automatic'];
-        types.forEach(type => {
-            const activeSession = getActiveSession(type);
-            if (activeSession && activeSession.status === 'active') {
-                const now = Date.now();
-                const lastTickStr = activeSession.last_tick;
-                const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
-                const rawDelta = Math.floor((now - lastUpdate) / 1000);
+        // Fetch both sessions in one pass to avoid extra queries
+        const manualSession   = getActiveSession('manual');
+        const automaticSession = getTodayAutomaticSession();
 
-                // Cap delta to 10s — the loop runs every 5s, so anything larger
-                // means the system was asleep and that time should NOT be counted
-                const delta = Math.min(rawDelta, 10);
+        for (const [type, activeSession] of [['manual', manualSession], ['automatic', automaticSession]]) {
+            if (!activeSession || activeSession.status !== 'active') continue;
 
-                // For automatic session, only count time if manual session is NOT active
-                if (type === 'automatic') {
-                    const manualSession = getActiveSession('manual');
-                    if (manualSession && manualSession.status === 'active') {
-                        // Skip incrementing automatic time, but still update the last_tick
-                        // so it doesn't build up a huge delta when manual stops
-                        db.prepare("UPDATE sessions SET last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(activeSession.id);
-                        return; // exit the forEach callback for this type
-                    }
+            const now = Date.now();
+            const lastUpdate = activeSession.last_tick
+                ? new Date(activeSession.last_tick.replace(' ', 'T') + 'Z').getTime()
+                : now;
+            const rawDelta = Math.floor((now - lastUpdate) / 1000);
+
+            // Cap delta to 30s — prevents time accumulation during sleep gaps
+            const delta = Math.min(rawDelta, 30);
+
+            // For automatic session, only count time if manual session is NOT active
+            if (type === 'automatic') {
+                if (manualSession && manualSession.status === 'active') {
+                    // Skip incrementing time, but keep last_tick fresh
+                    stmtUpdateLastTick.run(activeSession.id);
+                    continue;
+                }
+            }
+
+            if (delta > 0) updateSessionSeconds(activeSession.id, delta);
+            stmtUpdateLastTick.run(activeSession.id);
+
+            // Goal check only for manual session
+            if (type === 'manual') {
+                const goalH   = parseInt(getCachedSetting('goalHours', '4'));
+                const goalM   = parseInt(getCachedSetting('goalMinutes', '10'));
+                const goalSec = (goalH * 3600) + (goalM * 60);
+
+                const todayTotal      = getTodayManualTotal();
+                const alreadyNotified = hasNotifiedToday();
+
+                if (todayTotal >= goalSec && !alreadyNotified) {
+                    console.log(`[Goal] Goal achieved: ${todayTotal} >= ${goalSec}. Sending notification.`);
+                    sendNativeNotification('Goal Achieved! 🎉', `You've completed ${goalH}h ${goalM}m in the office. Great work!`);
+                    stmtSetNotified.run(activeSession.id);
                 }
 
-                if (delta > 0) {
-                    updateSessionSeconds(activeSession.id, delta);
-                }
-
-                db.prepare("UPDATE sessions SET last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(activeSession.id);
-
-                // Goal check only for manual session
-                if (type === 'manual') {
-                    const updated = getActiveSession('manual');
-                    const goalH = parseInt(getSetting('goalHours', '4'));
-                    const goalM = parseInt(getSetting('goalMinutes', '10'));
-                    const goalSec = (goalH * 3600) + (goalM * 60);
-
-                    const todayTotal = getTodayManualTotal();
-                    const alreadyNotified = hasNotifiedToday();
-
-                    if (todayTotal >= goalSec && !alreadyNotified) {
-                        notifier.notify({
-                            title: 'Goal Achieved!',
-                            message: `You've completed ${goalH}h ${goalM}m in the office.`,
-                            sound: true
-                        }, (err) => {
-                            if (err) console.error("Notification failed:", err);
-                        });
-                        db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(updated.id);
+                // Break reminder
+                const breakMin = parseInt(getCachedSetting('breakInterval', '60'));
+                if (breakMin > 0) {
+                    const breakSec  = breakMin * 60;
+                    const lastBreak = activeSession.last_break_notify || 0;
+                    if (activeSession.total_seconds - lastBreak >= breakSec) {
+                        const msg = getSmartBreakMessage('manual');
+                        sendNativeNotification(msg.title, msg.body);
+                        stmtSetBreakNotify.run(activeSession.total_seconds, activeSession.id);
                     }
-
-                    // Break reminder: every breakInterval minutes of continuous work
-                    const breakMin = parseInt(getSetting('breakInterval', '60'));
-                    if (breakMin > 0) {
-                        const breakSec = breakMin * 60;
-                        const lastBreak = updated.last_break_notify || 0;
-                        if (updated.total_seconds - lastBreak >= breakSec) {
-                            notifier.notify({
-                                title: 'Time for a Break!',
-                                message: `You've been working for ${breakMin} minutes. Stand up, stretch, and rest your eyes.`,
-                                sound: true
-                            }, (err) => {
-                                if (err) console.error("Break notification failed:", err);
-                            });
-                            db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?").run(updated.total_seconds, updated.id);
-                        }
+                }
+            } else if (type === 'automatic') {
+                const wfhBreakMin = parseInt(getCachedSetting('wfhBreakInterval', '60'));
+                if (wfhBreakMin > 0) {
+                    const breakSec  = wfhBreakMin * 60;
+                    const lastBreak = activeSession.last_break_notify || 0;
+                    if (activeSession.total_seconds - lastBreak >= breakSec) {
+                        const msg = getSmartBreakMessage('automatic');
+                        sendNativeNotification(msg.title, msg.body);
+                        stmtSetBreakNotify.run(activeSession.total_seconds, activeSession.id);
                     }
                 }
             }
-        });
+        }
     } catch (error) {
         console.error("Error in background timer loop:", error);
     } finally {
@@ -140,8 +357,12 @@ app.post('/start', asyncHandler(async (req, res) => {
     if (!session) {
         const id = startSession('manual');
         session = { id, status: 'active', total_seconds: 0, type: 'manual' };
+        console.log(`[Manual] Session started: ${id}`);
+        sendNativeNotification('🏢 Workplace Session Started', 'Manual tracking is now active. Good luck!');
     } else {
         db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+        console.log(`[Manual] Session resumed: ${session.id}`);
+        sendNativeNotification('🏢 Tracking Resumed', 'Manual session resumed. Welcome back!');
     }
     res.json({ success: true, session });
 }));
@@ -150,6 +371,7 @@ app.post('/pause', asyncHandler(async (req, res) => {
     const session = getActiveSession('manual');
     if (session && session.status === 'active') {
         db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+        sendNativeNotification('Workplace Monitor', 'Tracking paused.');
         res.json({ success: true });
     } else {
         res.status(404).json({ error: 'No active session to pause' });
@@ -160,6 +382,8 @@ app.post('/stop', asyncHandler(async (req, res) => {
     const session = getActiveSession('manual');
     if (session) {
         completeSession(session.id);
+        console.log(`[Manual] Session stopped: ${session.id}`);
+        sendNativeNotification('✅ Finish Day Session', 'Workplace session finished. Great work today!');
         res.json({ success: true });
     } else {
         res.status(404).json({ error: 'No active session' });
@@ -175,9 +399,25 @@ app.post('/event', asyncHandler(async (req, res) => {
 
     // 1. Handle Automatic Session (Always responds to lock/unlock)
     const autoSession = getTodayAutomaticSession();
+    const wasAutoStatus = autoSession.status;
     const autoStatus = event === 'lock' ? 'paused' : 'active';
     db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
     addEvent(autoSession.id, event);
+
+    // Send notification for automatic session state changes
+    if (event === 'unlock' && wasAutoStatus !== 'active') {
+        if (!autoSession.notified) {
+            console.log('[Auto] Screen unlocked — automatic session started.');
+            sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
+            db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
+        } else {
+            console.log('[Auto] Screen unlocked — automatic session resumed.');
+            sendNativeNotification('🏠 WFH Session Resumed', 'Screen unlocked. Timer resumed.');
+        }
+    } else if (event === 'lock' && wasAutoStatus === 'active') {
+        console.log('[Auto] Screen locked — automatic session paused.');
+        sendNativeNotification('🏠 WFH Session Paused', 'Screen locked. Timer paused.');
+    }
 
     // 2. Handle Manual Session (Only pauses if active, does NOT auto-resume)
     const manualSession = getActiveSession('manual');
@@ -236,9 +476,11 @@ app.post('/location', asyncHandler(async (req, res) => {
             const id = startSession('manual');
             manualSession = { id, status: 'active', total_seconds: 0, type: 'manual' };
             console.log(`[Location] Arrived at office (Distance: ${Math.round(distance)}m). Starting Office Timer.`);
+            sendNativeNotification('Workplace Monitor', 'Arrived at the office. Workplace tracking started.');
         } else if (manualSession.status !== 'active') {
             db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
             console.log(`[Location] Re-entered office (Distance: ${Math.round(distance)}m). Resuming Office Timer.`);
+            sendNativeNotification('Workplace Monitor', 'Re-entered the office. Workplace tracking resumed.');
         }
     } else {
         // Stop office timer, start home timer
@@ -294,11 +536,10 @@ app.get('/status', (req, res) => {
 
     const baseManualSeconds = getTodayManualTotal();
 
-    // Live interpolation for manual session (capped to 10s to exclude sleep time)
+    // Live interpolation for manual session (capped to 30s to exclude sleep time)
     if (manual.status === 'active') {
-        const lastTickStr = manual.last_tick;
-        const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
-        const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 10);
+        const lastUpdate = manual.last_tick ? new Date(manual.last_tick.replace(' ', 'T') + 'Z').getTime() : now;
+        const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 30);
         manual.total_seconds = baseManualSeconds + Math.max(0, delta);
     } else {
         manual.total_seconds = baseManualSeconds;
@@ -306,37 +547,30 @@ app.get('/status', (req, res) => {
 
     const baseAutoSeconds = getTodayTotal();
 
-    // Live interpolation for automatic session (capped to 10s to exclude sleep time)
+    // Live interpolation for automatic session (capped to 30s to exclude sleep time)
     // Only interpolate if manual session is NOT active
     if (automatic.status === 'active' && !(manual && manual.status === 'active')) {
-        const lastTickStr = automatic.last_tick;
-        const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : now;
-        const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 10);
+        const lastUpdate = automatic.last_tick ? new Date(automatic.last_tick.replace(' ', 'T') + 'Z').getTime() : now;
+        const delta = Math.min(Math.floor((now - lastUpdate) / 1000), 30);
         automatic.total_seconds = baseAutoSeconds + Math.max(0, delta);
     } else {
         automatic.total_seconds = baseAutoSeconds;
     }
 
+    // Take the first notification from the queue if any and if consumer is native app
+    const consume = req.query.consume === 'true';
+    const pendingNotification = (consume && notificationQueue.length > 0) ? notificationQueue.shift() : (notificationQueue[0] || null);
 
-    let isAtOffice = false;
-    if (officeLat && officeLng) {
-        // Use the manual session's actual state instead of constant calculation if you prefer,
-        // but for robustness we can just check distance right here too or use a flag.
-        // Let's re-calculate distance to be sure, or just rely on the manual status + distance check
-
-        // We'll just define a quick haversine inline here or use the global one since it's already there
-        // Actually, let's just use the manual session's latest event but we don't have that handy in the struct.
-        // Or we can just calculate it if we have the latest location, but we don't store latest location.
-        // Okay, the easiest way: return `isAtOfficeLocation: true` if manual timer is running and we have coordinates.
-        // We'll refine this later by actually persisting the "ai_started" flag in sessions DB if needed.
+    if (consume && pendingNotification) {
+        console.log(`[Notification] Shifted from queue: ${pendingNotification.title}`);
     }
-
     res.json({
         manual,
         automatic,
         officeLat,
         officeLng,
-        officeRadius: parseInt(officeRadius)
+        officeRadius: parseInt(officeRadius),
+        pending_notification: pendingNotification
     });
 });
 
@@ -415,6 +649,7 @@ app.get('/settings', (req, res) => {
     const goalHours = getSetting('goalHours', '4');
     const goalMinutes = getSetting('goalMinutes', '10');
     const breakInterval = getSetting('breakInterval', '60');
+    const wfhBreakInterval = getSetting('wfhBreakInterval', '60');
     const goalLinePercent = getSetting('goalLinePercent', '44');
     const customAppCategories = getSetting('customAppCategories', '{}');
     const officeLat = getSetting('officeLat', '');
@@ -425,6 +660,7 @@ app.get('/settings', (req, res) => {
         goalHours: parseInt(goalHours),
         goalMinutes: parseInt(goalMinutes),
         breakInterval: parseInt(breakInterval),
+        wfhBreakInterval: parseInt(wfhBreakInterval),
         goalLinePercent: parseInt(goalLinePercent),
         customAppCategories: customAppCategories,
         officeLat: officeLat,
@@ -434,13 +670,15 @@ app.get('/settings', (req, res) => {
 });
 
 app.post('/settings', asyncHandler(async (req, res) => {
-    const { goalHours, goalMinutes, breakInterval, goalLinePercent, customAppCategories, officeRadius } = req.body;
+    const { goalHours, goalMinutes, breakInterval, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius } = req.body;
     if (goalHours !== undefined) setSetting('goalHours', goalHours);
     if (goalMinutes !== undefined) setSetting('goalMinutes', goalMinutes);
     if (breakInterval !== undefined) setSetting('breakInterval', breakInterval);
+    if (wfhBreakInterval !== undefined) setSetting('wfhBreakInterval', wfhBreakInterval);
     if (goalLinePercent !== undefined) setSetting('goalLinePercent', goalLinePercent);
     if (customAppCategories !== undefined) setSetting('customAppCategories', customAppCategories);
     if (officeRadius !== undefined) setSetting('officeRadius', officeRadius);
+    invalidateSettingsCache(); // Force re-read on next background loop tick
     res.json({ success: true });
 }));
 

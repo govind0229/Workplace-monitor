@@ -2,13 +2,152 @@ import AppKit
 import WebKit
 import CoreGraphics
 import CoreLocation
+import UserNotifications
 
 // MARK: - App Delegate
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var menuBarUtility: MenuBarUtility!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // First run setup
+        registerLaunchAgent()
+        
+        // Start the Node.js server first
+        spawnServer()
+        
         menuBarUtility = MenuBarUtility()
+        
+        // Setup Notifications
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                print("Notification permission granted.")
+            } else if let error = error {
+                print("Notification permission error: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func spawnServer() {
+        // Find the resources directory
+        guard let resourcePath = Bundle.main.resourcePath else {
+            print("Error: Could not find resource path")
+            return
+        }
+        
+        let appPath = "\(resourcePath)/app"
+        let nodePath = "\(appPath)/node"
+        let serverScriptPath = "\(appPath)/server.js"
+        
+        // Check if files exist
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: nodePath) else {
+            print("Error: Bundled Node.js not found at \(nodePath)")
+            return
+        }
+        guard fileManager.fileExists(atPath: serverScriptPath) else {
+            print("Error: server.js not found at \(serverScriptPath)")
+            return
+        }
+        
+        print("Starting Node.js server from: \(appPath)")
+        
+        // Terminate any existing server.js instances to avoid duplicate zombies
+        let killProcess = Process()
+        killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        killProcess.arguments = ["-f", "server.js"]
+        try? killProcess.run()
+        killProcess.waitUntilExit()
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: nodePath)
+        process.arguments = [serverScriptPath]
+        process.currentDirectoryURL = URL(fileURLWithPath: appPath)
+        
+        // Redirect output to a log file in the app support directory or resources
+        // For development simplicity, we'll just let it run. In a real app, we'd handle pipes.
+        
+        do {
+            try process.run()
+            print("Server process started with PID: \(process.processIdentifier)")
+        } catch {
+            print("Failed to start server process: \(error.localizedDescription)")
+        }
+    }
+
+    func registerLaunchAgent() {
+        let label = "com.user.workinghours"
+        let plistName = "\(label).plist"
+        let fileManager = FileManager.default
+        
+        let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+        let launchAgentsDir = homeDirectory.appendingPathComponent("Library/LaunchAgents")
+        let destPlistURL = launchAgentsDir.appendingPathComponent(plistName)
+        
+        // Check if plist exists and needs updating
+        var needsUpdate = true
+        if fileManager.fileExists(atPath: destPlistURL.path) {
+            if let existingContent = try? String(contentsOf: destPlistURL, encoding: .utf8),
+               existingContent.contains("mac_utility") {
+                needsUpdate = false
+            } else {
+                print("Found outdated LaunchAgent (likely launcher.sh), will update...")
+                // Unload old agent before overwriting
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+                process.arguments = ["unload", destPlistURL.path]
+                try? process.run()
+                process.waitUntilExit()
+            }
+        }
+        
+        if !needsUpdate {
+            return
+        }
+        
+        print("Registering LaunchAgent...")
+        
+        // Find bundled plist
+        guard let resourcePath = Bundle.main.resourcePath else { return }
+        let sourcePlistPath = "\(resourcePath)/app/\(plistName)"
+        guard fileManager.fileExists(atPath: sourcePlistPath) else {
+            print("Error: source plist not found at \(sourcePlistPath)")
+            return
+        }
+        
+        do {
+            try fileManager.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true)
+            
+            // Read source plist
+            var plistContent = try String(contentsOfFile: sourcePlistPath, encoding: .utf8)
+            
+            // Perform substitution: Replace /Applications/WorkingHours.app with actual bundle path
+            let bundlePath = Bundle.main.bundlePath
+            plistContent = plistContent.replacingOccurrences(of: "/Applications/WorkingHours.app", with: bundlePath)
+            
+            // Write to destination
+            try plistContent.write(to: destPlistURL, atomically: true, encoding: .utf8)
+            
+            // Load the agent
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            process.arguments = ["load", destPlistURL.path]
+            try process.run()
+            
+            print("LaunchAgent registered successfully.")
+        } catch {
+            print("Failed to register LaunchAgent: \(error.localizedDescription)")
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Show banner even when app is in foreground
+        if #available(macOS 11.0, *) {
+            completionHandler([.banner, .sound])
+        } else {
+            completionHandler([.alert, .sound])
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -332,6 +471,18 @@ class MenuBarUtility: NSObject {
     var idleCheckTimer: Timer?
     var isIdle: Bool = false
     let idleThresholdSeconds: Double = 300 // 5 minutes
+    
+    var appMenu: NSMenu!
+
+    // Optimized URLSession: short timeout, persistent connection, no caching
+    lazy var localSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest  = 3   // 3s max per request
+        config.timeoutIntervalForResource = 5
+        config.requestCachePolicy         = .reloadIgnoringLocalCacheData
+        config.httpMaximumConnectionsPerHost = 1 // Only one connection to localhost
+        return URLSession(configuration: config)
+    }()
 
     override init() {
         super.init()
@@ -340,13 +491,19 @@ class MenuBarUtility: NSObject {
         setupNotifications()
         setupLocationManager()
         startTimers()
+        // Send initial screen-lock state to server after it's ready
+        // This ensures the automatic session is not marked 'active' while screen is locked
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+            self.syncInitialScreenState()
+        }
     }
 
     func setupStatusItem() {
         if let button = statusItem.button {
             button.title = "🕒 00:00:00"
-            button.action = #selector(menuBarClicked)
+            button.action = #selector(menuBarClicked(_:))
             button.target = self
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         
         let menu = NSMenu()
@@ -361,7 +518,7 @@ class MenuBarUtility: NSObject {
         quitItem.target = self
         menu.addItem(quitItem)
 
-        statusItem.menu = menu
+        self.appMenu = menu
     }
 
     func setupNotifications() {
@@ -401,13 +558,14 @@ class MenuBarUtility: NSObject {
     }
 
     func startTimers() {
-        // Poll server every 10s for ground truth
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
+        // Sync with server every 2s — fast enough for timely notifications, slow enough to avoid jitter
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             self.fetchStatus()
         }
         
-        // Update UI every 1s for smoothness
-        uiTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        // Render UI 4x per second for smooth, lag-free display
+        // The uiTimer interpolates elapsed time between server syncs
+        uiTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
             self.updateUI()
         }
 
@@ -423,6 +581,21 @@ class MenuBarUtility: NSObject {
         
         // Initial fetch
         self.fetchStatus()
+    }
+
+    /// Called once on startup to ensure the server knows the current screen-lock state.
+    /// Without this, if the machine was sleeping before the app started, the server
+    /// would keep the automatic session 'paused' until the next real unlock event.
+    func syncInitialScreenState() {
+        // Try to detect screen lock via idle time as a proxy:
+        // If the user has been idle for more than 30 seconds, treat as locked.
+        let idleTime = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
+        let idleKey  = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+        let minIdle  = min(idleTime, idleKey)
+
+        let event = (isScreenLocked || minIdle > 30) ? "lock" : "unlock"
+        print("[Startup] Syncing initial screen state: \(event) (idle: \(Int(minIdle))s, locked: \(isScreenLocked))")
+        sendEvent(event)
     }
 
     func updateUI() {
@@ -458,8 +631,8 @@ class MenuBarUtility: NSObject {
     }
 
     func fetchStatus() {
-        guard let url = URL(string: "\(serverURL)/status") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        guard let url = URL(string: "http://127.0.0.1:3000/status?consume=true") else { return }
+        localSession.dataTask(with: url) { data, _, error in
             if let _ = error {
                 DispatchQueue.main.async {
                     self.manualStatus = "offline"
@@ -481,10 +654,33 @@ class MenuBarUtility: NSObject {
                     self.autoSeconds = automatic["total_seconds"] as? Int ?? 0
                     self.autoStatus = automatic["status"] as? String ?? "idle"
                 }
+
+                // Handle Pending Notifications relayed from server
+                if let notify = json["pending_notification"] as? [String: Any],
+                   let title = notify["title"] as? String,
+                   let message = notify["message"] as? String {
+                    self.showNotification(title: title, message: message)
+                }
+
                 self.lastSyncTime = Date()
-                self.updateUI() // Immediate update after sync
+                // Don't call updateUI() here — the uiTimer owns all rendering.
+                // Calling it here too causes a double-render and visible stutter.
             }
         }.resume()
+    }
+
+    func showNotification(title: String, message: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = message
+        content.sound = .default
+        
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Failed to show native notification: \(error.localizedDescription)")
+            }
+        }
     }
 
     func trackFrontmostApp() {
@@ -547,8 +743,19 @@ class MenuBarUtility: NSObject {
         dashboardController?.showWindow()
     }
 
-    @objc func menuBarClicked() {
-        // Fallback if no menu
+    @objc func menuBarClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else { return }
+        
+        if event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
+            statusItem.menu = appMenu
+            statusItem.button?.performClick(nil)
+            // Remove menu aggressively so next click is captured by button
+            DispatchQueue.main.async {
+                self.statusItem.menu = nil
+            }
+        } else {
+            showDashboard()
+        }
     }
 
     @objc func openDashboard() {

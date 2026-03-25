@@ -4,8 +4,6 @@ const progressBar = document.getElementById('progressBar');
 const startBtn = document.getElementById('startBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const stopBtn = document.getElementById('stopBtn');
-const todayTotalDisplay = document.getElementById('todayTotalDisplay');
-
 // Navigation
 const navItems = document.querySelectorAll('.nav-item');
 const views = document.querySelectorAll('.view');
@@ -23,6 +21,11 @@ const locationStatusBadge = document.getElementById('locationStatusBadge');
 const setOfficeLocationBtn = document.getElementById('setOfficeLocationBtn');
 const officeRadiusInput = document.getElementById('officeRadiusInput');
 const clearOfficeLocationBtn = document.getElementById('clearOfficeLocationBtn');
+const officeRadiusSlider = document.getElementById('officeRadiusSlider');
+const radiusDecrease = document.getElementById('radiusDecrease');
+const radiusIncrease = document.getElementById('radiusIncrease');
+const radiusValDisplay = document.getElementById('radiusValDisplay');
+const gaugeProgress = document.getElementById('gaugeProgress');
 
 // Category Mapping
 const appNameInput = document.getElementById('appNameInput');
@@ -33,6 +36,7 @@ const appSuggestions = document.getElementById('appSuggestions');
 let customAppCategories = {};
 
 let currentTab = 'daily';
+let currentStatsRange = 7;
 let reportsData = null;
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
 let goalLinePercent = getStoredInt('goalLinePercent', 44);
@@ -72,7 +76,9 @@ function throttle(func, limit) {
 // Cache DOM elements
 const domCache = {
     progressPercent: null,
-    goalLabel: null
+    goalLabel: null,
+    heroLabelText: null,
+    heroLabelIcon: null
 };
 
 // Accent Color management
@@ -131,11 +137,25 @@ navItems.forEach(item => {
             view.classList.remove('active');
             if (view.id === targetView + 'View') {
                 view.classList.add('active');
+                
+                // Trigger staggered animations for child cards/elements
+                const animatedElements = view.querySelectorAll('.glass-card, .view-title, .status-card');
+                animatedElements.forEach((el, index) => {
+                    el.classList.remove('animate-in', 'delay-1', 'delay-2', 'delay-3', 'delay-4', 'delay-5');
+                    // Force reflow
+                    void el.offsetWidth;
+                    el.classList.add('animate-in');
+                    if (index < 5) el.classList.add(`delay-${index + 1}`);
+                    else el.classList.add('delay-5');
+                });
             }
         });
 
         // Trigger fetches if needed
-        if (targetView === 'history') fetchReports();
+        if (targetView === 'history') {
+            fetchReports();
+            renderStatsChart(currentStatsRange);
+        }
         if (targetView === 'settings') loadSettings();
         if (targetView === 'location') initLocationView();
     };
@@ -159,6 +179,8 @@ async function loadSettings() {
         goalMinutesInput.value = data.goalMinutes;
         const breakInput = document.getElementById('breakInterval');
         if (breakInput) breakInput.value = data.breakInterval || 60;
+        const wfhBreakInput = document.getElementById('wfhBreakInterval');
+        if (wfhBreakInput) wfhBreakInput.value = data.wfhBreakInterval || 60;
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
 
         if (officeRadiusInput && data.officeRadius) {
@@ -325,7 +347,9 @@ saveSettingsBtn.onclick = async () => {
     const h = parseInt(goalHoursInput.value);
     const m = parseInt(goalMinutesInput.value);
     const breakInput = document.getElementById('breakInterval');
+    const wfhBreakInput = document.getElementById('wfhBreakInterval');
     const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
+    const wfhBreakMin = wfhBreakInput ? parseInt(wfhBreakInput.value) || 0 : 60;
     const linePct = goalLinePercentInput ? parseInt(goalLinePercentInput.value) || 44 : 44;
     const radius = officeRadiusInput ? parseInt(officeRadiusInput.value) || 200 : 200;
 
@@ -355,6 +379,7 @@ saveSettingsBtn.onclick = async () => {
                 goalHours: h,
                 goalMinutes: m,
                 breakInterval: breakMin,
+                wfhBreakInterval: wfhBreakMin,
                 goalLinePercent: linePct,
                 officeRadius: radius,
                 customAppCategories: JSON.stringify(customAppCategories)
@@ -363,6 +388,7 @@ saveSettingsBtn.onclick = async () => {
         alert('Settings saved!');
         // Refresh charts to reflect changes
         renderWeeklyChart();
+        renderStatsChart(currentStatsRange);
         renderCategoryChart();
     } catch (e) {
         alert('Settings saved locally (server connection failed)');
@@ -446,11 +472,9 @@ if (clearOfficeLocationBtn) {
             }
             // Refresh the map view
             if (locationMap) {
-                if (officeMarker) locationMap.removeLayer(officeMarker);
                 if (officeCircle) locationMap.removeLayer(officeCircle);
                 officeMarker = null;
                 officeCircle = null;
-                document.getElementById('officeCoords').textContent = '—';
                 document.getElementById('locationAutoStatus').textContent = 'Inactive';
                 document.getElementById('locationAutoStatus').style.color = '';
             }
@@ -479,16 +503,35 @@ function resetLocationBtn() {
 let locationMap = null;
 let officeMarker = null;
 let officeCircle = null;
+let officeOuterCircle = null;
 let userMarker = null;
+let currentBaseLayer = null;
+
+const mapTiles = {
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    street: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+};
 
 function initLocationView() {
     // Initialize map if not already done
     if (!locationMap) {
-        locationMap = L.map('locationMap').setView([28.6, 77.2], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap',
-            maxZoom: 19
+        locationMap = L.map('locationMap', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([28.6, 77.2], 12);
+        
+        switchMapType('street');
+
+        L.control.zoom({
+            position: 'bottomright'
         }).addTo(locationMap);
+
+        // Add Map Type Switcher Listeners
+        document.querySelectorAll('.map-type-btn').forEach(btn => {
+            btn.onclick = () => switchMapType(btn.dataset.type);
+        });
     }
 
     // Fix tile rendering after view switch
@@ -499,6 +542,32 @@ function initLocationView() {
 }
 
 async function loadLocationData() {
+    console.log('[Location] Loading location data and requesting permission...');
+
+    // Request current location immediately and in parallel
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const userLat = pos.coords.latitude;
+            const userLng = pos.coords.longitude;
+            console.log('[Location] Current position acquired:', userLat, userLng);
+
+            if (userMarker) locationMap.removeLayer(userMarker);
+            userMarker = L.marker([userLat, userLng], {
+                icon: L.divIcon({
+                    className: 'user-location-marker',
+                    html: '<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 8px rgba(59,130,246,0.6);"></div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                })
+            }).addTo(locationMap).bindPopup('📍 You are here');
+
+            // Center on user if no office set (checked later after fetch)
+            window._lastUserPos = { lat: userLat, lng: userLng };
+        }, (err) => {
+            console.warn('[Location] Geolocation error:', err.message);
+        }, { enableHighAccuracy: true, timeout: 10000 });
+    }
+
     try {
         const res = await fetch(`${API_BASE}/settings`);
         const data = await res.json();
@@ -508,44 +577,26 @@ async function loadLocationData() {
         const radius = parseInt(data.officeRadius) || 200;
 
         if (officeRadiusInput) officeRadiusInput.value = radius;
-        document.getElementById('officeRadiusDisplay').textContent = radius + 'm';
+        updateRadiusUI(radius);
 
         if (!isNaN(lat) && !isNaN(lng) && data.officeLat !== '') {
             renderOfficeOnMap(lat, lng, radius);
-            document.getElementById('officeCoords').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
             locationStatusBadge.textContent = 'Office Location Configured ✓';
             locationStatusBadge.className = 'status-badge status-active';
-            document.getElementById('locationAutoStatus').textContent = 'Active — Monitoring';
-            document.getElementById('locationAutoStatus').style.color = 'var(--primary)';
+            document.getElementById('locationAutoStatus').textContent = 'Live Monitoring Active';
+            document.getElementById('locationAutoStatus').parentElement.classList.add('pulse-active');
+            document.getElementById('locationAutoStatus').style.color = 'var(--secondary)';
         } else {
-            document.getElementById('officeCoords').textContent = '—';
             locationStatusBadge.textContent = 'Not Configured';
             locationStatusBadge.className = 'status-badge status-offline';
-            document.getElementById('locationAutoStatus').textContent = 'Inactive';
+            document.getElementById('locationAutoStatus').textContent = 'Monitoring Inactive';
+            document.getElementById('locationAutoStatus').parentElement.classList.remove('pulse-active');
             document.getElementById('locationAutoStatus').style.color = '';
-        }
-
-        // Also show current location on the map
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                const userLat = pos.coords.latitude;
-                const userLng = pos.coords.longitude;
-
-                if (userMarker) locationMap.removeLayer(userMarker);
-                userMarker = L.marker([userLat, userLng], {
-                    icon: L.divIcon({
-                        className: 'user-location-marker',
-                        html: '<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 8px rgba(59,130,246,0.6);"></div>',
-                        iconSize: [20, 20],
-                        iconAnchor: [10, 10]
-                    })
-                }).addTo(locationMap).bindPopup('📍 You are here');
-
-                // If no office is set, center on user
-                if (isNaN(lat) || data.officeLat === '') {
-                    locationMap.setView([userLat, userLng], 15);
-                }
-            }, () => { }, { enableHighAccuracy: true, timeout: 5000 });
+            
+            // If office not configured and we have user pos, center on user
+            if (window._lastUserPos) {
+                locationMap.setView([window._lastUserPos.lat, window._lastUserPos.lng], 15);
+            }
         }
     } catch (e) {
         console.error('Failed to load location data:', e);
@@ -556,29 +607,146 @@ function renderOfficeOnMap(lat, lng, radius) {
     // Remove old markers
     if (officeMarker) locationMap.removeLayer(officeMarker);
     if (officeCircle) locationMap.removeLayer(officeCircle);
+    if (officeOuterCircle) locationMap.removeLayer(officeOuterCircle);
 
-    // Add office marker
+    // Add office marker with premium pin and label
+    const pinSVG = `
+        <div class="office-marker-wrapper">
+            <div class="marker-base-glow"></div>
+            <svg class="marker-pin-svg" viewBox="0 0 24 24" fill="none">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="url(#pinGradient)"/>
+                <circle cx="12" cy="10" r="3" fill="white"/>
+                <defs>
+                    <linearGradient id="pinGradient" x1="12" y1="3" x2="12" y2="23" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#a78bfa"/>
+                        <stop offset="1" stop-color="#7c3aed"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
+    `;
+
     officeMarker = L.marker([lat, lng], {
         icon: L.divIcon({
-            className: 'office-location-marker',
-            html: '<div style="width:18px;height:18px;background:var(--primary, #8b5cf6);border:3px solid white;border-radius:50%;box-shadow:0 0 12px rgba(139,92,246,0.5);"></div>',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
+            className: 'custom-office-marker',
+            html: pinSVG,
+            iconSize: [40, 40],
+            iconAnchor: [20, 35]
         })
-    }).addTo(locationMap).bindPopup('🏢 Office Location');
+    }).addTo(locationMap);
 
-    // Add geofence circle
+    const popupContent = `
+        <div class="premium-popup-inner">
+            <span class="popup-title">WorkingHours Office</span>
+            <span class="popup-address">Custom Location Set</span>
+        </div>
+    `;
+
+    officeMarker.bindPopup(popupContent, {
+        className: 'premium-popup',
+        offset: [0, -30],
+        closeButton: false
+    }).openPopup();
+
+    // Add geofence circle with high contrast and subtle inner fill
     officeCircle = L.circle([lat, lng], {
-        color: '#8b5cf6',
-        fillColor: '#8b5cf6',
+        color: '#a78bfa',
+        fillColor: '#a78bfa',
         fillOpacity: 0.12,
         radius: radius,
-        weight: 2,
-        dashArray: '6 4'
+        weight: 1,
+        dashArray: '4 4'
+    }).addTo(locationMap);
+
+    // Add an outer border for that crisp edge in the mockup
+    officeOuterCircle = L.circle([lat, lng], {
+        color: '#a78bfa',
+        fill: false,
+        radius: radius,
+        weight: 3,
+        opacity: 0.4
     }).addTo(locationMap);
 
     // Fit map to the circle bounds
     locationMap.fitBounds(officeCircle.getBounds().pad(0.3));
+}
+
+function switchMapType(type) {
+    if (!locationMap || !mapTiles[type]) return;
+
+    if (currentBaseLayer) {
+        locationMap.removeLayer(currentBaseLayer);
+    }
+
+    currentBaseLayer = L.tileLayer(mapTiles[type], {
+        maxZoom: type === 'satellite' ? 18 : 20,
+        attribution: type === 'street' ? '&copy; OpenStreetMap' : ''
+    }).addTo(locationMap);
+
+    // Update UI
+    document.querySelectorAll('.map-type-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === type);
+    });
+
+    // Bring markers to front if needed
+    if (officeCircle) officeCircle.bringToFront();
+    if (officeMarker) officeMarker.bringToFront();
+}
+
+function updateRadiusUI(radius) {
+    if (!radiusValDisplay || !officeRadiusSlider) return;
+    
+    radius = Math.max(100, Math.min(1000, parseInt(radius)));
+    
+    radiusValDisplay.textContent = radius;
+    officeRadiusSlider.value = radius;
+    if (officeRadiusInput) officeRadiusInput.value = radius;
+    
+    const displayLabel = document.getElementById('officeRadiusDisplay');
+    if (displayLabel) displayLabel.textContent = radius + 'm';
+    
+    if (gaugeProgress) {
+        const percent = (radius - 100) / 900;
+        const dashOffset = 251.3 * (1 - percent);
+        gaugeProgress.style.strokeDashoffset = dashOffset;
+    }
+    
+    if (officeCircle) officeCircle.setRadius(radius);
+    if (officeOuterCircle) officeOuterCircle.setRadius(radius);
+    
+    // Auto-save to server
+    saveRadiusToServer(radius);
+}
+
+const saveRadiusToServer = debounce(async (radius) => {
+    try {
+        await fetch(`${API_BASE}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ officeRadius: radius })
+        });
+        console.log('Radius auto-saved:', radius);
+    } catch (e) {
+        console.error('Failed to auto-save radius:', e);
+    }
+}, 1000);
+
+if (officeRadiusSlider) {
+    officeRadiusSlider.oninput = (e) => updateRadiusUI(e.target.value);
+}
+
+if (radiusDecrease) {
+    radiusDecrease.onclick = () => {
+        const val = parseInt(officeRadiusSlider.value) - 10;
+        updateRadiusUI(val);
+    };
+}
+
+if (radiusIncrease) {
+    radiusIncrease.onclick = () => {
+        const val = parseInt(officeRadiusSlider.value) + 10;
+        updateRadiusUI(val);
+    };
 }
 
 function escapeHTML(str) {
@@ -718,9 +886,33 @@ async function updateStatus(forceSync = false) {
 
     // Batch all DOM updates in a single animation frame
     requestAnimationFrame(() => {
-        timerDisplay.textContent = formatTime(displayManual);
-        todayTotalDisplay.textContent = formatTime(displayAuto);
+        // --- UI AUTOMATION: Toggle Hero Context ---
+        const heroLabelText = domCache.heroLabelText || (domCache.heroLabelText = document.getElementById('heroLabelText'));
+        const heroLabelIcon = domCache.heroLabelIcon || (domCache.heroLabelIcon = document.getElementById('heroLabelIcon'));
 
+        let heroSeconds = displayManual;
+        let isWorkplace = true;
+
+        // If workplace (manual) is NOT active, but home (auto) IS active, show WFH in the hero card
+        if (manualStatus !== 'active' && autoStatus === 'active') {
+            heroSeconds = displayAuto;
+            isWorkplace = false;
+        }
+
+        if (heroLabelText) {
+            heroLabelText.textContent = isWorkplace ? 'Workplace Duration' : 'WFH Duration';
+        }
+
+        if (heroLabelIcon) {
+            heroLabelIcon.innerHTML = isWorkplace 
+                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>'
+                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>';
+        }
+
+        // Update the main timer display with the hero's time
+        timerDisplay.textContent = formatTime(heroSeconds);
+
+        // Goal progress is ALWAYS based on Workplace (manual) duration only
         const progress = Math.min((displayManual / goalSeconds) * 100, 100);
         progressBar.style.width = progress + '%';
 
@@ -731,7 +923,7 @@ async function updateStatus(forceSync = false) {
             domCache.progressPercent.textContent = Math.floor(progress) + '%';
         }
 
-        // Update goal ring
+        // Update goal ring (always workplace time)
         if (typeof updateGoalRing === 'function') updateGoalRing(displayManual);
     });
 }
@@ -1196,6 +1388,7 @@ async function renderCategoryChart() {
 
 async function loadDashboardCharts() {
     renderWeeklyChart();
+    renderStatsChart(currentStatsRange);
     renderAppUsage();
     renderCategoryChart();
     renderActivityTimeline();
@@ -1269,3 +1462,165 @@ window.addEventListener('beforeunload', () => {
         cancelAnimationFrame(animationFrameId);
     }
 });
+
+// --- NEW STATS CHART LOGIC ---
+
+
+document.querySelectorAll('.stats-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.stats-tab-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        currentStatsRange = parseInt(e.target.dataset.range);
+        renderStatsChart(currentStatsRange);
+    });
+});
+
+async function renderStatsChart(rangeDays) {
+    try {
+        let data;
+        const now = Date.now();
+        if (chartDataCache && (now - chartDataCacheTime < CHART_CACHE_DURATION)) {
+            data = chartDataCache;
+        } else {
+            const res = await fetch(`${API_BASE}/reports`);
+            data = await res.json();
+            chartDataCache = data;
+            chartDataCacheTime = now;
+        }
+        
+        const daily = data.daily || [];
+        const days = [];
+        const today = new Date();
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
+        // Build the days array for the selected range
+        for (let i = rangeDays - 1; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            const found = daily.find(r => r.date === dateStr);
+            days.push({
+                dateObj: d,
+                label: dayNames[d.getDay()],
+                num: d.getDate(),
+                manual: found ? found.manual_total : 0,
+                auto: found ? found.auto_total : 0,
+                isToday: i === 0
+            });
+        }
+
+        // 1. Populate Date Scroller
+        const scroller = document.getElementById('statsDateScroller');
+        if (scroller) {
+            scroller.innerHTML = days.map(d => `
+                <div class="date-capsule ${d.isToday ? 'active' : ''}">
+                    <span class="date-num">${d.num < 10 ? '0'+d.num : d.num}</span>
+                    <span class="date-day">${d.label}</span>
+                </div>
+            `).join('');
+            
+            setTimeout(() => {
+                scroller.scrollLeft = scroller.scrollWidth;
+            }, 10);
+        }
+
+        // 2. Draw SVG Spline Chart
+        const svgW = 800;
+        const svgH = 250;
+        const padX = 40;
+        const padYTop = 20;
+        const padYBot = 40; 
+        
+        // Find max seconds to dynamically scale Y-Axis
+        let maxSecsInWindow = Math.max(...days.map(d => Math.max(d.manual, d.auto)), 4 * 3600);
+        let maxHrs = Math.ceil(maxSecsInWindow / 3600);
+        if (maxHrs < 4) maxHrs = 4;
+        const maxSecs = maxHrs * 3600;
+        
+        const drawH = svgH - padYTop - padYBot;
+        const drawW = svgW - padX * 2;
+        
+        const stepX = days.length > 1 ? drawW / (days.length - 1) : 0;
+        
+        let manualPoints = [];
+        let autoPoints = [];
+        
+        days.forEach((d, i) => {
+            const x = padX + i * stepX;
+            const mSecs = Math.min(d.manual, maxSecs);
+            const aSecs = Math.min(d.auto, maxSecs);
+            
+            const mY = (padYTop + drawH) - ((mSecs / maxSecs) * drawH);
+            const aY = (padYTop + drawH) - ((aSecs / maxSecs) * drawH);
+            
+            manualPoints.push({x, y: mY});
+            autoPoints.push({x, y: aY});
+        });
+
+        // Catmull-Rom to Cubic Bezier spline algorithm
+        function getPathData(pts) {
+            if (pts.length === 0) return '';
+            if (pts.length === 1) return `M ${pts[0].x},${pts[0].y}`;
+            let d = `M ${pts[0].x},${pts[0].y}`;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const tension = 0.2;
+                const p0 = i === 0 ? pts[0] : pts[i - 1];
+                const p1 = pts[i];
+                const p2 = pts[i + 1];
+                const p3 = i + 2 < pts.length ? pts[i + 2] : p2;
+                
+                const cp1x = p1.x + (p2.x - p0.x) * tension;
+                const cp1y = p1.y + (p2.y - p0.y) * tension;
+                const cp2x = p2.x - (p3.x - p1.x) * tension;
+                const cp2y = p2.y - (p3.y - p1.y) * tension;
+                
+                d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+            }
+            return d;
+        }
+
+        const solidPath = document.getElementById('splineSolidPath');
+        if (solidPath) solidPath.setAttribute('d', getPathData(manualPoints));
+        
+        const dashedPath = document.getElementById('splineDashedPath');
+        if (dashedPath) dashedPath.setAttribute('d', getPathData(autoPoints));
+        
+        const gradPath = document.getElementById('splineGradientPath');
+        if (gradPath && manualPoints.length > 0) {
+            const pathD = getPathData(manualPoints);
+            const gradD = pathD + ` L ${manualPoints[manualPoints.length-1].x},${padYTop + drawH} L ${manualPoints[0].x},${padYTop + drawH} Z`;
+            gradPath.setAttribute('d', gradD);
+        }
+        
+        const xAxisGrp = document.getElementById('splineXAxis');
+        if (xAxisGrp) {
+            xAxisGrp.innerHTML = days.map((d, i) => {
+                const x = padX + i * stepX;
+                const showLabel = days.length <= 7 || (i % Math.ceil(days.length/7) === 0) || i === days.length - 1;
+                if (!showLabel) return '';
+                return `
+                    <circle cx="${x}" cy="${padYTop + drawH}" r="3" fill="var(--border)" />
+                    <text x="${x}" y="${padYTop + drawH + 20}" class="chart-label p-center">${d.num} ${d.label.substring(0,1)}</text>
+                `;
+            }).join('');
+        }
+
+        const yAxisGrp = document.getElementById('splineYAxis');
+        if (yAxisGrp) {
+            let yLabelsHtml = '';
+            // Generate dynamic labels based on maxHrs
+            for (let i = maxHrs; i > 0; i -= Math.max(1, Math.floor(maxHrs/4))) {
+                const yPos = (padYTop + drawH) - ((i / maxHrs) * drawH);
+                yLabelsHtml += `
+                    <line x1="${padX}" y1="${yPos}" x2="${svgW}" y2="${yPos}" class="chart-grid-line" />
+                    <text x="${padX - 10}" y="${yPos + 4}" class="chart-label p-right">${i}h</text>
+                `;
+            }
+            yAxisGrp.innerHTML = yLabelsHtml;
+        }
+
+    } catch (e) {
+        console.error('Failed to render stats chart', e);
+    }
+}
+

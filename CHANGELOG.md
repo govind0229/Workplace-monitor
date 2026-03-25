@@ -2,6 +2,92 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.3.7] - 2026-03-19
+
+### Performance
+- **Pre-compiled DB statements** — Hot-path SQLite `UPDATE` queries in the background loop are now pre-compiled at startup, eliminating query re-parsing every 5 seconds.
+- **Settings cache (30s TTL)** — Goal and break settings are now cached for 30 seconds, reducing 4 DB reads per background tick to zero. Cache is immediately invalidated when settings are saved.
+- **Removed double DB query in background loop** — Both session types are now fetched upfront in a single pass, instead of calling `getActiveSession()` twice for the manual session.
+- **Status interpolation cap corrected** — Live time interpolation in `/status` was still using a 300-second cap (bug), now correctly using 30s, consistent with the background loop.
+- **Removed dead code from `/status`** — Cleaned up an empty `isAtOffice` block that ran on every status request with no effect.
+- **Optimized URLSession (Swift)** — `fetchStatus()` now uses a pre-configured `URLSession` with `ephemeral` config, 3s timeout, and a single persistent connection to localhost, reducing connection overhead on 2-second polling.
+
+### Fixed
+- **Widget timer lag** — `uiTimer` now renders at 0.25s intervals (4× per second) for smooth display. Server `pollTimer` reduced to 2s and is fully decoupled from rendering — no more stutter from double `updateUI()` calls.
+- **Session start/stop notifications not received** — Added missing `🏠 WFH Session Started` notification on screen unlock, `🏠 WFH Session Paused` on screen lock, and improved manual session notification titles to `🏢 Workplace Session Started` and `✅ Finish Day Session`.
+
+## [1.3.6] - 2026-03-19
+
+### Added
+- **Tracery Grammar-Powered Break Notifications** — Replaced the static break message pool with [tracery-grammar](https://www.npmjs.com/package/tracery-grammar), a combinatorial natural-language generator. Each break now generates a fresh, uniquely worded message by randomly combining grammar rules (verbs, durations, benefits, context phrases). Produces thousands of unique combinations per time slot — fully offline, no AI or API required.
+
+### Fixed
+- **WFH Timer Running Overnight** — Root cause fixed: automatic WFH sessions now start with `status = 'paused'` instead of `active`. The timer only starts counting when a genuine screen-unlock event is received, preventing overnight accumulation.
+- **Startup Screen-State Sync** — `mac_utility.swift` now sends an initial `lock` or `unlock` event to the server 4 seconds after launch, ensuring the server's session state matches the actual screen lock state at startup.
+
+## [1.3.5] - 2026-03-18
+
+### Added
+- **Smart Time-Aware Break Notifications** — Break reminders are now contextually intelligent. The app selects the most appropriate message based on the current time of day:
+  - **Morning (7–11am):** Hydration, goal-setting, posture, and energy tips.
+  - **Lunch (11am–1:30pm):** Lunch break, step-outside, and social connection reminders.
+  - **Afternoon (1:30–4pm):** Energy dip, 20-20-20 eye rule, snack, and focus reset prompts.
+  - **Late Afternoon (4–6pm):** Wind-down, end-of-day review, and final hydration reminders.
+  - **Evening (6pm+):** Disconnect, reduce screen brightness, and dinner reminders.
+- **Non-Repeating Messages** — A `suggestion_history` database table tracks all sent break messages. The app will never repeat the same message within a **7-day window**.
+
+### Fixed
+- **WFH Timer Overcount on Screen Lock** — The background timer delta cap was reduced from 300s to 30s, preventing large time jumps when the machine wakes from sleep and the lock event was missed.
+- **Orphaned Sessions from Previous Days** — On startup, any sessions from previous dates that were accidentally left in `active` or `paused` state are now automatically marked as `completed`.
+
+## [1.3.4] - 2026-03-17
+
+### Added
+- **Native macOS Architecture** — Migrated to a true native entry point where `mac_utility` (Swift) acts as the primary executable, significantly improving system stability and resolving "damaged bundle" false-positives.
+- **Internal Backend Spawning** — The Swift application now automatically spawns and manages the Node.js server lifecycle internally.
+- **Auto-Persistence** — Integrated seamless LaunchAgent registration within the Swift binary for automatic startup out-of-the-box.
+- **Enhanced Polling Frequency** — Notification check interval increased to 1 second for near-instant system alerts on session start/stop.
+
+### Fixed
+- **Notification Reliability** — Fixed a "queue theft" bug where the web dashboard would clear the server-side notification queue before the native macOS app could display the banners.
+- **Bundle Integrity** — Corrected `Info.plist` and directory structures to align with strict macOS Application Bundle standards, fixing permission errors.
+- **Start/Stop Attribution** — Guaranteed 100% native system attribution for "Start Workplace", "Finish Day", and "Goal Achieved" notifications.
+
+## [1.3.3] - 2026-03-16
+
+### Added
+- **WFH Break Notifications** — Added customizable break reminders specifically for work-from-home sessions.
+- **Location Arrival Notifications** — Added native notifications when arriving at the configured office location.
+- **Goal Completion Notifications** — Restored native notifications for daily goal completion.
+
+### Fixed
+- **Notification Crash** — Replaced direct macOS Swift `UNUserNotificationCenter` calls with `node-notifier` to fix a silent crash on first launch outside of the App bundle.
+- **macOS App Nap** — Fixed an issue where macOS throttled the background timers when the app window was hidden, leading to lost time. Background compensation cap was increased to ensure timers tick accurately.
+
+## [1.3.2] - 2026-03-13
+
+### Added
+- **Premium Location Page Design** — New immersive split-screen layout with high-end glassmorphic controls and centered panels.
+- **Interactive Radius Gauge** — Dynamic SVG-based gauge that provides real-time visual feedback for the geofence boundary.
+- **Custom Precision Slider** — Bespoke range slider with interactive -/+ buttons for precise radius adjustments.
+- **Map Type Switcher** — New floating control to toggle between Dark Matter, Positron, Street, and Satellite map styles (Street view now default).
+- **High-Fidelity Office Marker** — Premium custom purple pin with a pulsing base glow and professional HUD-style location labels.
+- **Refined Geofence Visuals** — Dual-circle geofences with high-contrast borders for better definition against dark and satellite maps.
+- **Geofence Auto-Save** — Geofence radius changes are now automatically synchronized with the server via debounced auto-save logic.
+
+### Fixed
+- **Location Permission Prompts** — Fixed an issue where the app would stop asking for location permissions; the request is now triggered proactively on page load.
+
+<!-- ## [1.3.1] - 2026-03-12
+
+### Added
+- **Native macOS Notifications** — Goal completion alerts now use native macOS `UserNotifications` for a premium system experience, including standard banner styles, system sounds, and Notification Center persistence.
+- **Notification Permissions** — The app now properly requests user permission for notifications upon first launch.
+
+### Changed
+- **Enhanced Status API** — The backend `/status` endpoint now exposes goal settings and notification state to the native Swift utility.
+- **Unified Notification Logic** — Moved notification triggers from Node.js to Swift to ensure native appearance and behavior. -->
+
 ## [1.3.0] - 2026-03-06
 
 ### Added
