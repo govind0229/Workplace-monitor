@@ -2,6 +2,23 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.4.0] - 2026-03-29
+
+### Added
+- **Website-Level Tracking** — When a browser (Chrome, Safari, Arc, Brave, Edge, Firefox) is the active application, the app now reads the **active tab URL** via AppleScript and tracks the domain name (e.g., `github.com`, `youtube.com`) instead of just the browser name. Requires Automation permission on first launch.
+- **Project-Based Time Tracking** — New `projects` system allows creating named, color-coded projects. Sessions can be assigned to a project via the Dashboard dropdown. Full CRUD management in Settings, plus a `GET /project-report` API for per-project time summaries.
+- **Cloud Sync** — Background sync worker runs every 5 minutes, batching completed sessions and app usage data into a JSON payload and POSTing it to a configurable remote API with Bearer token authentication. New Settings section to configure Cloud URL, API Key, enable/disable sync, and trigger manual sync.
+- **Domain Category Mappings** — Extended the default app category map with 30+ popular website domains automatically categorized (e.g., `github.com` → Productivity, `youtube.com` → Entertainment, `slack.com` → Communication).
+
+### Changed
+- **`/start` endpoint** — Now accepts an optional `project_id` in the request body to assign the session to a project.
+- **Info.plist** — Added `NSAppleEventsUsageDescription` for browser automation permission.
+
+### Database
+- New `projects` table (`id`, `name`, `color`, `created_at`).
+- New `sync_log` table for tracking cloud sync watermarks per table.
+- Migration: `sessions.project_id` foreign key column added automatically on startup.
+
 ## [1.3.7] - 2026-03-19
 
 ### Performance

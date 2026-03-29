@@ -683,6 +683,23 @@ class MenuBarUtility: NSObject {
         }
     }
 
+    // Map of browser names to their AppleScript for fetching the active tab URL
+    let browserScripts: [String: String] = [
+        "Google Chrome": "tell application \"Google Chrome\" to get URL of active tab of front window",
+        "Brave Browser": "tell application \"Brave Browser\" to get URL of active tab of front window",
+        "Microsoft Edge": "tell application \"Microsoft Edge\" to get URL of active tab of front window",
+        "Arc": "tell application \"Arc\" to get URL of active tab of front window",
+        "Safari": "tell application \"Safari\" to get URL of current tab of front window",
+        "Firefox": "tell application \"System Events\" to tell process \"Firefox\" to get value of attribute \"AXDocument\" of window 1"
+    ]
+
+    /// Extract domain from a URL string (e.g., "https://mail.google.com/inbox" -> "mail.google.com")
+    func domainFromURL(_ urlString: String) -> String? {
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = url.host else { return nil }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
     func trackFrontmostApp() {
         // Don't track when screen is locked, sleeping, or idle
         guard !isScreenLocked && !isIdle else { return }
@@ -694,12 +711,27 @@ class MenuBarUtility: NSObject {
         let skipApps = ["loginwindow", "ScreenSaverEngine", "UserNotificationCenter"]
         guard !skipApps.contains(appName) else { return }
 
-        // Send heartbeat — 5 seconds of usage for this app
+        var trackedName = appName
+
+        // If it's a known browser, try to get the active tab URL via AppleScript
+        if let scriptSource = browserScripts[appName] {
+            if let script = NSAppleScript(source: scriptSource) {
+                var errorInfo: NSDictionary?
+                let result = script.executeAndReturnError(&errorInfo)
+                if errorInfo == nil, let urlString = result.stringValue,
+                   let domain = domainFromURL(urlString) {
+                    trackedName = domain   // e.g., "github.com" instead of "Google Chrome"
+                }
+                // On error, fall through and use the browser name
+            }
+        }
+
+        // Send heartbeat — 5 seconds of usage for this tracked name
         guard let url = URL(string: "\(serverURL)/app-heartbeat") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let json: [String: Any] = ["app_name": appName, "seconds": 5]
+        let json: [String: Any] = ["app_name": trackedName, "seconds": 5]
         request.httpBody = try? JSONSerialization.data(withJSONObject: json)
         URLSession.shared.dataTask(with: request).resume()
     }

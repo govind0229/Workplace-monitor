@@ -930,7 +930,13 @@ async function updateStatus(forceSync = false) {
 
 
 startBtn.onclick = async () => {
-    await fetch(`${API_BASE}/start`, { method: 'POST' });
+    const projectSelect = document.getElementById('projectSelect');
+    const projectId = projectSelect ? (projectSelect.value || null) : null;
+    await fetch(`${API_BASE}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId ? parseInt(projectId) : null })
+    });
     updateStatus(true);
 };
 
@@ -1624,3 +1630,174 @@ async function renderStatsChart(rangeDays) {
     }
 }
 
+
+// ===== PROJECT MANAGEMENT =====
+async function loadProjects() {
+    try {
+        const res = await fetch(`${API_BASE}/projects`);
+        const data = await res.json();
+        const projectSelect = document.getElementById('projectSelect');
+        if (projectSelect) {
+            const currentVal = projectSelect.value;
+            projectSelect.innerHTML = '<option value="">— No Project —</option>';
+            (data.projects || []).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                opt.style.color = p.color;
+                projectSelect.appendChild(opt);
+            });
+            if (currentVal) projectSelect.value = currentVal;
+        }
+        renderProjectsList(data.projects || []);
+    } catch (e) {
+        console.error('Failed to load projects:', e);
+    }
+}
+
+function renderProjectsList(projects) {
+    const list = document.getElementById('projectsList');
+    if (!list) return;
+    if (projects.length === 0) {
+        list.innerHTML = '<div class="category-mappings-empty">No projects yet. Add one above to start tracking by project.</div>';
+        return;
+    }
+    list.innerHTML = projects.map(p => `
+        <div class="category-mapping-item">
+            <div class="category-mapping-info">
+                <span class="project-color-dot" style="background: ${escapeHTML(p.color)};"></span>
+                <span class="category-mapping-app">${escapeHTML(p.name)}</span>
+            </div>
+            <button class="category-mapping-remove" data-project-id="${p.id}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+    list.querySelectorAll('.category-mapping-remove').forEach(btn => {
+        btn.onclick = async () => {
+            const id = btn.dataset.projectId;
+            if (!confirm('Delete this project? Time logged to it will become unassigned.')) return;
+            try {
+                await fetch(`${API_BASE}/projects/${id}`, { method: 'DELETE' });
+                loadProjects();
+            } catch (e) { alert('Failed to delete project.'); }
+        };
+    });
+}
+
+const addProjectBtn = document.getElementById('addProjectBtn');
+if (addProjectBtn) {
+    addProjectBtn.onclick = async () => {
+        const nameInput = document.getElementById('projectNameInput');
+        const colorInput = document.getElementById('projectColorInput');
+        const name = nameInput ? nameInput.value.trim() : '';
+        const color = colorInput ? colorInput.value : '#8b5cf6';
+        if (!name) { alert('Please enter a project name'); return; }
+        try {
+            const res = await fetch(`${API_BASE}/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, color })
+            });
+            const data = await res.json();
+            if (!res.ok) { alert(data.error || 'Failed to create project'); return; }
+            if (nameInput) nameInput.value = '';
+            loadProjects();
+        } catch (e) { alert('Failed to create project.'); }
+    };
+}
+
+const projectNameInput = document.getElementById('projectNameInput');
+if (projectNameInput) {
+    projectNameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addProjectBtn.click(); }
+    });
+}
+
+// Load projects on startup
+loadProjects();
+
+// ===== CLOUD SYNC SETTINGS =====
+let _cloudSyncEnabled = false;
+
+async function loadCloudSettings() {
+    try {
+        const res = await fetch(`${API_BASE}/cloud-settings`);
+        const data = await res.json();
+        const urlInput = document.getElementById('cloudSyncUrl');
+        const keyInput = document.getElementById('cloudApiKey');
+        if (urlInput) urlInput.value = data.cloudSyncUrl || '';
+        if (keyInput && data.cloudApiKey) keyInput.placeholder = data.cloudApiKey;
+        _cloudSyncEnabled = data.cloudSyncEnabled;
+        updateSyncToggleUI(data.cloudSyncEnabled);
+        loadSyncStatus();
+    } catch (e) { console.error('Failed to load cloud settings:', e); }
+}
+
+function updateSyncToggleUI(enabled) {
+    const onBtn = document.getElementById('syncOnBtn');
+    const offBtn = document.getElementById('syncOffBtn');
+    if (onBtn) onBtn.classList.toggle('active', enabled);
+    if (offBtn) offBtn.classList.toggle('active', !enabled);
+}
+
+async function loadSyncStatus() {
+    try {
+        const res = await fetch(`${API_BASE}/sync-status`);
+        const data = await res.json();
+        const statusEl = document.getElementById('syncStatusText');
+        if (!statusEl) return;
+        if (!data.enabled) {
+            statusEl.textContent = 'Sync status: Disabled';
+        } else if (data.lastResult) {
+            statusEl.textContent = `Last sync: ${data.lastResult.status === 'ok' ? '✅' : '❌'} ${data.lastResult.message} (${new Date(data.lastResult.time).toLocaleTimeString()})`;
+        } else {
+            statusEl.textContent = 'Sync status: Enabled, waiting for first sync...';
+        }
+    } catch (e) { /* ignore */ }
+}
+
+const syncOnBtn = document.getElementById('syncOnBtn');
+const syncOffBtn = document.getElementById('syncOffBtn');
+if (syncOnBtn) syncOnBtn.onclick = () => { _cloudSyncEnabled = true; updateSyncToggleUI(true); };
+if (syncOffBtn) syncOffBtn.onclick = () => { _cloudSyncEnabled = false; updateSyncToggleUI(false); };
+
+const saveCloudBtn = document.getElementById('saveCloudSettings');
+if (saveCloudBtn) {
+    saveCloudBtn.onclick = async () => {
+        const url = document.getElementById('cloudSyncUrl')?.value || '';
+        const key = document.getElementById('cloudApiKey')?.value || '';
+        const body = { cloudSyncUrl: url, cloudSyncEnabled: _cloudSyncEnabled };
+        if (key && key !== '••••••••') body.cloudApiKey = key;
+        try {
+            await fetch(`${API_BASE}/cloud-settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            alert('Cloud sync settings saved!');
+            loadSyncStatus();
+        } catch (e) { alert('Failed to save cloud settings.'); }
+    };
+}
+
+const triggerSyncBtn = document.getElementById('triggerSyncNow');
+if (triggerSyncBtn) {
+    triggerSyncBtn.onclick = async () => {
+        triggerSyncBtn.disabled = true;
+        triggerSyncBtn.textContent = 'Syncing...';
+        try {
+            await fetch(`${API_BASE}/sync-now`, { method: 'POST' });
+            loadSyncStatus();
+        } catch (e) { alert('Sync failed.'); }
+        triggerSyncBtn.disabled = false;
+        triggerSyncBtn.textContent = 'Sync Now';
+    };
+}
+
+// Load cloud settings when settings page loads
+const _origLoadSettings = loadSettings;
+loadSettings = async function() {
+    await _origLoadSettings();
+    loadCloudSettings();
+};

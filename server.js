@@ -7,7 +7,7 @@ function sendNativeNotification(title, message) {
     console.log(`[Queueing Notification] ${title}: ${message} (Queue length: ${notificationQueue.length})`);
 }
 
-const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent } = require('./db');
+const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent, createProject, getProjects, deleteProject, getProjectReport, getLastSyncedId, updateSyncedId, getUnsyncedData } = require('./db');
 const cors = require('cors');
 
 // Pre-compiled prepared statements for hot paths (avoids SQLite re-planning on every tick)
@@ -352,14 +352,73 @@ function runBackgroundLoop() {
 }
 setTimeout(runBackgroundLoop, 5000);
 
+// --- Cloud Sync Background Worker ---
+let lastSyncAttempt = null;
+let lastSyncResult = null;
+
+async function runCloudSync() {
+    const cloudUrl = getCachedSetting('cloudSyncUrl', '');
+    const cloudApiKey = getCachedSetting('cloudApiKey', '');
+    const syncEnabled = getCachedSetting('cloudSyncEnabled', 'false');
+
+    if (syncEnabled !== 'true' || !cloudUrl) return;
+
+    try {
+        const unsyncedData = getUnsyncedData();
+        if (unsyncedData.sessions.length === 0 && unsyncedData.appUsage.length === 0) {
+            lastSyncResult = { status: 'ok', message: 'Nothing to sync', time: new Date().toISOString() };
+            return;
+        }
+
+        const payload = {
+            device_id: getCachedSetting('deviceId', require('os').hostname()),
+            timestamp: new Date().toISOString(),
+            sessions: unsyncedData.sessions,
+            app_usage: unsyncedData.appUsage,
+            projects: unsyncedData.projects
+        };
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (cloudApiKey) headers['Authorization'] = `Bearer ${cloudApiKey}`;
+
+        const response = await fetch(cloudUrl, { method: 'POST', headers, body: JSON.stringify(payload) });
+
+        if (response.ok) {
+            if (unsyncedData.sessions.length > 0) {
+                updateSyncedId('sessions', Math.max(...unsyncedData.sessions.map(s => s.id)));
+            }
+            if (unsyncedData.appUsage.length > 0) {
+                updateSyncedId('app_usage', Math.max(...unsyncedData.appUsage.map(a => a.id)));
+            }
+            lastSyncResult = { status: 'ok', message: `Synced ${unsyncedData.sessions.length} sessions, ${unsyncedData.appUsage.length} app records`, time: new Date().toISOString() };
+            console.log(`[CloudSync] ${lastSyncResult.message}`);
+        } else {
+            lastSyncResult = { status: 'error', message: `Server responded ${response.status}`, time: new Date().toISOString() };
+            console.error(`[CloudSync] Failed: ${response.status}`);
+        }
+    } catch (error) {
+        lastSyncResult = { status: 'error', message: error.message, time: new Date().toISOString() };
+        console.error(`[CloudSync] Error: ${error.message}`);
+    }
+    lastSyncAttempt = new Date().toISOString();
+}
+
+setInterval(runCloudSync, 5 * 60 * 1000);
+setTimeout(runCloudSync, 30000);
+
 app.post('/start', asyncHandler(async (req, res) => {
+    const { project_id } = req.body || {};
     let session = getActiveSession('manual');
     if (!session) {
-        const id = startSession('manual');
-        session = { id, status: 'active', total_seconds: 0, type: 'manual' };
-        console.log(`[Manual] Session started: ${id}`);
+        const id = startSession('manual', project_id || null);
+        session = { id, status: 'active', total_seconds: 0, type: 'manual', project_id: project_id || null };
+        console.log(`[Manual] Session started: ${id}${project_id ? ` (project: ${project_id})` : ''}`);
         sendNativeNotification('🏢 Workplace Session Started', 'Manual tracking is now active. Good luck!');
     } else {
+        // If project_id provided and different, update it
+        if (project_id !== undefined) {
+            db.prepare("UPDATE sessions SET project_id = ? WHERE id = ?").run(project_id || null, session.id);
+        }
         db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
         console.log(`[Manual] Session resumed: ${session.id}`);
         sendNativeNotification('🏢 Tracking Resumed', 'Manual session resumed. Welcome back!');
@@ -591,13 +650,19 @@ app.get('/app-usage', (req, res) => {
 // Helper function to get merged category map (default + custom)
 function getCategoryMap() {
     const defaultCategoryMap = {
-        'Productivity': ['Xcode', 'Visual Studio Code', 'Code', 'Terminal', 'iTerm2', 'Sublime Text', 'IntelliJ IDEA', 'PyCharm', 'WebStorm', 'Android Studio', 'Cursor', 'Windsurf', 'Nova', 'BBEdit', 'TextMate'],
-        'Communication': ['Slack', 'Microsoft Teams', 'Zoom', 'Discord', 'Telegram', 'WhatsApp', 'Messages', 'Mail', 'Outlook', 'Spark', 'FaceTime', 'Skype'],
+        'Productivity': ['Xcode', 'Visual Studio Code', 'Code', 'Terminal', 'iTerm2', 'Sublime Text', 'IntelliJ IDEA', 'PyCharm', 'WebStorm', 'Android Studio', 'Cursor', 'Windsurf', 'Nova', 'BBEdit', 'TextMate',
+            'github.com', 'gitlab.com', 'bitbucket.org', 'stackoverflow.com', 'jira.atlassian.com', 'linear.app', 'notion.so', 'trello.com', 'asana.com', 'clickup.com'],
+        'Communication': ['Slack', 'Microsoft Teams', 'Zoom', 'Discord', 'Telegram', 'WhatsApp', 'Messages', 'Mail', 'Outlook', 'Spark', 'FaceTime', 'Skype',
+            'mail.google.com', 'outlook.live.com', 'slack.com', 'teams.microsoft.com', 'discord.com', 'web.whatsapp.com', 'web.telegram.org'],
         'Browsers': ['Safari', 'Google Chrome', 'Firefox', 'Arc', 'Brave Browser', 'Microsoft Edge', 'Opera', 'Vivaldi'],
-        'Design': ['Figma', 'Sketch', 'Adobe Photoshop', 'Adobe Illustrator', 'Adobe XD', 'Canva', 'Affinity Designer', 'Affinity Photo', 'Preview'],
-        'Documents': ['Microsoft Word', 'Microsoft Excel', 'Microsoft PowerPoint', 'Pages', 'Numbers', 'Keynote', 'Notion', 'Obsidian', 'Bear', 'Notes', 'TextEdit'],
-        'Entertainment': ['Spotify', 'Music', 'YouTube', 'Netflix', 'VLC', 'IINA', 'TV', 'Podcasts', 'Books'],
-        'Utilities': ['Finder', 'System Preferences', 'System Settings', 'Activity Monitor', 'Disk Utility', 'Calculator', 'Calendar', 'Reminders', 'Clock', 'Shortcuts']
+        'Design': ['Figma', 'Sketch', 'Adobe Photoshop', 'Adobe Illustrator', 'Adobe XD', 'Canva', 'Affinity Designer', 'Affinity Photo', 'Preview',
+            'figma.com', 'canva.com', 'dribbble.com', 'behance.net'],
+        'Documents': ['Microsoft Word', 'Microsoft Excel', 'Microsoft PowerPoint', 'Pages', 'Numbers', 'Keynote', 'Notion', 'Obsidian', 'Bear', 'Notes', 'TextEdit',
+            'docs.google.com', 'sheets.google.com', 'slides.google.com', 'medium.com'],
+        'Entertainment': ['Spotify', 'Music', 'YouTube', 'Netflix', 'VLC', 'IINA', 'TV', 'Podcasts', 'Books',
+            'youtube.com', 'netflix.com', 'twitch.tv', 'reddit.com', 'twitter.com', 'x.com', 'instagram.com', 'facebook.com', 'tiktok.com', 'spotify.com'],
+        'Utilities': ['Finder', 'System Preferences', 'System Settings', 'Activity Monitor', 'Disk Utility', 'Calculator', 'Calendar', 'Reminders', 'Clock', 'Shortcuts',
+            'calendar.google.com', 'drive.google.com']
     };
 
     // Get custom mappings from settings
@@ -745,6 +810,72 @@ app.get('/reports', (req, res) => {
 });
 
 // Migrations handled in db.js
+
+// --- Project Management Endpoints ---
+app.get('/projects', (req, res) => {
+    res.json({ projects: getProjects() });
+});
+
+app.post('/projects', asyncHandler(async (req, res) => {
+    const { name, color } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Project name is required' });
+    }
+    try {
+        const id = createProject(name.trim(), color || '#8b5cf6');
+        res.json({ success: true, id });
+    } catch (e) {
+        if (e.message && e.message.includes('UNIQUE')) {
+            return res.status(409).json({ error: 'A project with this name already exists' });
+        }
+        throw e;
+    }
+}));
+
+app.delete('/projects/:id', asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid project ID' });
+    deleteProject(id);
+    res.json({ success: true });
+}));
+
+app.get('/project-report', (req, res) => {
+    res.json({ report: getProjectReport() });
+});
+
+// --- Cloud Sync Endpoints ---
+app.get('/sync-status', (req, res) => {
+    const syncEnabled = getSetting('cloudSyncEnabled', 'false');
+    const cloudUrl = getSetting('cloudSyncUrl', '');
+    res.json({
+        enabled: syncEnabled === 'true',
+        cloudUrl: cloudUrl ? '***configured***' : '',
+        lastAttempt: lastSyncAttempt,
+        lastResult: lastSyncResult
+    });
+});
+
+app.post('/sync-now', asyncHandler(async (req, res) => {
+    await runCloudSync();
+    res.json({ success: true, result: lastSyncResult });
+}));
+
+app.post('/cloud-settings', asyncHandler(async (req, res) => {
+    const { cloudSyncUrl, cloudApiKey, cloudSyncEnabled } = req.body;
+    if (cloudSyncUrl !== undefined) setSetting('cloudSyncUrl', cloudSyncUrl);
+    if (cloudApiKey !== undefined) setSetting('cloudApiKey', cloudApiKey);
+    if (cloudSyncEnabled !== undefined) setSetting('cloudSyncEnabled', String(cloudSyncEnabled));
+    invalidateSettingsCache();
+    res.json({ success: true });
+}));
+
+app.get('/cloud-settings', (req, res) => {
+    res.json({
+        cloudSyncUrl: getSetting('cloudSyncUrl', ''),
+        cloudApiKey: getSetting('cloudApiKey', '') ? '••••••••' : '',
+        cloudSyncEnabled: getSetting('cloudSyncEnabled', 'false') === 'true'
+    });
+});
 
 app.listen(PORT, '127.0.0.1', () => {
     console.log(`Server running on http://127.0.0.1:${PORT} (Restricted to localhost)`);
