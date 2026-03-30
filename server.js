@@ -523,7 +523,7 @@ app.post('/location', asyncHandler(async (req, res) => {
 
     const officeLat = parseFloat(getSetting('officeLat'));
     const officeLng = parseFloat(getSetting('officeLng'));
-    const officeRadius = parseInt(getSetting('officeRadius', '200'), 10); // meters
+    const officeRadius = parseInt(getSetting('officeRadius', '300'), 10); // meters
 
     if (isNaN(officeLat) || isNaN(officeLng)) {
         // Office location not configured, do nothing
@@ -598,7 +598,7 @@ app.get('/status', (req, res) => {
 
     const officeLat = getSetting('officeLat', '');
     const officeLng = getSetting('officeLng', '');
-    const officeRadius = getSetting('officeRadius', '200');
+    const officeRadius = getSetting('officeRadius', '300');
 
     const baseManualSeconds = getTodayManualTotal();
 
@@ -726,7 +726,7 @@ app.get('/settings', (req, res) => {
     const customAppCategories = getSetting('customAppCategories', '{}');
     const officeLat = getSetting('officeLat', '');
     const officeLng = getSetting('officeLng', '');
-    const officeRadius = getSetting('officeRadius', '200');
+    const officeRadius = getSetting('officeRadius', '300');
 
     res.json({
         goalHours: parseInt(goalHours),

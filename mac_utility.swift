@@ -452,7 +452,7 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
 // MARK: - Menu Bar Utility
 class MenuBarUtility: NSObject {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    let serverURL = "http://localhost:3000"
+    let serverURL = "http://127.0.0.1:3000"
     var pollTimer: Timer?
     var uiTimer: Timer?
     var appTrackTimer: Timer?
@@ -543,13 +543,23 @@ class MenuBarUtility: NSObject {
             self.isScreenLocked = false
             self.sendEvent("unlock")
         }
+        
+        // Additional reliable observers for session state
+        wsnc.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) { _ in
+            self.isScreenLocked = true
+            self.sendEvent("lock")
+        }
+        wsnc.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main) { _ in
+            self.isScreenLocked = false
+            self.sendEvent("unlock")
+        }
     }
 
     func setupLocationManager() {
         locationManager = CLLocationManager()
         locationManager?.delegate = self
-        locationManager?.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        locationManager?.distanceFilter = 50 // Send updates when moved > 50 meters
+        locationManager?.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager?.distanceFilter = 10.0 // Send updates when moved > 10 meters (more sensitive)
         
         // Request authorization then start updating
         print("Requesting Location Authorization...")
@@ -577,6 +587,13 @@ class MenuBarUtility: NSObject {
         // Check for user idle every 30s
         idleCheckTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
             self.checkIdleState()
+        }
+
+        // Fallback: Force a location update check every 5 minutes if no movement detected
+        Timer.scheduledTimer(withTimeInterval: 300.0, repeats: true) { _ in
+            print("[Location] Triggering fallback location update check...")
+            self.locationManager?.stopUpdatingLocation()
+            self.locationManager?.startUpdatingLocation()
         }
         
         // Initial fetch
@@ -804,7 +821,10 @@ extension MenuBarUtility: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
-        print("Location updated: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+        let lat = location.coordinate.latitude
+        let lng = location.coordinate.longitude
+        let acc = location.horizontalAccuracy
+        print("[Location] Updated: \(lat), \(lng) (Accuracy: \(acc)m)")
         
         // Send location to local server for automation rule processing
         guard let url = URL(string: "\(serverURL)/location") else { return }
@@ -813,16 +833,21 @@ extension MenuBarUtility: CLLocationManagerDelegate {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let json: [String: Any] = [
-            "latitude": location.coordinate.latitude,
-            "longitude": location.coordinate.longitude
+            "latitude": lat,
+            "longitude": lng,
+            "accuracy": acc
         ]
         
         request.httpBody = try? JSONSerialization.data(withJSONObject: json)
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("Failed to send location to server: \(error.localizedDescription)")
+                print("[Location] Failed to send to server: \(error.localizedDescription)")
             } else if let httpResponse = response as? HTTPURLResponse {
-                print("Server responded to location update with status: \(httpResponse.statusCode)")
+                if httpResponse.statusCode == 200 {
+                    print("[Location] Server processed update successfully")
+                } else {
+                    print("[Location] Server returned error status: \(httpResponse.statusCode)")
+                }
             }
         }.resume()
     }
