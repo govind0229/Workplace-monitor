@@ -415,13 +415,20 @@ app.post('/start', asyncHandler(async (req, res) => {
         console.log(`[Manual] Session started: ${id}${project_id ? ` (project: ${project_id})` : ''}`);
         sendNativeNotification('🏢 Workplace Session Started', 'Manual tracking is now active. Good luck!');
     } else {
-        // If project_id provided and different, update it
-        if (project_id !== undefined) {
-            db.prepare("UPDATE sessions SET project_id = ? WHERE id = ?").run(project_id || null, session.id);
+        // If project_id provided and different, complete old session and start new one
+        // This ensures time is accurately attributed to the correct project
+        const providedProjectId = project_id !== undefined ? (project_id || null) : session.project_id;
+        
+        if (String(providedProjectId) !== String(session.project_id)) {
+            console.log(`[Manual] Project changed from ${session.project_id} to ${providedProjectId}. Splitting session.`);
+            completeSession(session.id);
+            const newId = startSession('manual', providedProjectId);
+            session = { id: newId, status: 'active', total_seconds: 0, type: 'manual', project_id: providedProjectId };
+        } else {
+            db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+            console.log(`[Manual] Session resumed: ${session.id}`);
+            sendNativeNotification('🏢 Tracking Resumed', 'Manual session resumed. Welcome back!');
         }
-        db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
-        console.log(`[Manual] Session resumed: ${session.id}`);
-        sendNativeNotification('🏢 Tracking Resumed', 'Manual session resumed. Welcome back!');
     }
     res.json({ success: true, session });
 }));
@@ -752,6 +759,14 @@ app.get('/today-apps', (req, res) => {
     const usage = getTodayAppUsage();
     const apps = usage.map(app => app.app_name).sort();
     res.json({ apps });
+});
+
+app.get('/project-reports', (req, res) => {
+    const { getProjectReport, getDetailedProjectHistory } = require('./db');
+    res.json({ 
+        summary: getProjectReport(),
+        history: getDetailedProjectHistory()
+    });
 });
 
 app.get('/today-events', (req, res) => {

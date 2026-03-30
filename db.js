@@ -130,6 +130,17 @@ module.exports = {
       LIMIT 30
     `).all();
   },
+  getDetailedProjectHistory: () => {
+    return db.prepare(`
+      SELECT s.date, p.name as project_name, p.color as project_color, SUM(s.total_seconds) as total_seconds
+      FROM sessions s
+      LEFT JOIN projects p ON s.project_id = p.id
+      WHERE s.type = 'manual'
+      GROUP BY s.date, s.project_id
+      ORDER BY s.date DESC, total_seconds DESC
+      LIMIT 50
+    `).all();
+  },
   getWeeklyReport: () => {
     return db.prepare(`
       SELECT strftime('%Y-%W', date) as week, 

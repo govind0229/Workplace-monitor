@@ -940,6 +940,20 @@ startBtn.onclick = async () => {
     updateStatus(true);
 };
 
+// Add listener to project selector for real-time splitting when changed mid-session
+document.getElementById('projectSelect').onchange = async (e) => {
+    // Only trigger if a manual session is active or paused
+    if (manualStatus === 'active' || manualStatus === 'paused') {
+        const projectId = e.target.value || null;
+        await fetch(`${API_BASE}/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId ? parseInt(projectId) : null })
+        });
+        updateStatus(true);
+    }
+};
+
 pauseBtn.onclick = async () => {
     await fetch(`${API_BASE}/pause`, { method: 'POST' });
     updateStatus(true);
@@ -960,11 +974,97 @@ stopBtn.onclick = async () => {
 
 async function fetchReports() {
     try {
+        if (currentTab === 'projects') {
+            await renderProjectReport();
+            return;
+        }
         const res = await fetch(`${API_BASE}/reports`);
         reportsData = await res.json();
         renderActiveTab();
     } catch (e) {
         console.error("Failed to fetch reports", e);
+    }
+}
+
+async function renderProjectReport() {
+    const reportsList = document.getElementById('reportsList');
+    if (!reportsList) return;
+    
+    reportsList.innerHTML = '<div class="chart-loading">Loading project stats...</div>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/project-reports`);
+        const data = await res.json();
+        const summary = data.summary || [];
+        const history = data.history || [];
+        
+        const fragment = document.createDocumentFragment();
+        
+        // --- SUMMARY SECTION ---
+        const summaryHeader = document.createElement('div');
+        summaryHeader.className = 'report-item report-header';
+        summaryHeader.style.marginTop = '0';
+        summaryHeader.innerHTML = `
+            <span>Project (Total)</span>
+            <span>Total Time</span>
+            <span>Sessions</span>
+        `;
+        fragment.appendChild(summaryHeader);
+        
+        if (summary.length > 0) {
+            summary.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'report-item';
+                row.innerHTML = `
+                    <span style="display:flex; align-items:center; gap:8px;">
+                        <span style="width:10px; height:10px; border-radius:50%; background:${item.color || 'var(--primary)'}"></span>
+                        ${escapeHTML(item.name || 'No Project')}
+                    </span>
+                    <span style="font-weight:600; color:var(--primary)">${formatTime(item.total_seconds)}</span>
+                    <span class="auto-total-dim">${item.session_count} total</span>
+                `;
+                fragment.appendChild(row);
+            });
+        }
+        
+        // --- HISTORY SECTION ---
+        const historyTitle = document.createElement('div');
+        historyTitle.className = 'report-item report-header';
+        historyTitle.style.marginTop = '24px';
+        historyTitle.innerHTML = `
+            <span>History (By Project)</span>
+            <span>Duration</span>
+            <span>Date</span>
+        `;
+        fragment.appendChild(historyTitle);
+        
+        if (history.length > 0) {
+            history.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'report-item';
+                row.innerHTML = `
+                    <span style="display:flex; align-items:center; gap:8px;">
+                        <span style="width:10px; height:10px; border-radius:50%; background:${item.project_color || '#555'}"></span>
+                        ${escapeHTML(item.project_name || 'No Project')}
+                    </span>
+                    <span style="font-weight:600">${formatTime(item.total_seconds)}</span>
+                    <span class="auto-total-dim">${escapeHTML(item.date)}</span>
+                `;
+                fragment.appendChild(row);
+            });
+        } else {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'text-align:center; color:var(--text-dim); padding:40px;';
+            empty.textContent = 'No project history recorded yet';
+            fragment.appendChild(empty);
+        }
+        
+        requestAnimationFrame(() => {
+            reportsList.innerHTML = '';
+            reportsList.appendChild(fragment);
+        });
+    } catch (e) {
+        reportsList.innerHTML = '<div class="chart-loading">Error loading project report</div>';
     }
 }
 
@@ -1016,7 +1116,7 @@ tabButtons.forEach(btn => {
         tabButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentTab = btn.dataset.tab;
-        renderActiveTab();
+        fetchReports();
     };
 });
 
