@@ -452,7 +452,8 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
 // MARK: - Menu Bar Utility
 class MenuBarUtility: NSObject {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    let serverURL = "http://127.0.0.1:3000"
+    private let apiBase = "http://localhost:3000"
+    private let serverURL = "http://localhost:3000"
     var pollTimer: Timer?
     var uiTimer: Timer?
     var appTrackTimer: Timer?

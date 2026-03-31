@@ -40,6 +40,7 @@ let currentStatsRange = 7;
 let reportsData = null;
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
 let goalLinePercent = getStoredInt('goalLinePercent', 44);
+let defaultProjectId = null;
 
 function getStoredInt(key, defaultValue) {
     const val = localStorage.getItem(key);
@@ -182,6 +183,7 @@ async function loadSettings() {
         const wfhBreakInput = document.getElementById('wfhBreakInterval');
         if (wfhBreakInput) wfhBreakInput.value = data.wfhBreakInterval || 60;
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
+        defaultProjectId = data.defaultProjectId || null;
 
         if (officeRadiusInput && data.officeRadius) {
             officeRadiusInput.value = data.officeRadius;
@@ -804,6 +806,26 @@ async function updateStatus(forceSync = false) {
             manualStatus = data.manual.status;
             autoStatus = data.automatic.status;
 
+            // Updated rule: ensure project selector reflects active session's project
+            let activeProjectId = null;
+            if (manualStatus === 'active' || manualStatus === 'paused') {
+                activeProjectId = data.manual.project_id;
+            } else if (autoStatus === 'active' || autoStatus === 'paused') {
+                activeProjectId = data.automatic.project_id;
+            } else {
+                // If idle, use the default project
+                activeProjectId = defaultProjectId;
+            }
+
+            const projectSelect = document.getElementById('projectSelect');
+            if (projectSelect) {
+                const targetValue = (activeProjectId !== null && activeProjectId !== undefined) ? String(activeProjectId) : "";
+                if (projectSelect.value !== targetValue) {
+                    const exists = Array.from(projectSelect.options).some(o => o.value === targetValue);
+                    if (exists) projectSelect.value = targetValue;
+                }
+            }
+
             // Critical: Align our local reference with the MOMENT of fetch completion
             lastSyncRealTime = Date.now();
 
@@ -942,14 +964,31 @@ startBtn.onclick = async () => {
 
 // Add listener to project selector for real-time splitting when changed mid-session
 document.getElementById('projectSelect').onchange = async (e) => {
-    // Only trigger if a manual session is active or paused
-    if (manualStatus === 'active' || manualStatus === 'paused') {
-        const projectId = e.target.value || null;
+    const projectId = e.target.value || null;
+    
+    // NEW: If any session is active/paused, split and update it
+    if (manualStatus === 'active' || manualStatus === 'paused' || 
+        autoStatus === 'active' || autoStatus === 'paused') {
+        
         await fetch(`${API_BASE}/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId ? parseInt(projectId) : null })
+            body: JSON.stringify({ 
+                project_id: projectId ? parseInt(projectId) : null,
+                // Tell server to check automatic too if no manual found
+                include_automatic: true 
+            })
         });
+        updateStatus(true);
+    } else {
+        // If system is IDLE, just tell the server to update the default project setting
+        // This ensures the NEXT session starts with this project.
+        await fetch(`${API_BASE}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ defaultProjectId: projectId ? parseInt(projectId) : null })
+        });
+        defaultProjectId = projectId ? parseInt(projectId) : null;
         updateStatus(true);
     }
 };
@@ -1747,7 +1786,15 @@ async function loadProjects() {
                 opt.style.color = p.color;
                 projectSelect.appendChild(opt);
             });
-            if (currentVal) projectSelect.value = currentVal;
+            
+            // If manual session is active, it will be set by updateStatus
+            // If idle, set to default
+            if (manualStatus === 'idle' && autoStatus === 'idle') {
+                if (defaultProjectId) projectSelect.value = defaultProjectId;
+                else projectSelect.value = "";
+            } else if (currentVal) {
+                projectSelect.value = currentVal;
+            }
         }
         renderProjectsList(data.projects || []);
     } catch (e) {
@@ -1762,23 +1809,75 @@ function renderProjectsList(projects) {
         list.innerHTML = '<div class="category-mappings-empty">No projects yet. Add one above to start tracking by project.</div>';
         return;
     }
-    list.innerHTML = projects.map(p => `
-        <div class="category-mapping-item">
-            <div class="category-mapping-info">
-                <span class="project-color-dot" style="background: ${escapeHTML(p.color)};"></span>
-                <span class="category-mapping-app">${escapeHTML(p.name)}</span>
+    list.innerHTML = projects.map(p => {
+        const isDefault = String(p.id) === String(defaultProjectId);
+        return `
+            <div class="category-mapping-item">
+                <div class="category-mapping-info">
+                    <span class="project-color-dot" style="background: ${escapeHTML(p.color)};"></span>
+                    <span class="category-mapping-app">${escapeHTML(p.name)}</span>
+                    ${isDefault ? '<span class="default-project-badge">Default</span>' : ''}
+                </div>
+                <div style="display: flex; align-items: center;">
+                    ${!isDefault ? `<button class="set-default-btn" data-project-id="${p.id}">Set Default</button>` : ''}
+                    <button class="category-mapping-remove" data-project-id="${p.id}" title="Delete Project">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
             </div>
-            <button class="category-mapping-remove" data-project-id="${p.id}">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-        </div>
-    `).join('');
+        `;
+    }).join('');
+
+    // Set Default Handlers
+    list.querySelectorAll('.set-default-btn').forEach(btn => {
+        btn.onclick = async () => {
+            const id = btn.dataset.projectId;
+            try {
+                // 1. Save setting
+                await fetch(`${API_BASE}/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ defaultProjectId: parseInt(id) })
+                });
+                defaultProjectId = id;
+                
+                // 2. If any session is active, split/update it to the new project immediately
+                if (manualStatus === 'active' || manualStatus === 'paused' || 
+                    autoStatus === 'active' || autoStatus === 'paused') {
+                    await fetch(`${API_BASE}/start`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            project_id: parseInt(id),
+                            include_automatic: true 
+                        })
+                    });
+                }
+                
+                loadProjects(); // Refresh UI
+                updateStatus(true); // Sync dashboard
+            } catch (e) { 
+                console.error('Failed to set default project:', e);
+                alert('Failed to set default project.'); 
+            }
+        };
+    });
+
     list.querySelectorAll('.category-mapping-remove').forEach(btn => {
         btn.onclick = async () => {
             const id = btn.dataset.projectId;
             if (!confirm('Delete this project? Time logged to it will become unassigned.')) return;
             try {
                 await fetch(`${API_BASE}/projects/${id}`, { method: 'DELETE' });
+                // If deleted project was the default, clear it
+                if (String(id) === String(defaultProjectId)) {
+                    await fetch(`${API_BASE}/settings`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ defaultProjectId: null })
+                    });
+                    defaultProjectId = null;
+                }
                 loadProjects();
             } catch (e) { alert('Failed to delete project.'); }
         };

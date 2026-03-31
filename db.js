@@ -98,11 +98,18 @@ module.exports = {
   },
   getTodayAutomaticSession: () => {
     let session = db.prepare("SELECT * FROM sessions WHERE date = date('now') AND type = 'automatic' LIMIT 1").get();
+    const defaultProjectIdStr = module.exports.getSetting('defaultProjectId');
+    const defaultProjectId = defaultProjectIdStr ? parseInt(defaultProjectIdStr) : null;
+
     if (!session) {
       // Start as PAUSED — the Swift app will send 'unlock' to activate it.
       // This prevents time from accumulating overnight when the machine is asleep.
-      const info = db.prepare("INSERT INTO sessions (status, last_tick, type) VALUES ('paused', CURRENT_TIMESTAMP, 'automatic')").run();
+      const info = db.prepare("INSERT INTO sessions (status, last_tick, type, project_id) VALUES ('paused', CURRENT_TIMESTAMP, 'automatic', ?)").run(defaultProjectId);
       session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(info.lastInsertRowid);
+    } else if (session.project_id === null && defaultProjectId !== null) {
+      // If session exists but has no project, and we have a default project, apply it!
+      db.prepare("UPDATE sessions SET project_id = ? WHERE id = ?").run(defaultProjectId, session.id);
+      session.project_id = defaultProjectId;
     }
     return session;
   },
@@ -134,11 +141,10 @@ module.exports = {
     return db.prepare(`
       SELECT s.date, p.name as project_name, p.color as project_color, SUM(s.total_seconds) as total_seconds
       FROM sessions s
-      LEFT JOIN projects p ON s.project_id = p.id
-      WHERE s.type = 'manual'
+      JOIN projects p ON s.project_id = p.id
       GROUP BY s.date, s.project_id
       ORDER BY s.date DESC, total_seconds DESC
-      LIMIT 50
+      LIMIT 100
     `).all();
   },
   getWeeklyReport: () => {
@@ -195,7 +201,8 @@ module.exports = {
     return row ? row.value : defaultValue;
   },
   setSetting: (key, value) => {
-    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?").run(key, String(value), String(value));
+    const val = (value === null || value === undefined) ? "" : String(value);
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?").run(key, val, val);
   },
   getRecentlySentMessages: (days = 7) => {
     const rows = db.prepare(
@@ -217,7 +224,16 @@ module.exports = {
     return db.prepare("SELECT * FROM projects ORDER BY name ASC").all();
   },
   deleteProject: (id) => {
+    // 1. Clear it from any past sessions
     db.prepare("UPDATE sessions SET project_id = NULL WHERE project_id = ?").run(id);
+    
+    // 2. Clear it from default setting if it matches
+    const currentDefault = module.exports.getSetting('defaultProjectId');
+    if (String(currentDefault) === String(id)) {
+      module.exports.setSetting('defaultProjectId', null);
+    }
+    
+    // 3. Delete the project itself
     db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   },
   getProjectReport: () => {
