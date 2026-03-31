@@ -36,17 +36,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             return
         }
         
-        let appPath = "\(resourcePath)/app"
-        let nodePath = "\(appPath)/node"
-        let serverScriptPath = "\(appPath)/server.js"
+        var appPath = "\(resourcePath)/app"
+        var nodePath = "\(appPath)/node"
+        var serverScriptPath = "\(appPath)/server.js"
         
-        // Check if files exist
+        // --- FALLBACK FOR LOCAL DEVELOPMENT ---
+        // If Bundle resource path/app/server.js doesn't exist, check same folder as executable
         let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: nodePath) else {
-            print("Error: Bundled Node.js not found at \(nodePath)")
-            return
+        if !fileManager.fileExists(atPath: serverScriptPath) {
+            let localNodePath = "./node"
+            let localServerPath = "./server.js"
+            if fileManager.fileExists(atPath: localServerPath) {
+                print("Notice: Resource bundle not found, using local fallback in current directory.")
+                appPath = FileManager.default.currentDirectoryPath
+                nodePath = fileManager.fileExists(atPath: localNodePath) ? localNodePath : "/usr/local/bin/node"
+                serverScriptPath = localServerPath
+            }
         }
-        guard fileManager.fileExists(atPath: serverScriptPath) else {
+        
+        // Final sanity check
+        if !fileManager.fileExists(atPath: serverScriptPath) {
             print("Error: server.js not found at \(serverScriptPath)")
             return
         }

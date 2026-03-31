@@ -1582,6 +1582,14 @@ window.addEventListener('offline', () => {
         if (goalLabel) {
             goalLabel.textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;
         }
+        
+        // Sync default project
+        if (data.defaultProjectId) {
+            defaultProjectId = String(data.defaultProjectId);
+        }
+        
+        // Refresh project list to reflect default
+        loadProjects();
     } catch (e) {
         const goalLabel = document.querySelector('.goal-label');
         if (goalLabel) {
