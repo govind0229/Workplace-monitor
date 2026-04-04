@@ -35,13 +35,25 @@ jobs:
           VERSION: ${{ github.event.inputs.version }}
         run: bash pkg_installer/build_pkg.sh
 
-      - name: Generate Homebrew Cask Formula
+      - name: Update Homebrew Tap
         env:
           VERSION: ${{ github.event.inputs.version }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "TAP_GITHUB_TOKEN is missing. Skipping Homebrew tap update."
+            exit 0
+          fi
+          
           SHA256=$(shasum -a 256 WorkingHours.pkg | awk '{print $1}')
-          cat > workinghours.rb << EOF
-          cask "workinghours" do
+          
+          git clone https://${TAP_GITHUB_TOKEN}@github.com/govind0229/homebrew-tap.git tap-repo
+          cd tap-repo
+          mkdir -p Casks
+          
+          generate_cask() {
+            cat > "Casks/${1}.rb" << EOF
+          cask "${1}" do
             version "$VERSION"
             sha256 "$SHA256"
 
@@ -55,6 +67,16 @@ jobs:
             uninstall pkgutil: "com.user.workinghours"
           end
           EOF
+          }
+          
+          generate_cask "workinghours"
+          generate_cask "workinghours@$VERSION"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/
+          git commit -m "Update workinghours to v$VERSION" || echo "No changes to commit"
+          git push origin main
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
@@ -63,6 +85,5 @@ jobs:
           name: WorkingHours v${{ github.event.inputs.version }}
           files: |
             WorkingHours.pkg
-            workinghours.rb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
