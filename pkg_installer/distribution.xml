@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>WorkingHours</title>
+    <organization>com.user.workinghours</organization>
+    <domains enable_localSystem="true" />
+    <options customize="never" require-scripts="true" rootVolumeOnly="true" />
+
+    <!-- Minimum macOS version -->
+    <allowed-os-versions>
+        <os-version min="12.0" />
+    </allowed-os-versions>
+
+    <!-- Welcome / Readme (optional — uncomment and provide files) -->
+    <!-- <welcome    file="welcome.html"  mime-type="text/html" /> -->
+    <!-- <readme     file="readme.html"   mime-type="text/html" /> -->
+    <!-- <license    file="license.html"  mime-type="text/html" /> -->
+
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.user.workinghours.pkg" />
+        </line>
+    </choices-outline>
+
+    <choice id="default" />
+
+    <choice id="com.user.workinghours.pkg"
+            visible="false"
+            customLocation="/Applications">
+        <pkg-ref id="com.user.workinghours.pkg" />
+    </choice>
+
+    <pkg-ref id="com.user.workinghours.pkg"
+             version="1.4.0"
+             onConclusion="none">WorkingHours-component.pkg</pkg-ref>
+
+</installer-gui-script>
