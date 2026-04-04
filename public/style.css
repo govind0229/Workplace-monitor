@@ -126,6 +126,16 @@ body[data-theme="light"] .progress-bar::after {
   background: rgba(255, 255, 255, 0.6);
 }
 
+body[data-theme="light"] .project-selector-row {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body[data-theme="light"] .project-selector-row:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -337,13 +347,13 @@ nav {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 48px 32px;
+  padding: 56px 40px;
   background: linear-gradient(145deg, var(--primary-dim), rgba(255, 255, 255, 0.01));
   border: 1px solid var(--primary-dim);
   border-radius: var(--radius);
   position: relative;
   overflow: hidden;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
   box-shadow: var(--shadow-hero);
 }
 
@@ -386,27 +396,30 @@ nav {
 
 /* ─── Timer ─── */
 .timer {
-  font-size: 5rem;
-  font-weight: 300;
-  margin: 20px 0 32px;
+  font-size: 5.5rem;
+  font-weight: 200;
+  margin: 16px 0 28px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -3px;
+  letter-spacing: -2px;
   color: var(--text);
   text-align: center;
   line-height: 1;
-  text-shadow: 0 4px 24px rgba(255, 255, 255, 0.15);
+  text-shadow: 0 4px 32px rgba(255, 255, 255, 0.1);
   will-change: contents;
 }
 
 /* ─── Status Badge ─── */
 .status-badge {
-  padding: 5px 14px;
-  border-radius: 20px;
-  font-size: 0.7rem;
+  padding: 6px 16px;
+  border-radius: 100px;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
-  font-weight: 600;
+  letter-spacing: 1px;
+  font-weight: 700;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .status-active {
@@ -506,11 +519,18 @@ nav {
 }
 
 /* ─── Controls ─── */
+.hero-selection-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 20px 0 12px;
+}
+
 .controls {
   display: flex;
-  gap: 12px;
+  gap: 16px;
   justify-content: center;
-  margin-top: 32px;
+  width: 100%;
 }
 
 .btn {
@@ -680,12 +700,11 @@ h2 {
 
 .report-item {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  padding: 14px 16px;
+  grid-template-columns: 1.5fr 1fr 1fr;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border);
-  font-size: 0.875rem;
-  transition: background 0.15s ease;
-  border-radius: 0;
+  align-items: center;
+  transition: background 0.2s;
 }
 
 .report-item:last-child {
@@ -970,6 +989,42 @@ body[data-theme="light"] .theme-btn.active {
   gap: 6px;
   padding-top: 6px;
   flex-shrink: 0;
+}
+
+.btn-sm svg {
+  flex-shrink: 0;
+}
+
+.set-default-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: all 0.2s ease;
+}
+
+.set-default-btn:hover {
+  background: var(--border);
+  color: var(--text);
+  border-color: var(--secondary);
+}
+
+.default-project-badge {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--secondary);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-left: 8px;
+  letter-spacing: 0.03em;
 }
 
 .chart-day-cell {
@@ -2657,3 +2712,114 @@ body[data-theme="light"] .date-capsule:hover {
   transition: d 0.5s ease-out;
 }
 
+
+/* ─── Project Selector ─── */
+.project-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  max-width: 280px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  transition: all 0.2s ease;
+}
+
+.project-selector-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-hover);
+}
+
+.project-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.project-select {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 2px center;
+  padding-right: 22px;
+  transition: color 0.2s;
+}
+
+.project-select:hover {
+  color: var(--text);
+}
+
+body[data-theme="light"] .project-select {
+  background: rgba(255, 255, 255, 0.9);
+  color: #09090b;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.project-select:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.15);
+}
+
+.project-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.2);
+}
+
+.color-input {
+  width: 100% !important;
+  height: 38px;
+  padding: 2px !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+/* ─── Text & Password Inputs ─── */
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  border-radius: var(--radius-xs);
+  color: #fff;
+  font-size: 0.875rem;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input[type="text"]:hover,
+input[type="password"]:hover {
+  border-color: var(--border-hover);
+}

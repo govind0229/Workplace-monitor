@@ -7,14 +7,14 @@ function sendNativeNotification(title, message) {
     console.log(`[Queueing Notification] ${title}: ${message} (Queue length: ${notificationQueue.length})`);
 }
 
-const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent } = require('./db');
+const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent, createProject, getProjects, deleteProject, getProjectReport, getLastSyncedId, updateSyncedId, getUnsyncedData } = require('./db');
 const cors = require('cors');
 
 // Pre-compiled prepared statements for hot paths (avoids SQLite re-planning on every tick)
-const stmtUpdateLastTick     = db.prepare("UPDATE sessions SET last_tick = CURRENT_TIMESTAMP WHERE id = ?");
-const stmtSetStatus          = db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?");
-const stmtSetNotified        = db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?");
-const stmtSetBreakNotify     = db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?");
+const stmtUpdateLastTick = db.prepare("UPDATE sessions SET last_tick = CURRENT_TIMESTAMP WHERE id = ?");
+const stmtSetStatus = db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?");
+const stmtSetNotified = db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?");
+const stmtSetBreakNotify = db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?");
 
 // Settings cache — settings rarely change mid-session, so we cache them for 30 seconds
 let _settingsCache = {};
@@ -39,19 +39,19 @@ const tracery = require('tracery-grammar');
 
 // Shared grammar rules used across all time slots
 const SHARED_RULES = {
-    duration:    ['2 minutes', '5 minutes', 'a few seconds', '60 seconds', 'a minute'],
-    body_part:   ['your back', 'your neck', 'your shoulders', 'your wrists', 'your eyes'],
-    benefit:     ['boosts focus', 'reduces tension', 'recharges energy', 'prevents strain', 'improves circulation', 'clears your mind'],
-    water_size:  ['a glass', 'a full glass', 'a mug'],
+    duration: ['2 minutes', '5 minutes', 'a few seconds', '60 seconds', 'a minute'],
+    body_part: ['your back', 'your neck', 'your shoulders', 'your wrists', 'your eyes'],
+    benefit: ['boosts focus', 'reduces tension', 'recharges energy', 'prevents strain', 'improves circulation', 'clears your mind'],
+    water_size: ['a glass', 'a full glass', 'a mug'],
 };
 
 // Per-slot grammar rules layered on top of shared rules
 const SLOT_RULES = {
     morning: {
         ...SHARED_RULES,
-        verb:    ['stretch', 'breathe deeply', 'hydrate', 'plan your day', 'step outside briefly'],
+        verb: ['stretch', 'breathe deeply', 'hydrate', 'plan your day', 'step outside briefly'],
         context: ['before your first meeting', 'before you dive in', 'to start strong', 'as a morning ritual'],
-        tip:     [
+        tip: [
             '#verb# for #duration# #context# — it #benefit#.',
             'Drink #water_size# now. Starting hydrated keeps #benefit# through to lunch.',
             'Take #duration# to check your posture and breathe. It #benefit#.',
@@ -84,7 +84,7 @@ const SLOT_RULES = {
             'Quick posture reset: feet flat, screen at eye level, shoulders relaxed.',
             'A healthy snack now — nuts, fruit, or yoghurt — keeps your brain fueled.',
         ],
-        verb:    ['stretch', 'walk around', 'breathe', 'reset your posture'],
+        verb: ['stretch', 'walk around', 'breathe', 'reset your posture'],
         slot_title: ['😴 Afternoon Reset', '👁️ Eye Break', '🙆 Stretch Time', '💧 Hydration Check', '🧠 Focus Reset', '🍎 Snack Break'],
     },
     late_afternoon: {
@@ -123,17 +123,17 @@ function buildGrammar(slot) {
 }
 
 function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
-    const now  = new Date();
+    const now = new Date();
     const hour = now.getHours();
-    const min  = now.getMinutes();
-    const t    = hour + (min / 60);
+    const min = now.getMinutes();
+    const t = hour + (min / 60);
 
     const slot = overrideSlot || (
-                 t < 11 ? 'morning'
-               : t < 13.5 ? 'lunch'
-               : t < 16   ? 'afternoon'
-               : t < 18.5 ? 'late_afternoon'
-               :             'evening');
+        t < 11 ? 'morning'
+            : t < 13.5 ? 'lunch'
+                : t < 16 ? 'afternoon'
+                    : t < 18.5 ? 'late_afternoon'
+                        : 'evening');
 
     const grammar = buildGrammar(slot);
     grammar.addModifiers(tracery.baseEngModifiers);
@@ -147,9 +147,9 @@ function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
     const MAX_ATTEMPTS = 8;
 
     do {
-        body  = grammar.flatten('#origin#');
+        body = grammar.flatten('#origin#');
         // Use longer body string as key for reliable dedup
-        key   = `${slot}_${body.trim().toLowerCase().replace(/\W+/g, '_').substring(0, 100)}`;
+        key = `${slot}_${body.trim().toLowerCase().replace(/\W+/g, '_').substring(0, 100)}`;
         title = SLOT_RULES[slot].slot_title[Math.floor(Math.random() * SLOT_RULES[slot].slot_title.length)];
         attempts++;
     } while (recentKeys.has(key) && attempts < MAX_ATTEMPTS);
@@ -234,12 +234,12 @@ const asyncHandler = fn => (req, res, next) => {
 })();
 
 const TIME_SCHEDULE = [
-    { hour: 9,  id: 'breakfast',   slot: 'morning' },
+    { hour: 9, id: 'breakfast', slot: 'morning' },
     { hour: 11, id: 'mid_morning', slot: 'morning' },
-    { hour: 13, id: 'lunch',       slot: 'lunch' },
-    { hour: 16, id: 'afternoon',   slot: 'afternoon' },
-    { hour: 19, id: 'dinner',      slot: 'evening' },
-    { hour: 23, id: 'late_night',  slot: 'evening' }
+    { hour: 13, id: 'lunch', slot: 'lunch' },
+    { hour: 16, id: 'afternoon', slot: 'afternoon' },
+    { hour: 19, id: 'dinner', slot: 'evening' },
+    { hour: 23, id: 'late_night', slot: 'evening' }
 ];
 
 function checkTimeBasedNotifications() {
@@ -247,13 +247,13 @@ function checkTimeBasedNotifications() {
     const automaticSession = getTodayAutomaticSession();
     const isManualActive = manualSession && manualSession.status === 'active';
     const isAutoActive = automaticSession && automaticSession.status === 'active';
-    
+
     // Only remind if they are currently working (in the office or WFH)
     if (!isManualActive && !isAutoActive) return;
 
     const now = new Date();
     const currentHour = now.getHours();
-    const todayStr = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`; // Local date string
+    const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`; // Local date string
 
     for (const meal of TIME_SCHEDULE) {
         if (currentHour === meal.hour) {
@@ -275,10 +275,10 @@ function checkTimeBasedNotifications() {
 function runBackgroundLoop() {
     try {
         checkTimeBasedNotifications();
-        
+
         const types = ['manual', 'automatic'];
         // Fetch both sessions in one pass to avoid extra queries
-        const manualSession   = getActiveSession('manual');
+        const manualSession = getActiveSession('manual');
         const automaticSession = getTodayAutomaticSession();
 
         for (const [type, activeSession] of [['manual', manualSession], ['automatic', automaticSession]]) {
@@ -307,11 +307,11 @@ function runBackgroundLoop() {
 
             // Goal check only for manual session
             if (type === 'manual') {
-                const goalH   = parseInt(getCachedSetting('goalHours', '4'));
-                const goalM   = parseInt(getCachedSetting('goalMinutes', '10'));
+                const goalH = parseInt(getCachedSetting('goalHours', '4'));
+                const goalM = parseInt(getCachedSetting('goalMinutes', '10'));
                 const goalSec = (goalH * 3600) + (goalM * 60);
 
-                const todayTotal      = getTodayManualTotal();
+                const todayTotal = getTodayManualTotal();
                 const alreadyNotified = hasNotifiedToday();
 
                 if (todayTotal >= goalSec && !alreadyNotified) {
@@ -323,7 +323,7 @@ function runBackgroundLoop() {
                 // Break reminder
                 const breakMin = parseInt(getCachedSetting('breakInterval', '60'));
                 if (breakMin > 0) {
-                    const breakSec  = breakMin * 60;
+                    const breakSec = breakMin * 60;
                     const lastBreak = activeSession.last_break_notify || 0;
                     if (activeSession.total_seconds - lastBreak >= breakSec) {
                         const msg = getSmartBreakMessage('manual');
@@ -334,7 +334,7 @@ function runBackgroundLoop() {
             } else if (type === 'automatic') {
                 const wfhBreakMin = parseInt(getCachedSetting('wfhBreakInterval', '60'));
                 if (wfhBreakMin > 0) {
-                    const breakSec  = wfhBreakMin * 60;
+                    const breakSec = wfhBreakMin * 60;
                     const lastBreak = activeSession.last_break_notify || 0;
                     if (activeSession.total_seconds - lastBreak >= breakSec) {
                         const msg = getSmartBreakMessage('automatic');
@@ -352,18 +352,111 @@ function runBackgroundLoop() {
 }
 setTimeout(runBackgroundLoop, 5000);
 
+// --- Cloud Sync Background Worker ---
+let lastSyncAttempt = null;
+let lastSyncResult = null;
+
+async function runCloudSync() {
+    const cloudUrl = getCachedSetting('cloudSyncUrl', '');
+    const cloudApiKey = getCachedSetting('cloudApiKey', '');
+    const syncEnabled = getCachedSetting('cloudSyncEnabled', 'false');
+
+    if (syncEnabled !== 'true' || !cloudUrl) return;
+
+    try {
+        const unsyncedData = getUnsyncedData();
+        if (unsyncedData.sessions.length === 0 && unsyncedData.appUsage.length === 0) {
+            lastSyncResult = { status: 'ok', message: 'Nothing to sync', time: new Date().toISOString() };
+            return;
+        }
+
+        const payload = {
+            device_id: getCachedSetting('deviceId', require('os').hostname()),
+            timestamp: new Date().toISOString(),
+            sessions: unsyncedData.sessions,
+            app_usage: unsyncedData.appUsage,
+            projects: unsyncedData.projects
+        };
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (cloudApiKey) headers['Authorization'] = `Bearer ${cloudApiKey}`;
+
+        const response = await fetch(cloudUrl, { method: 'POST', headers, body: JSON.stringify(payload) });
+
+        if (response.ok) {
+            if (unsyncedData.sessions.length > 0) {
+                updateSyncedId('sessions', Math.max(...unsyncedData.sessions.map(s => s.id)));
+            }
+            if (unsyncedData.appUsage.length > 0) {
+                updateSyncedId('app_usage', Math.max(...unsyncedData.appUsage.map(a => a.id)));
+            }
+            lastSyncResult = { status: 'ok', message: `Synced ${unsyncedData.sessions.length} sessions, ${unsyncedData.appUsage.length} app records`, time: new Date().toISOString() };
+            console.log(`[CloudSync] ${lastSyncResult.message}`);
+        } else {
+            lastSyncResult = { status: 'error', message: `Server responded ${response.status}`, time: new Date().toISOString() };
+            console.error(`[CloudSync] Failed: ${response.status}`);
+        }
+    } catch (error) {
+        lastSyncResult = { status: 'error', message: error.message, time: new Date().toISOString() };
+        console.error(`[CloudSync] Error: ${error.message}`);
+    }
+    lastSyncAttempt = new Date().toISOString();
+}
+
+setInterval(runCloudSync, 5 * 60 * 1000);
+setTimeout(runCloudSync, 30000);
+
 app.post('/start', asyncHandler(async (req, res) => {
+    const { project_id, include_automatic } = req.body || {};
+    let targetProjectId = project_id !== undefined ? (project_id || null) : null;
+
+    // Fetch default project if none provided
+    if (targetProjectId === null) {
+        const defaultProjectId = getSetting('defaultProjectId');
+        if (defaultProjectId) targetProjectId = parseInt(defaultProjectId);
+    }
+
     let session = getActiveSession('manual');
+    let sessionType = 'manual';
+
+    if (!session && include_automatic) {
+        session = getActiveSession('automatic');
+        sessionType = 'automatic';
+    }
+
     if (!session) {
-        const id = startSession('manual');
-        session = { id, status: 'active', total_seconds: 0, type: 'manual' };
-        console.log(`[Manual] Session started: ${id}`);
+        const id = startSession('manual', targetProjectId);
+        session = { id, status: 'active', total_seconds: 0, type: 'manual', project_id: targetProjectId };
+        console.log(`[Manual] Session started: ${id}${targetProjectId ? ` (project: ${targetProjectId})` : ''}`);
         sendNativeNotification('🏢 Workplace Session Started', 'Manual tracking is now active. Good luck!');
     } else {
-        db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
-        console.log(`[Manual] Session resumed: ${session.id}`);
-        sendNativeNotification('🏢 Tracking Resumed', 'Manual session resumed. Welcome back!');
+        const providedProjectId = project_id !== undefined ? (project_id || null) : session.project_id;
+
+        if (String(providedProjectId) !== String(session.project_id)) {
+            console.log(`[${sessionType}] Project changed from ${session.project_id} to ${providedProjectId}. Splitting session.`);
+            completeSession(session.id);
+            const newId = startSession(sessionType, providedProjectId);
+            session = { id: newId, status: 'active', total_seconds: 0, type: sessionType, project_id: providedProjectId };
+            targetProjectId = providedProjectId;
+        } else {
+            db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+            console.log(`[${sessionType}] Session resumed: ${session.id}`);
+            if (sessionType === 'manual') {
+                sendNativeNotification('🏢 Tracking Resumed', 'Manual session resumed. Welcome back!');
+            }
+            targetProjectId = providedProjectId;
+        }
     }
+
+    // Automatically remember the project as the default
+    if (targetProjectId !== null) {
+        const currentDefault = getSetting('defaultProjectId');
+        if (String(targetProjectId) !== String(currentDefault)) {
+            console.log(`[Settings] Updating default project ID to ${targetProjectId}`);
+            setSetting('defaultProjectId', targetProjectId);
+        }
+    }
+
     res.json({ success: true, session });
 }));
 
@@ -457,7 +550,7 @@ app.post('/location', asyncHandler(async (req, res) => {
 
     const officeLat = parseFloat(getSetting('officeLat'));
     const officeLng = parseFloat(getSetting('officeLng'));
-    const officeRadius = parseInt(getSetting('officeRadius', '200'), 10); // meters
+    const officeRadius = parseInt(getSetting('officeRadius', '300'), 10); // meters
 
     if (isNaN(officeLat) || isNaN(officeLng)) {
         // Office location not configured, do nothing
@@ -532,7 +625,7 @@ app.get('/status', (req, res) => {
 
     const officeLat = getSetting('officeLat', '');
     const officeLng = getSetting('officeLng', '');
-    const officeRadius = getSetting('officeRadius', '200');
+    const officeRadius = getSetting('officeRadius', '300');
 
     const baseManualSeconds = getTodayManualTotal();
 
@@ -591,13 +684,19 @@ app.get('/app-usage', (req, res) => {
 // Helper function to get merged category map (default + custom)
 function getCategoryMap() {
     const defaultCategoryMap = {
-        'Productivity': ['Xcode', 'Visual Studio Code', 'Code', 'Terminal', 'iTerm2', 'Sublime Text', 'IntelliJ IDEA', 'PyCharm', 'WebStorm', 'Android Studio', 'Cursor', 'Windsurf', 'Nova', 'BBEdit', 'TextMate'],
-        'Communication': ['Slack', 'Microsoft Teams', 'Zoom', 'Discord', 'Telegram', 'WhatsApp', 'Messages', 'Mail', 'Outlook', 'Spark', 'FaceTime', 'Skype'],
+        'Productivity': ['Xcode', 'Visual Studio Code', 'Code', 'Terminal', 'iTerm2', 'Sublime Text', 'IntelliJ IDEA', 'PyCharm', 'WebStorm', 'Android Studio', 'Cursor', 'Windsurf', 'Nova', 'BBEdit', 'TextMate',
+            'github.com', 'gitlab.com', 'bitbucket.org', 'stackoverflow.com', 'jira.atlassian.com', 'linear.app', 'notion.so', 'trello.com', 'asana.com', 'clickup.com'],
+        'Communication': ['Slack', 'Microsoft Teams', 'Zoom', 'Discord', 'Telegram', 'WhatsApp', 'Messages', 'Mail', 'Outlook', 'Spark', 'FaceTime', 'Skype',
+            'mail.google.com', 'outlook.live.com', 'slack.com', 'teams.microsoft.com', 'discord.com', 'web.whatsapp.com', 'web.telegram.org'],
         'Browsers': ['Safari', 'Google Chrome', 'Firefox', 'Arc', 'Brave Browser', 'Microsoft Edge', 'Opera', 'Vivaldi'],
-        'Design': ['Figma', 'Sketch', 'Adobe Photoshop', 'Adobe Illustrator', 'Adobe XD', 'Canva', 'Affinity Designer', 'Affinity Photo', 'Preview'],
-        'Documents': ['Microsoft Word', 'Microsoft Excel', 'Microsoft PowerPoint', 'Pages', 'Numbers', 'Keynote', 'Notion', 'Obsidian', 'Bear', 'Notes', 'TextEdit'],
-        'Entertainment': ['Spotify', 'Music', 'YouTube', 'Netflix', 'VLC', 'IINA', 'TV', 'Podcasts', 'Books'],
-        'Utilities': ['Finder', 'System Preferences', 'System Settings', 'Activity Monitor', 'Disk Utility', 'Calculator', 'Calendar', 'Reminders', 'Clock', 'Shortcuts']
+        'Design': ['Figma', 'Sketch', 'Adobe Photoshop', 'Adobe Illustrator', 'Adobe XD', 'Canva', 'Affinity Designer', 'Affinity Photo', 'Preview',
+            'figma.com', 'canva.com', 'dribbble.com', 'behance.net'],
+        'Documents': ['Microsoft Word', 'Microsoft Excel', 'Microsoft PowerPoint', 'Pages', 'Numbers', 'Keynote', 'Notion', 'Obsidian', 'Bear', 'Notes', 'TextEdit',
+            'docs.google.com', 'sheets.google.com', 'slides.google.com', 'medium.com'],
+        'Entertainment': ['Spotify', 'Music', 'YouTube', 'Netflix', 'VLC', 'IINA', 'TV', 'Podcasts', 'Books',
+            'youtube.com', 'netflix.com', 'twitch.tv', 'reddit.com', 'twitter.com', 'x.com', 'instagram.com', 'facebook.com', 'tiktok.com', 'spotify.com'],
+        'Utilities': ['Finder', 'System Preferences', 'System Settings', 'Activity Monitor', 'Disk Utility', 'Calculator', 'Calendar', 'Reminders', 'Clock', 'Shortcuts',
+            'calendar.google.com', 'drive.google.com']
     };
 
     // Get custom mappings from settings
@@ -654,7 +753,8 @@ app.get('/settings', (req, res) => {
     const customAppCategories = getSetting('customAppCategories', '{}');
     const officeLat = getSetting('officeLat', '');
     const officeLng = getSetting('officeLng', '');
-    const officeRadius = getSetting('officeRadius', '200');
+    const officeRadius = getSetting('officeRadius', '300');
+    const defaultProjectId = getSetting('defaultProjectId', null);
 
     res.json({
         goalHours: parseInt(goalHours),
@@ -665,12 +765,13 @@ app.get('/settings', (req, res) => {
         customAppCategories: customAppCategories,
         officeLat: officeLat,
         officeLng: officeLng,
-        officeRadius: parseInt(officeRadius)
+        officeRadius: parseInt(officeRadius),
+        defaultProjectId: defaultProjectId ? parseInt(defaultProjectId) : null
     });
 });
 
 app.post('/settings', asyncHandler(async (req, res) => {
-    const { goalHours, goalMinutes, breakInterval, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius } = req.body;
+    const { goalHours, goalMinutes, breakInterval, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius, defaultProjectId } = req.body;
     if (goalHours !== undefined) setSetting('goalHours', goalHours);
     if (goalMinutes !== undefined) setSetting('goalMinutes', goalMinutes);
     if (breakInterval !== undefined) setSetting('breakInterval', breakInterval);
@@ -687,6 +788,14 @@ app.get('/today-apps', (req, res) => {
     const usage = getTodayAppUsage();
     const apps = usage.map(app => app.app_name).sort();
     res.json({ apps });
+});
+
+app.get('/project-reports', (req, res) => {
+    const { getProjectReport, getDetailedProjectHistory } = require('./db');
+    res.json({
+        summary: getProjectReport(),
+        history: getDetailedProjectHistory()
+    });
 });
 
 app.get('/today-events', (req, res) => {
@@ -746,6 +855,72 @@ app.get('/reports', (req, res) => {
 
 // Migrations handled in db.js
 
-app.listen(PORT, '127.0.0.1', () => {
-    console.log(`Server running on http://127.0.0.1:${PORT} (Restricted to localhost)`);
+// --- Project Management Endpoints ---
+app.get('/projects', (req, res) => {
+    res.json({ projects: getProjects() });
+});
+
+app.post('/projects', asyncHandler(async (req, res) => {
+    const { name, color } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Project name is required' });
+    }
+    try {
+        const id = createProject(name.trim(), color || '#8b5cf6');
+        res.json({ success: true, id });
+    } catch (e) {
+        if (e.message && e.message.includes('UNIQUE')) {
+            return res.status(409).json({ error: 'A project with this name already exists' });
+        }
+        throw e;
+    }
+}));
+
+app.delete('/projects/:id', asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid project ID' });
+    deleteProject(id);
+    res.json({ success: true });
+}));
+
+app.get('/project-report', (req, res) => {
+    res.json({ report: getProjectReport() });
+});
+
+// --- Cloud Sync Endpoints ---
+app.get('/sync-status', (req, res) => {
+    const syncEnabled = getSetting('cloudSyncEnabled', 'false');
+    const cloudUrl = getSetting('cloudSyncUrl', '');
+    res.json({
+        enabled: syncEnabled === 'true',
+        cloudUrl: cloudUrl ? '***configured***' : '',
+        lastAttempt: lastSyncAttempt,
+        lastResult: lastSyncResult
+    });
+});
+
+app.post('/sync-now', asyncHandler(async (req, res) => {
+    await runCloudSync();
+    res.json({ success: true, result: lastSyncResult });
+}));
+
+app.post('/cloud-settings', asyncHandler(async (req, res) => {
+    const { cloudSyncUrl, cloudApiKey, cloudSyncEnabled } = req.body;
+    if (cloudSyncUrl !== undefined) setSetting('cloudSyncUrl', cloudSyncUrl);
+    if (cloudApiKey !== undefined) setSetting('cloudApiKey', cloudApiKey);
+    if (cloudSyncEnabled !== undefined) setSetting('cloudSyncEnabled', String(cloudSyncEnabled));
+    invalidateSettingsCache();
+    res.json({ success: true });
+}));
+
+app.get('/cloud-settings', (req, res) => {
+    res.json({
+        cloudSyncUrl: getSetting('cloudSyncUrl', ''),
+        cloudApiKey: getSetting('cloudApiKey', '') ? '••••••••' : '',
+        cloudSyncEnabled: getSetting('cloudSyncEnabled', 'false') === 'true'
+    });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
 });

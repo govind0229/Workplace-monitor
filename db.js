@@ -65,17 +65,32 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_suggestion_history_key ON suggestion_history(message_key);
   CREATE INDEX IF NOT EXISTS idx_suggestion_history_sent ON suggestion_history(sent_at);
+
+  CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    color TEXT DEFAULT '#8b5cf6',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS sync_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name TEXT NOT NULL UNIQUE,
+    last_synced_id INTEGER DEFAULT 0,
+    last_sync_time DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Migrations for existing databases
 try { db.exec("ALTER TABLE sessions ADD COLUMN type TEXT DEFAULT 'manual'"); } catch (e) { }
 try { db.exec("ALTER TABLE sessions ADD COLUMN notified INTEGER DEFAULT 0"); } catch (e) { }
 try { db.exec("ALTER TABLE sessions ADD COLUMN last_break_notify INTEGER DEFAULT 0"); } catch (e) { }
+try { db.exec("ALTER TABLE sessions ADD COLUMN project_id INTEGER REFERENCES projects(id)"); } catch (e) { }
 
 module.exports = {
   db,
-  startSession: (type = 'manual') => {
-    const info = db.prepare("INSERT INTO sessions (status, last_tick, type) VALUES ('active', CURRENT_TIMESTAMP, ?)").run(type);
+  startSession: (type = 'manual', projectId = null) => {
+    const info = db.prepare("INSERT INTO sessions (status, last_tick, type, project_id) VALUES ('active', CURRENT_TIMESTAMP, ?, ?)").run(type, projectId);
     return info.lastInsertRowid;
   },
   getActiveSession: (type = 'manual') => {
@@ -83,11 +98,18 @@ module.exports = {
   },
   getTodayAutomaticSession: () => {
     let session = db.prepare("SELECT * FROM sessions WHERE date = date('now') AND type = 'automatic' LIMIT 1").get();
+    const defaultProjectIdStr = module.exports.getSetting('defaultProjectId');
+    const defaultProjectId = defaultProjectIdStr ? parseInt(defaultProjectIdStr) : null;
+
     if (!session) {
       // Start as PAUSED — the Swift app will send 'unlock' to activate it.
       // This prevents time from accumulating overnight when the machine is asleep.
-      const info = db.prepare("INSERT INTO sessions (status, last_tick, type) VALUES ('paused', CURRENT_TIMESTAMP, 'automatic')").run();
+      const info = db.prepare("INSERT INTO sessions (status, last_tick, type, project_id) VALUES ('paused', CURRENT_TIMESTAMP, 'automatic', ?)").run(defaultProjectId);
       session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(info.lastInsertRowid);
+    } else if (session.project_id === null && defaultProjectId !== null) {
+      // If session exists but has no project, and we have a default project, apply it!
+      db.prepare("UPDATE sessions SET project_id = ? WHERE id = ?").run(defaultProjectId, session.id);
+      session.project_id = defaultProjectId;
     }
     return session;
   },
@@ -113,6 +135,16 @@ module.exports = {
       GROUP BY date 
       ORDER BY date DESC 
       LIMIT 30
+    `).all();
+  },
+  getDetailedProjectHistory: () => {
+    return db.prepare(`
+      SELECT s.date, p.name as project_name, p.color as project_color, SUM(s.total_seconds) as total_seconds
+      FROM sessions s
+      JOIN projects p ON s.project_id = p.id
+      GROUP BY s.date, s.project_id
+      ORDER BY s.date DESC, total_seconds DESC
+      LIMIT 100
     `).all();
   },
   getWeeklyReport: () => {
@@ -169,7 +201,8 @@ module.exports = {
     return row ? row.value : defaultValue;
   },
   setSetting: (key, value) => {
-    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?").run(key, String(value), String(value));
+    const val = (value === null || value === undefined) ? "" : String(value);
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?").run(key, val, val);
   },
   getRecentlySentMessages: (days = 7) => {
     const rows = db.prepare(
@@ -181,5 +214,59 @@ module.exports = {
   },
   markMessageSent: (messageKey) => {
     db.prepare("INSERT INTO suggestion_history (message_key) VALUES (?)").run(messageKey);
+  },
+  // --- Project Management ---
+  createProject: (name, color = '#8b5cf6') => {
+    const info = db.prepare("INSERT INTO projects (name, color) VALUES (?, ?)").run(name, color);
+    return info.lastInsertRowid;
+  },
+  getProjects: () => {
+    return db.prepare("SELECT * FROM projects ORDER BY name ASC").all();
+  },
+  deleteProject: (id) => {
+    // 1. Clear it from any past sessions
+    db.prepare("UPDATE sessions SET project_id = NULL WHERE project_id = ?").run(id);
+    
+    // 2. Clear it from default setting if it matches
+    const currentDefault = module.exports.getSetting('defaultProjectId');
+    if (String(currentDefault) === String(id)) {
+      module.exports.setSetting('defaultProjectId', null);
+    }
+    
+    // 3. Delete the project itself
+    db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+  },
+  getProjectReport: () => {
+    return db.prepare(`
+      SELECT p.id, p.name, p.color, SUM(s.total_seconds) as total_seconds, COUNT(s.id) as session_count
+      FROM projects p
+      LEFT JOIN sessions s ON s.project_id = p.id
+      GROUP BY p.id
+      ORDER BY total_seconds DESC
+    `).all();
+  },
+  // --- Cloud Sync Helpers ---
+  getLastSyncedId: (tableName) => {
+    const row = db.prepare("SELECT last_synced_id FROM sync_log WHERE table_name = ?").get(tableName);
+    return row ? row.last_synced_id : 0;
+  },
+  updateSyncedId: (tableName, lastId) => {
+    db.prepare(`
+      INSERT INTO sync_log (table_name, last_synced_id, last_sync_time)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(table_name) DO UPDATE SET last_synced_id = ?, last_sync_time = CURRENT_TIMESTAMP
+    `).run(tableName, lastId, lastId);
+  },
+  getUnsyncedData: () => {
+    const lastSessionId = db.prepare("SELECT last_synced_id FROM sync_log WHERE table_name = 'sessions'").get();
+    const lastAppUsageId = db.prepare("SELECT last_synced_id FROM sync_log WHERE table_name = 'app_usage'").get();
+    const sessionsFrom = lastSessionId ? lastSessionId.last_synced_id : 0;
+    const appUsageFrom = lastAppUsageId ? lastAppUsageId.last_synced_id : 0;
+
+    const sessions = db.prepare("SELECT * FROM sessions WHERE id > ? AND status = 'completed'").all(sessionsFrom);
+    const appUsage = db.prepare("SELECT * FROM app_usage WHERE id > ?").all(appUsageFrom);
+    const projects = db.prepare("SELECT * FROM projects").all();
+
+    return { sessions, appUsage, projects };
   }
 };

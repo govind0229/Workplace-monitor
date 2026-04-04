@@ -36,17 +36,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             return
         }
         
-        let appPath = "\(resourcePath)/app"
-        let nodePath = "\(appPath)/node"
-        let serverScriptPath = "\(appPath)/server.js"
+        var appPath = "\(resourcePath)/app"
+        var nodePath = "\(appPath)/node"
+        var serverScriptPath = "\(appPath)/server.js"
         
-        // Check if files exist
+        // --- FALLBACK FOR LOCAL DEVELOPMENT ---
+        // If Bundle resource path/app/server.js doesn't exist, check same folder as executable
         let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: nodePath) else {
-            print("Error: Bundled Node.js not found at \(nodePath)")
-            return
+        if !fileManager.fileExists(atPath: serverScriptPath) {
+            let localNodePath = "./node"
+            let localServerPath = "./server.js"
+            if fileManager.fileExists(atPath: localServerPath) {
+                print("Notice: Resource bundle not found, using local fallback in current directory.")
+                appPath = FileManager.default.currentDirectoryPath
+                nodePath = fileManager.fileExists(atPath: localNodePath) ? localNodePath : "/usr/local/bin/node"
+                serverScriptPath = localServerPath
+            }
         }
-        guard fileManager.fileExists(atPath: serverScriptPath) else {
+        
+        // Final sanity check
+        if !fileManager.fileExists(atPath: serverScriptPath) {
             print("Error: server.js not found at \(serverScriptPath)")
             return
         }
@@ -452,7 +461,8 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
 // MARK: - Menu Bar Utility
 class MenuBarUtility: NSObject {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    let serverURL = "http://localhost:3000"
+    private let apiBase = "http://localhost:3000"
+    private let serverURL = "http://localhost:3000"
     var pollTimer: Timer?
     var uiTimer: Timer?
     var appTrackTimer: Timer?
@@ -543,13 +553,23 @@ class MenuBarUtility: NSObject {
             self.isScreenLocked = false
             self.sendEvent("unlock")
         }
+        
+        // Additional reliable observers for session state
+        wsnc.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) { _ in
+            self.isScreenLocked = true
+            self.sendEvent("lock")
+        }
+        wsnc.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main) { _ in
+            self.isScreenLocked = false
+            self.sendEvent("unlock")
+        }
     }
 
     func setupLocationManager() {
         locationManager = CLLocationManager()
         locationManager?.delegate = self
-        locationManager?.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        locationManager?.distanceFilter = 50 // Send updates when moved > 50 meters
+        locationManager?.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager?.distanceFilter = 10.0 // Send updates when moved > 10 meters (more sensitive)
         
         // Request authorization then start updating
         print("Requesting Location Authorization...")
@@ -577,6 +597,13 @@ class MenuBarUtility: NSObject {
         // Check for user idle every 30s
         idleCheckTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
             self.checkIdleState()
+        }
+
+        // Fallback: Force a location update check every 5 minutes if no movement detected
+        Timer.scheduledTimer(withTimeInterval: 300.0, repeats: true) { _ in
+            print("[Location] Triggering fallback location update check...")
+            self.locationManager?.stopUpdatingLocation()
+            self.locationManager?.startUpdatingLocation()
         }
         
         // Initial fetch
@@ -683,6 +710,23 @@ class MenuBarUtility: NSObject {
         }
     }
 
+    // Map of browser names to their AppleScript for fetching the active tab URL
+    let browserScripts: [String: String] = [
+        "Google Chrome": "tell application \"Google Chrome\" to get URL of active tab of front window",
+        "Brave Browser": "tell application \"Brave Browser\" to get URL of active tab of front window",
+        "Microsoft Edge": "tell application \"Microsoft Edge\" to get URL of active tab of front window",
+        "Arc": "tell application \"Arc\" to get URL of active tab of front window",
+        "Safari": "tell application \"Safari\" to get URL of current tab of front window",
+        "Firefox": "tell application \"System Events\" to tell process \"Firefox\" to get value of attribute \"AXDocument\" of window 1"
+    ]
+
+    /// Extract domain from a URL string (e.g., "https://mail.google.com/inbox" -> "mail.google.com")
+    func domainFromURL(_ urlString: String) -> String? {
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = url.host else { return nil }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
     func trackFrontmostApp() {
         // Don't track when screen is locked, sleeping, or idle
         guard !isScreenLocked && !isIdle else { return }
@@ -694,12 +738,27 @@ class MenuBarUtility: NSObject {
         let skipApps = ["loginwindow", "ScreenSaverEngine", "UserNotificationCenter"]
         guard !skipApps.contains(appName) else { return }
 
-        // Send heartbeat — 5 seconds of usage for this app
+        var trackedName = appName
+
+        // If it's a known browser, try to get the active tab URL via AppleScript
+        if let scriptSource = browserScripts[appName] {
+            if let script = NSAppleScript(source: scriptSource) {
+                var errorInfo: NSDictionary?
+                let result = script.executeAndReturnError(&errorInfo)
+                if errorInfo == nil, let urlString = result.stringValue,
+                   let domain = domainFromURL(urlString) {
+                    trackedName = domain   // e.g., "github.com" instead of "Google Chrome"
+                }
+                // On error, fall through and use the browser name
+            }
+        }
+
+        // Send heartbeat — 5 seconds of usage for this tracked name
         guard let url = URL(string: "\(serverURL)/app-heartbeat") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let json: [String: Any] = ["app_name": appName, "seconds": 5]
+        let json: [String: Any] = ["app_name": trackedName, "seconds": 5]
         request.httpBody = try? JSONSerialization.data(withJSONObject: json)
         URLSession.shared.dataTask(with: request).resume()
     }
@@ -772,7 +831,10 @@ extension MenuBarUtility: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
-        print("Location updated: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+        let lat = location.coordinate.latitude
+        let lng = location.coordinate.longitude
+        let acc = location.horizontalAccuracy
+        print("[Location] Updated: \(lat), \(lng) (Accuracy: \(acc)m)")
         
         // Send location to local server for automation rule processing
         guard let url = URL(string: "\(serverURL)/location") else { return }
@@ -781,16 +843,21 @@ extension MenuBarUtility: CLLocationManagerDelegate {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let json: [String: Any] = [
-            "latitude": location.coordinate.latitude,
-            "longitude": location.coordinate.longitude
+            "latitude": lat,
+            "longitude": lng,
+            "accuracy": acc
         ]
         
         request.httpBody = try? JSONSerialization.data(withJSONObject: json)
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("Failed to send location to server: \(error.localizedDescription)")
+                print("[Location] Failed to send to server: \(error.localizedDescription)")
             } else if let httpResponse = response as? HTTPURLResponse {
-                print("Server responded to location update with status: \(httpResponse.statusCode)")
+                if httpResponse.statusCode == 200 {
+                    print("[Location] Server processed update successfully")
+                } else {
+                    print("[Location] Server returned error status: \(httpResponse.statusCode)")
+                }
             }
         }.resume()
     }

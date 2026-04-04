@@ -40,6 +40,7 @@ let currentStatsRange = 7;
 let reportsData = null;
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
 let goalLinePercent = getStoredInt('goalLinePercent', 44);
+let defaultProjectId = null;
 
 function getStoredInt(key, defaultValue) {
     const val = localStorage.getItem(key);
@@ -182,6 +183,7 @@ async function loadSettings() {
         const wfhBreakInput = document.getElementById('wfhBreakInterval');
         if (wfhBreakInput) wfhBreakInput.value = data.wfhBreakInterval || 60;
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
+        defaultProjectId = data.defaultProjectId || null;
 
         if (officeRadiusInput && data.officeRadius) {
             officeRadiusInput.value = data.officeRadius;
@@ -804,6 +806,26 @@ async function updateStatus(forceSync = false) {
             manualStatus = data.manual.status;
             autoStatus = data.automatic.status;
 
+            // Updated rule: ensure project selector reflects active session's project
+            let activeProjectId = null;
+            if (manualStatus === 'active' || manualStatus === 'paused') {
+                activeProjectId = data.manual.project_id;
+            } else if (autoStatus === 'active' || autoStatus === 'paused') {
+                activeProjectId = data.automatic.project_id;
+            } else {
+                // If idle, use the default project
+                activeProjectId = defaultProjectId;
+            }
+
+            const projectSelect = document.getElementById('projectSelect');
+            if (projectSelect) {
+                const targetValue = (activeProjectId !== null && activeProjectId !== undefined) ? String(activeProjectId) : "";
+                if (projectSelect.value !== targetValue) {
+                    const exists = Array.from(projectSelect.options).some(o => o.value === targetValue);
+                    if (exists) projectSelect.value = targetValue;
+                }
+            }
+
             // Critical: Align our local reference with the MOMENT of fetch completion
             lastSyncRealTime = Date.now();
 
@@ -930,8 +952,45 @@ async function updateStatus(forceSync = false) {
 
 
 startBtn.onclick = async () => {
-    await fetch(`${API_BASE}/start`, { method: 'POST' });
+    const projectSelect = document.getElementById('projectSelect');
+    const projectId = projectSelect ? (projectSelect.value || null) : null;
+    await fetch(`${API_BASE}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId ? parseInt(projectId) : null })
+    });
     updateStatus(true);
+};
+
+// Add listener to project selector for real-time splitting when changed mid-session
+document.getElementById('projectSelect').onchange = async (e) => {
+    const projectId = e.target.value || null;
+    
+    // NEW: If any session is active/paused, split and update it
+    if (manualStatus === 'active' || manualStatus === 'paused' || 
+        autoStatus === 'active' || autoStatus === 'paused') {
+        
+        await fetch(`${API_BASE}/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                project_id: projectId ? parseInt(projectId) : null,
+                // Tell server to check automatic too if no manual found
+                include_automatic: true 
+            })
+        });
+        updateStatus(true);
+    } else {
+        // If system is IDLE, just tell the server to update the default project setting
+        // This ensures the NEXT session starts with this project.
+        await fetch(`${API_BASE}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ defaultProjectId: projectId ? parseInt(projectId) : null })
+        });
+        defaultProjectId = projectId ? parseInt(projectId) : null;
+        updateStatus(true);
+    }
 };
 
 pauseBtn.onclick = async () => {
@@ -954,11 +1013,97 @@ stopBtn.onclick = async () => {
 
 async function fetchReports() {
     try {
+        if (currentTab === 'projects') {
+            await renderProjectReport();
+            return;
+        }
         const res = await fetch(`${API_BASE}/reports`);
         reportsData = await res.json();
         renderActiveTab();
     } catch (e) {
         console.error("Failed to fetch reports", e);
+    }
+}
+
+async function renderProjectReport() {
+    const reportsList = document.getElementById('reportsList');
+    if (!reportsList) return;
+    
+    reportsList.innerHTML = '<div class="chart-loading">Loading project stats...</div>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/project-reports`);
+        const data = await res.json();
+        const summary = data.summary || [];
+        const history = data.history || [];
+        
+        const fragment = document.createDocumentFragment();
+        
+        // --- SUMMARY SECTION ---
+        const summaryHeader = document.createElement('div');
+        summaryHeader.className = 'report-item report-header';
+        summaryHeader.style.marginTop = '0';
+        summaryHeader.innerHTML = `
+            <span>Project (Total)</span>
+            <span>Total Time</span>
+            <span>Sessions</span>
+        `;
+        fragment.appendChild(summaryHeader);
+        
+        if (summary.length > 0) {
+            summary.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'report-item';
+                row.innerHTML = `
+                    <span style="display:flex; align-items:center; gap:8px;">
+                        <span style="width:10px; height:10px; border-radius:50%; background:${item.color || 'var(--primary)'}"></span>
+                        ${escapeHTML(item.name || 'No Project')}
+                    </span>
+                    <span style="font-weight:600; color:var(--primary)">${formatTime(item.total_seconds)}</span>
+                    <span class="auto-total-dim">${item.session_count} total</span>
+                `;
+                fragment.appendChild(row);
+            });
+        }
+        
+        // --- HISTORY SECTION ---
+        const historyTitle = document.createElement('div');
+        historyTitle.className = 'report-item report-header';
+        historyTitle.style.marginTop = '24px';
+        historyTitle.innerHTML = `
+            <span>History (By Project)</span>
+            <span>Duration</span>
+            <span>Date</span>
+        `;
+        fragment.appendChild(historyTitle);
+        
+        if (history.length > 0) {
+            history.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'report-item';
+                row.innerHTML = `
+                    <span style="display:flex; align-items:center; gap:8px;">
+                        <span style="width:10px; height:10px; border-radius:50%; background:${item.project_color || '#555'}"></span>
+                        ${escapeHTML(item.project_name || 'No Project')}
+                    </span>
+                    <span style="font-weight:600">${formatTime(item.total_seconds)}</span>
+                    <span class="auto-total-dim">${escapeHTML(item.date)}</span>
+                `;
+                fragment.appendChild(row);
+            });
+        } else {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'text-align:center; color:var(--text-dim); padding:40px;';
+            empty.textContent = 'No project history recorded yet';
+            fragment.appendChild(empty);
+        }
+        
+        requestAnimationFrame(() => {
+            reportsList.innerHTML = '';
+            reportsList.appendChild(fragment);
+        });
+    } catch (e) {
+        reportsList.innerHTML = '<div class="chart-loading">Error loading project report</div>';
     }
 }
 
@@ -1010,7 +1155,7 @@ tabButtons.forEach(btn => {
         tabButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentTab = btn.dataset.tab;
-        renderActiveTab();
+        fetchReports();
     };
 });
 
@@ -1437,6 +1582,14 @@ window.addEventListener('offline', () => {
         if (goalLabel) {
             goalLabel.textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;
         }
+        
+        // Sync default project
+        if (data.defaultProjectId) {
+            defaultProjectId = String(data.defaultProjectId);
+        }
+        
+        // Refresh project list to reflect default
+        loadProjects();
     } catch (e) {
         const goalLabel = document.querySelector('.goal-label');
         if (goalLabel) {
@@ -1624,3 +1777,234 @@ async function renderStatsChart(rangeDays) {
     }
 }
 
+
+// ===== PROJECT MANAGEMENT =====
+async function loadProjects() {
+    try {
+        const res = await fetch(`${API_BASE}/projects`);
+        const data = await res.json();
+        const projectSelect = document.getElementById('projectSelect');
+        if (projectSelect) {
+            const currentVal = projectSelect.value;
+            projectSelect.innerHTML = '<option value="">— No Project —</option>';
+            (data.projects || []).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                opt.style.color = p.color;
+                projectSelect.appendChild(opt);
+            });
+            
+            // If manual session is active, it will be set by updateStatus
+            // If idle, set to default
+            if (manualStatus === 'idle' && autoStatus === 'idle') {
+                if (defaultProjectId) projectSelect.value = defaultProjectId;
+                else projectSelect.value = "";
+            } else if (currentVal) {
+                projectSelect.value = currentVal;
+            }
+        }
+        renderProjectsList(data.projects || []);
+    } catch (e) {
+        console.error('Failed to load projects:', e);
+    }
+}
+
+function renderProjectsList(projects) {
+    const list = document.getElementById('projectsList');
+    if (!list) return;
+    if (projects.length === 0) {
+        list.innerHTML = '<div class="category-mappings-empty">No projects yet. Add one above to start tracking by project.</div>';
+        return;
+    }
+    list.innerHTML = projects.map(p => {
+        const isDefault = String(p.id) === String(defaultProjectId);
+        return `
+            <div class="category-mapping-item">
+                <div class="category-mapping-info">
+                    <span class="project-color-dot" style="background: ${escapeHTML(p.color)};"></span>
+                    <span class="category-mapping-app">${escapeHTML(p.name)}</span>
+                    ${isDefault ? '<span class="default-project-badge">Default</span>' : ''}
+                </div>
+                <div style="display: flex; align-items: center;">
+                    ${!isDefault ? `<button class="set-default-btn" data-project-id="${p.id}">Set Default</button>` : ''}
+                    <button class="category-mapping-remove" data-project-id="${p.id}" title="Delete Project">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Set Default Handlers
+    list.querySelectorAll('.set-default-btn').forEach(btn => {
+        btn.onclick = async () => {
+            const id = btn.dataset.projectId;
+            try {
+                // 1. Save setting
+                await fetch(`${API_BASE}/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ defaultProjectId: parseInt(id) })
+                });
+                defaultProjectId = id;
+                
+                // 2. If any session is active, split/update it to the new project immediately
+                if (manualStatus === 'active' || manualStatus === 'paused' || 
+                    autoStatus === 'active' || autoStatus === 'paused') {
+                    await fetch(`${API_BASE}/start`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            project_id: parseInt(id),
+                            include_automatic: true 
+                        })
+                    });
+                }
+                
+                loadProjects(); // Refresh UI
+                updateStatus(true); // Sync dashboard
+            } catch (e) { 
+                console.error('Failed to set default project:', e);
+                alert('Failed to set default project.'); 
+            }
+        };
+    });
+
+    list.querySelectorAll('.category-mapping-remove').forEach(btn => {
+        btn.onclick = async () => {
+            const id = btn.dataset.projectId;
+            if (!confirm('Delete this project? Time logged to it will become unassigned.')) return;
+            try {
+                await fetch(`${API_BASE}/projects/${id}`, { method: 'DELETE' });
+                // If deleted project was the default, clear it
+                if (String(id) === String(defaultProjectId)) {
+                    await fetch(`${API_BASE}/settings`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ defaultProjectId: null })
+                    });
+                    defaultProjectId = null;
+                }
+                loadProjects();
+            } catch (e) { alert('Failed to delete project.'); }
+        };
+    });
+}
+
+const addProjectBtn = document.getElementById('addProjectBtn');
+if (addProjectBtn) {
+    addProjectBtn.onclick = async () => {
+        const nameInput = document.getElementById('projectNameInput');
+        const colorInput = document.getElementById('projectColorInput');
+        const name = nameInput ? nameInput.value.trim() : '';
+        const color = colorInput ? colorInput.value : '#8b5cf6';
+        if (!name) { alert('Please enter a project name'); return; }
+        try {
+            const res = await fetch(`${API_BASE}/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, color })
+            });
+            const data = await res.json();
+            if (!res.ok) { alert(data.error || 'Failed to create project'); return; }
+            if (nameInput) nameInput.value = '';
+            loadProjects();
+        } catch (e) { alert('Failed to create project.'); }
+    };
+}
+
+const projectNameInput = document.getElementById('projectNameInput');
+if (projectNameInput) {
+    projectNameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addProjectBtn.click(); }
+    });
+}
+
+// Load projects on startup
+loadProjects();
+
+// ===== CLOUD SYNC SETTINGS =====
+let _cloudSyncEnabled = false;
+
+async function loadCloudSettings() {
+    try {
+        const res = await fetch(`${API_BASE}/cloud-settings`);
+        const data = await res.json();
+        const urlInput = document.getElementById('cloudSyncUrl');
+        const keyInput = document.getElementById('cloudApiKey');
+        if (urlInput) urlInput.value = data.cloudSyncUrl || '';
+        if (keyInput && data.cloudApiKey) keyInput.placeholder = data.cloudApiKey;
+        _cloudSyncEnabled = data.cloudSyncEnabled;
+        updateSyncToggleUI(data.cloudSyncEnabled);
+        loadSyncStatus();
+    } catch (e) { console.error('Failed to load cloud settings:', e); }
+}
+
+function updateSyncToggleUI(enabled) {
+    const onBtn = document.getElementById('syncOnBtn');
+    const offBtn = document.getElementById('syncOffBtn');
+    if (onBtn) onBtn.classList.toggle('active', enabled);
+    if (offBtn) offBtn.classList.toggle('active', !enabled);
+}
+
+async function loadSyncStatus() {
+    try {
+        const res = await fetch(`${API_BASE}/sync-status`);
+        const data = await res.json();
+        const statusEl = document.getElementById('syncStatusText');
+        if (!statusEl) return;
+        if (!data.enabled) {
+            statusEl.textContent = 'Sync status: Disabled';
+        } else if (data.lastResult) {
+            statusEl.textContent = `Last sync: ${data.lastResult.status === 'ok' ? '✅' : '❌'} ${data.lastResult.message} (${new Date(data.lastResult.time).toLocaleTimeString()})`;
+        } else {
+            statusEl.textContent = 'Sync status: Enabled, waiting for first sync...';
+        }
+    } catch (e) { /* ignore */ }
+}
+
+const syncOnBtn = document.getElementById('syncOnBtn');
+const syncOffBtn = document.getElementById('syncOffBtn');
+if (syncOnBtn) syncOnBtn.onclick = () => { _cloudSyncEnabled = true; updateSyncToggleUI(true); };
+if (syncOffBtn) syncOffBtn.onclick = () => { _cloudSyncEnabled = false; updateSyncToggleUI(false); };
+
+const saveCloudBtn = document.getElementById('saveCloudSettings');
+if (saveCloudBtn) {
+    saveCloudBtn.onclick = async () => {
+        const url = document.getElementById('cloudSyncUrl')?.value || '';
+        const key = document.getElementById('cloudApiKey')?.value || '';
+        const body = { cloudSyncUrl: url, cloudSyncEnabled: _cloudSyncEnabled };
+        if (key && key !== '••••••••') body.cloudApiKey = key;
+        try {
+            await fetch(`${API_BASE}/cloud-settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            alert('Cloud sync settings saved!');
+            loadSyncStatus();
+        } catch (e) { alert('Failed to save cloud settings.'); }
+    };
+}
+
+const triggerSyncBtn = document.getElementById('triggerSyncNow');
+if (triggerSyncBtn) {
+    triggerSyncBtn.onclick = async () => {
+        triggerSyncBtn.disabled = true;
+        triggerSyncBtn.textContent = 'Syncing...';
+        try {
+            await fetch(`${API_BASE}/sync-now`, { method: 'POST' });
+            loadSyncStatus();
+        } catch (e) { alert('Sync failed.'); }
+        triggerSyncBtn.disabled = false;
+        triggerSyncBtn.textContent = 'Sync Now';
+    };
+}
+
+// Load cloud settings when settings page loads
+const _origLoadSettings = loadSettings;
+loadSettings = async function() {
+    await _origLoadSettings();
+    loadCloudSettings();
+};
