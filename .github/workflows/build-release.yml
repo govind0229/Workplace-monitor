@@ -1,10 +1,10 @@
-name: Build and Release DMG
+name: Build and Release PKG
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., v1.2.2)'
+        description: 'Version to release (e.g., 1.4.0)'
         required: true
         type: string
 
@@ -27,6 +27,9 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      - name: Download Bundled Node.js
+        run: bash download_node.sh ./bundled_node
+
       - name: Install Apple Certificate
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
@@ -37,7 +40,7 @@ jobs:
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-          # Import certificate and provisioning profile from secrets
+          # Import certificate from secrets
           echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
 
           # Create temporary keychain
@@ -52,20 +55,19 @@ jobs:
           # Apply keychain to the runner
           security default-keychain -s $KEYCHAIN_PATH
 
-      - name: Build App & DMG
+      - name: Build PKG Installer
         env:
           VERSION: ${{ github.event.inputs.version }}
           APPLE_CERT_USER: "Developer ID Application"
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: bash build_dmg.sh
-        
+          APPLE_INSTALLER_CERT: "Developer ID Installer"
+        run: bash pkg_installer/build_pkg.sh
+
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version }}
+          tag_name: v${{ github.event.inputs.version }}
+          name: WorkingHours v${{ github.event.inputs.version }}
           files: |
-            WorkingHours.dmg
+            WorkingHours.pkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
