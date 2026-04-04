@@ -35,6 +35,27 @@ jobs:
           VERSION: ${{ github.event.inputs.version }}
         run: bash pkg_installer/build_pkg.sh
 
+      - name: Generate Homebrew Cask Formula
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          SHA256=$(shasum -a 256 WorkingHours.pkg | awk '{print $1}')
+          cat > workinghours.rb << EOF
+          cask "workinghours" do
+            version "$VERSION"
+            sha256 "$SHA256"
+
+            url "https://github.com/govind0229/Workplace-monitor/releases/download/v#{version}/WorkingHours.pkg"
+            name "Working Hours Monitor"
+            desc "Location-based automatic time tracking and monitoring"
+            homepage "https://github.com/govind0229/Workplace-monitor"
+
+            pkg "WorkingHours.pkg"
+
+            uninstall pkgutil: "com.user.workinghours"
+          end
+          EOF
+
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
@@ -42,5 +63,6 @@ jobs:
           name: WorkingHours v${{ github.event.inputs.version }}
           files: |
             WorkingHours.pkg
+            workinghours.rb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
