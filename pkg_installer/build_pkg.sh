@@ -15,12 +15,14 @@ set -euo pipefail
 # ── Configuration (override via environment) ─────────────────
 APP_NAME="${APP_NAME:-WorkingHours}"
 IDENTIFIER="${IDENTIFIER:-com.user.workinghours}"
-VERSION="${VERSION:-1.4.0}"
 INSTALL_LOCATION="/Applications"
 
 # Directories (relative to repo root)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Global Version read from .version file
+VERSION="${VERSION:-$(cat "$REPO_ROOT/.version")}"
 BUILD_DIR="$SCRIPT_DIR/_build"
 ROOT_DIR="$BUILD_DIR/root"            # payload for pkgbuild --root
 SCRIPTS_DIR="$BUILD_DIR/scripts"      # pre/post-install scripts
