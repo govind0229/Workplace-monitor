@@ -2,6 +2,14 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.4.1] - 2026-04-05
+
+### Added
+- **Centralized Versioning** — Introduced a single `.version` file as the source of truth for all build scripts, GitHub Actions, and packaging. Added a `bump_version.sh` utility to sync HTML and JSON files effortlessly.
+
+### Fixed
+- **History View Statistics UI Bug** — Fixed a race condition where the advanced statistics chart in the History view failed to render or appeared completely blank on the first click. Correctly deferred DOM layout computation to ensure the animation and SVG boundaries are generated cleanly.
+
 ## [1.4.0] - 2026-03-29
 
 ### Added

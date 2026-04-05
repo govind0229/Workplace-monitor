@@ -139,15 +139,17 @@ navItems.forEach(item => {
             if (view.id === targetView + 'View') {
                 view.classList.add('active');
                 
-                // Trigger staggered animations for child cards/elements
-                const animatedElements = view.querySelectorAll('.glass-card, .view-title, .status-card');
-                animatedElements.forEach((el, index) => {
-                    el.classList.remove('animate-in', 'delay-1', 'delay-2', 'delay-3', 'delay-4', 'delay-5');
-                    // Force reflow
-                    void el.offsetWidth;
-                    el.classList.add('animate-in');
-                    if (index < 5) el.classList.add(`delay-${index + 1}`);
-                    else el.classList.add('delay-5');
+                requestAnimationFrame(() => {
+                    // Trigger staggered animations for child cards/elements
+                    const animatedElements = view.querySelectorAll('.glass-card, .view-title, .status-card');
+                    animatedElements.forEach((el, index) => {
+                        el.classList.remove('animate-in', 'delay-1', 'delay-2', 'delay-3', 'delay-4', 'delay-5');
+                        // Force reflow
+                        void el.offsetWidth;
+                        el.classList.add('animate-in');
+                        if (index < 5) el.classList.add(`delay-${index + 1}`);
+                        else el.classList.add('delay-5');
+                    });
                 });
             }
         });
@@ -155,7 +157,9 @@ navItems.forEach(item => {
         // Trigger fetches if needed
         if (targetView === 'history') {
             fetchReports();
-            renderStatsChart(currentStatsRange);
+            setTimeout(() => {
+                renderStatsChart(currentStatsRange);
+            }, 50);
         }
         if (targetView === 'settings') loadSettings();
         if (targetView === 'location') initLocationView();
