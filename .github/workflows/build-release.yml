@@ -2,11 +2,6 @@ name: Build and Release PKG
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 1.4.0)'
-        required: true
-        type: string
 
 jobs:
   build:
@@ -18,6 +13,9 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Read Version from File
+        run: echo "VERSION=$(cat .version)" >> $GITHUB_ENV
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,12 +30,12 @@ jobs:
 
       - name: Build PKG Installer
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          VERSION: ${{ env.VERSION }}
         run: bash pkg_installer/build_pkg.sh
 
       - name: Update Homebrew Tap
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          VERSION: ${{ env.VERSION }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
           if [ -z "$TAP_GITHUB_TOKEN" ]; then
@@ -81,8 +79,8 @@ jobs:
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: WorkingHours v${{ github.event.inputs.version }}
+          tag_name: v${{ env.VERSION }}
+          name: WorkingHours v${{ env.VERSION }}
           files: |
             WorkingHours.pkg
         env:

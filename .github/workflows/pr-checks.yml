@@ -1,0 +1,52 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validation & Build Checks
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Node Dependencies
+        run: npm install
+
+      - name: Verify `.version` File
+        run: |
+          if [ ! -f .version ]; then
+            echo "Error: .version file is missing!"
+            exit 1
+          fi
+          VERSION=$(cat .version | tr -d '[:space:]')
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: .version format is invalid (should be X.X.X)"
+            exit 1
+          fi
+          echo "Version validated: $VERSION"
+
+      - name: Compile Swift Native App
+        run: |
+          # Ensure the swift file can be successfully compiled without errors
+          swiftc mac_utility.swift -framework WebKit -o /tmp/mac_utility_test
+          echo "Swift compilation successful."
+
+      - name: Check Bash Scripts Syntax
+        run: |
+          # Validates bash files for syntax errors
+          for script in pkg_installer/*.sh scripts/*.sh; do
+            if [ -f "$script" ]; then
+              bash -n "$script"
+              echo "Syntax OK: $script"
+            fi
+          done

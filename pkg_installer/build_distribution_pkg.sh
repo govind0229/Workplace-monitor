@@ -10,11 +10,12 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────
 
 APP_NAME="${APP_NAME:-WorkingHours}"
-VERSION="${VERSION:-1.4.0}"
 IDENTIFIER="${IDENTIFIER:-com.user.workinghours}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+VERSION="${VERSION:-$(cat "$REPO_ROOT/.version")}"
 COMPONENT_PKG="$REPO_ROOT/${APP_NAME}.pkg"
 DIST_PKG="$REPO_ROOT/${APP_NAME}-Installer.pkg"
 
