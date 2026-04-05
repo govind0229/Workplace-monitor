@@ -28,8 +28,14 @@ fi
 
 # 3. pkg_installer/distribution.xml
 if [ -f pkg_installer/distribution.xml ]; then
-  sed -i '' -E "s/version=\"[0-9\.]+\"/version=\"$VERSION\"/" pkg_installer/distribution.xml
+  sed -i '' -E "s/<pkg-ref id=\"com\.user\.workinghours\.pkg\"[ ]*version=\"[0-9\.]+\"/<pkg-ref id=\"com.user.workinghours.pkg\" version=\"$VERSION\"/" pkg_installer/distribution.xml
   echo "✅ Updated pkg_installer/distribution.xml"
+fi
+
+# 4. Info.plist
+if [ -f Info.plist ]; then
+  sed -i '' -e "/<key>CFBundleShortVersionString<\/key>/{n;s/<string>.*<\/string>/<string>$VERSION<\/string>/;}" Info.plist
+  echo "✅ Updated Info.plist"
 fi
 
 echo ""
