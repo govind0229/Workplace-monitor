@@ -37,8 +37,6 @@ jobs:
         run: |
           bash pkg_installer/build_pkg.sh
           bash pkg_installer/build_distribution_pkg.sh
-          # Final asset for release
-          mv WorkplaceMonitor-Installer.pkg WorkplaceMonitor.pkg
 
       - name: Update Homebrew Tap
         env:
