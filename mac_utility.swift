@@ -86,7 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func registerLaunchAgent() {
-        let label = "com.user.workinghours"
+        let label = "com.workplacemonitor.app"
         let plistName = "\(label).plist"
         let fileManager = FileManager.default
         
@@ -133,7 +133,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             
             // Perform substitution: Replace /Applications/WorkingHours.app with actual bundle path
             let bundlePath = Bundle.main.bundlePath
-            plistContent = plistContent.replacingOccurrences(of: "/Applications/WorkingHours.app", with: bundlePath)
+            plistContent = plistContent.replacingOccurrences(of: "/Applications/WorkplaceMonitor.app", with: bundlePath)
             
             // Write to destination
             try plistContent.write(to: destPlistURL, atomically: true, encoding: .utf8)
@@ -339,7 +339,7 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
             backing: .buffered,
             defer: false
         )
-        window.title = "Working Hours Monitor"
+        window.title = "Workplace Monitor"
         window.minSize = NSSize(width: 700, height: 500)
         window.contentView = webView
         window.delegate = self
@@ -828,13 +828,13 @@ class MenuBarUtility: NSObject {
 
 // MARK: - CoreLocation Delegate
 extension MenuBarUtility: CLLocationManagerDelegate {
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    @objc func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
         let lat = location.coordinate.latitude
         let lng = location.coordinate.longitude
         let acc = location.horizontalAccuracy
-        print("[Location] Updated: \(lat), \(lng) (Accuracy: \(acc)m)")
+        print("[Location] Native Updated: \(lat), \(lng) (Accuracy: \(acc)m)")
         
         // Send location to local server for automation rule processing
         guard let url = URL(string: "\(serverURL)/location") else { return }
@@ -862,21 +862,20 @@ extension MenuBarUtility: CLLocationManagerDelegate {
         }.resume()
     }
     
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location update failed: \(error.localizedDescription)")
+    @objc func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("[Location] Native Error: \(error.localizedDescription)")
     }
     
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        print("Location authorization changed to: \(manager.authorizationStatus.rawValue)")
+    @objc func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         if #available(macOS 11.0, *) {
-            switch manager.authorizationStatus {
-            case .authorizedAlways, .authorizedWhenInUse:
-                print("Starting location updates...")
+            let status = manager.authorizationStatus
+            print("[Location] Native Authorization Changed: \(status.rawValue)")
+            if status == .authorizedAlways {
                 manager.startUpdatingLocation()
-            default:
-                print("Location not authorized.")
-                break
             }
+        } else {
+            // Legacy/Deprecated path check as fallback
+            manager.startUpdatingLocation()
         }
     }
 }

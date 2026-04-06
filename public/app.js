@@ -825,7 +825,7 @@ function startLiveTracking() {
 
 function centerOnUser() {
     if (!navigator.geolocation) {
-        alert('Geolocation is not supported by this browser/app.');
+        alert('Geolocation is not supported by your browser.');
         return;
     }
 
@@ -841,7 +841,8 @@ function centerOnUser() {
         locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Locating…`;
     }
 
-    const geoOptions = { enableHighAccuracy: true, timeout: 25000, maximumAge: 10000 };
+    // Pass 1: Try High Accuracy (GPS)
+    const geoOptions = { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 };
 
     const successCallback = (pos) => {
         const lat = pos.coords.latitude;
@@ -849,7 +850,7 @@ function centerOnUser() {
         const acc = pos.coords.accuracy;
         window._lastUserPos = { lat, lng, acc };
 
-        console.log(`[Location] Locate-Me: ${lat.toFixed(6)}, ${lng.toFixed(6)} ±${Math.round(acc)}m`);
+        console.log(`[Location] Locate-Me Success: ${lat.toFixed(6)}, ${lng.toFixed(6)} ±${Math.round(acc)}m`);
 
         if (locationMap) {
             if (userMarker) locationMap.removeLayer(userMarker);
@@ -860,10 +861,9 @@ function centerOnUser() {
                     iconSize: [20, 20],
                     iconAnchor: [10, 10]
                 })
-            }).addTo(locationMap)
-              .bindPopup(`📍 You are here<br><small style="color:#999">${lat.toFixed(5)}, ${lng.toFixed(5)}<br>Accuracy ±${Math.round(acc)}m</small>`)
-              .openPopup();
-            locationMap.setView([lat, lng], 16, { animate: true });
+            }).addTo(locationMap).bindPopup(`📍 You are here<br><small style="color:#999">${lat.toFixed(5)}, ${lng.toFixed(5)}</small>`);
+            
+            locationMap.setView([lat, lng], 16);
         }
 
         updateDistanceCard(lat, lng, acc);
@@ -871,11 +871,24 @@ function centerOnUser() {
     };
 
     const errorCallback = (err) => {
+        console.warn(`[Location] Locate-Me Error (Code ${err.code}): ${err.message}`);
+        
+        if (err.code === err.PERMISSION_DENIED) {
+            alert('Location access was denied. Please go to System Settings → Privacy & Security → Location Services and toggle ON for Workplace Monitor.');
+            resetBtn();
+            return;
+        }
+
+        // Pass 2 Fallback: If high accuracy fails/times out, try Standard accuracy (WiFi/Cell)
         if (geoOptions.enableHighAccuracy) {
-            console.warn('[Location] High accuracy failed for CenterOnUser, retrying with low accuracy...');
+            console.log('[Location] Retrying with Standard accuracy fallback...');
             geoOptions.enableHighAccuracy = false;
-            geoOptions.timeout = 10000;
-            navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
+            geoOptions.timeout = 15000;
+            navigator.geolocation.getCurrentPosition(successCallback, (err2) => {
+                console.error('[Location] Standard accuracy fallback also failed:', err2.message);
+                alert(`Could not get your location: ${err2.message}`);
+                resetBtn();
+            }, geoOptions);
         } else {
             alert(`Could not get your location: ${err.message}\n\nMake sure location access is granted in System Settings → Privacy & Security → Location Services.`);
             resetBtn();
@@ -1137,12 +1150,7 @@ if (radiusIncrease) {
 }
 
 // Locate Me buttons
-if (locateMeBtn) {
-    locateMeBtn.onclick = () => centerOnUser();
-}
-if (mapLocateMeBtn) {
-    mapLocateMeBtn.onclick = () => centerOnUser();
-}
+
 
 function escapeHTML(str) {
     const div = document.createElement('div');

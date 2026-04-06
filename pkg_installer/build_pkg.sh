@@ -103,10 +103,14 @@ fi
 if [ -n "${APPLE_CERT_USER:-}" ]; then
     echo "  Signing with: $APPLE_CERT_USER"
     codesign --force --deep --options runtime --timestamp \
+        --entitlements "$SCRIPT_DIR/WorkplaceMonitor.entitlements" \
         --sign "$APPLE_CERT_USER" "$APP_BUNDLE"
 else
-    echo "  Ad-hoc signing (local development)"
-    codesign --force --deep --sign - "$APP_BUNDLE"
+    # 4. Sign the .app bundle (Hardened Runtime with Location Entitlements)
+    echo "Ad-hoc signing and adding entitlements..."
+    codesign --force --options runtime \
+        --entitlements "$SCRIPT_DIR/WorkplaceMonitor.entitlements" \
+        --sign - "$APP_BUNDLE" || true
 fi
 
 # ── 4. Prepare installer scripts ─────────────────────────────
