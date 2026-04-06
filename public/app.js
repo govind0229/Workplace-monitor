@@ -26,6 +26,9 @@ const radiusDecrease = document.getElementById('radiusDecrease');
 const radiusIncrease = document.getElementById('radiusIncrease');
 const radiusValDisplay = document.getElementById('radiusValDisplay');
 const gaugeProgress = document.getElementById('gaugeProgress');
+const locateMeBtn = document.getElementById('locateMeBtn');
+const mapLocateMeBtn = document.getElementById('mapLocateMeBtn');
+const distanceCard = document.getElementById('distanceCard');
 
 // Category Mapping
 const appNameInput = document.getElementById('appNameInput');
@@ -420,7 +423,9 @@ if (setOfficeLocationBtn) {
             return;
         }
 
-        navigator.geolocation.getCurrentPosition(async (position) => {
+        const geoOptions = { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 };
+        
+        const successCallback = async (position) => {
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
             const radius = officeRadiusInput ? parseInt(officeRadiusInput.value) || 200 : 200;
@@ -444,22 +449,28 @@ if (setOfficeLocationBtn) {
                     Update to Current Location
                 `;
                 setOfficeLocationBtn.disabled = false;
-                // Refresh the map view
                 if (locationMap) loadLocationData();
             } catch (e) {
                 console.error(e);
                 alert('Failed to save office location.');
                 resetLocationBtn();
             }
-        }, (error) => {
-            console.error(error);
-            alert(`Location access denied or unavailable: ${error.message}`);
-            resetLocationBtn();
-        }, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        });
+        };
+
+        const errorCallback = (error) => {
+            if (geoOptions.enableHighAccuracy) {
+                console.warn('[Location] High accuracy failed, retrying with low accuracy...');
+                geoOptions.enableHighAccuracy = false;
+                geoOptions.timeout = 10000;
+                navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
+            } else {
+                console.error(error);
+                alert(`Location access denied or unavailable: ${error.message}`);
+                resetLocationBtn();
+            }
+        };
+
+        navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
     };
 }
 
@@ -481,6 +492,7 @@ if (clearOfficeLocationBtn) {
                 if (officeCircle) locationMap.removeLayer(officeCircle);
                 officeMarker = null;
                 officeCircle = null;
+                clearRoutePolyline();
                 document.getElementById('locationAutoStatus').textContent = 'Inactive';
                 document.getElementById('locationAutoStatus').style.color = '';
             }
@@ -512,6 +524,366 @@ let officeCircle = null;
 let officeOuterCircle = null;
 let userMarker = null;
 let currentBaseLayer = null;
+let _currentOfficeLat = null;
+let _currentOfficeLng = null;
+let _currentOfficeRadius = 200;
+let _distanceWatchId = null;
+
+/**
+ * Haversine distance in metres between two lat/lng pairs.
+ */
+function haversineDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000; // Earth radius in metres
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Current travel mode: 'driving' or 'walking'
+let _routeMode = 'driving';
+let _routePolyline = null;
+let _routeCalcTimeout = null;
+
+function updateDistanceCard(userLat, userLng, accuracy) {
+    if (_currentOfficeLat === null || _currentOfficeLng === null) {
+        if (distanceCard) distanceCard.style.display = 'none';
+        return;
+    }
+
+    if (distanceCard) distanceCard.style.display = 'flex';
+
+    // ── Always compute straight-line distance immediately ──
+    const straightDist = haversineDistance(userLat, userLng, _currentOfficeLat, _currentOfficeLng);
+    const inside = straightDist <= _currentOfficeRadius;
+
+    // Geofence status
+    const statusEl = document.getElementById('distanceStatus');
+    if (statusEl) {
+        statusEl.textContent = inside ? '✓ Inside Geofence' : '✗ Outside Geofence';
+        statusEl.className = 'distance-status-badge ' + (inside ? 'inside' : 'outside');
+    }
+
+    // Show straight-line value right away in the main display (fallback until road route loads)
+    const distValEl = document.getElementById('routeDistValue');
+    const distUnitEl = document.getElementById('routeDistUnit');
+    const etaEl = document.getElementById('routeEta');
+    if (distValEl && distUnitEl) {
+        if (straightDist >= 1000) {
+            distValEl.textContent = (straightDist / 1000).toFixed(2);
+            distUnitEl.textContent = 'km';
+        } else {
+            distValEl.textContent = Math.round(straightDist);
+            distUnitEl.textContent = 'm';
+        }
+    }
+
+    // The "straight" label below shows it's straight-line until road route loads
+    const slEl = document.getElementById('routeStraightLine');
+    if (slEl) slEl.textContent = 'straight-line (loading road…)';
+    if (etaEl) etaEl.textContent = 'Calculating…';
+
+    // Coordinates + accuracy hint
+    const coordsEl = document.getElementById('distanceCoords');
+    if (coordsEl) {
+        const accText = accuracy ? ` · ±${Math.round(accuracy)}m accuracy` : '';
+        coordsEl.textContent = `You: ${userLat.toFixed(5)}, ${userLng.toFixed(5)}${accText}`;
+    }
+
+    // Debounce road-route fetch (1.5 s so we don't spam on every GPS tick)
+    clearTimeout(_routeCalcTimeout);
+    _routeCalcTimeout = setTimeout(() => {
+        calculateRoute(userLat, userLng, _currentOfficeLat, _currentOfficeLng, _routeMode, straightDist);
+    }, 1500);
+}
+
+/**
+ * Fetches a road route from OSRM (free, no API key needed) and:
+ *  - Updates the route distance + ETA in the card
+ *  - Draws the route polyline on the map
+ */
+async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'driving') {
+    const spinnerEl = document.getElementById('routeSpinner');
+    const distValEl = document.getElementById('routeDistValue');
+    const distUnitEl = document.getElementById('routeDistUnit');
+    const etaEl = document.getElementById('routeEta');
+
+    // Show spinner
+    if (spinnerEl) spinnerEl.style.display = 'inline-flex';
+    if (etaEl) etaEl.textContent = 'Calculating…';
+
+    // OSRM profiles: 'driving', 'bike', 'foot'
+    const osrmProfile = mode === 'cycling' ? 'bike' : mode === 'walking' ? 'foot' : 'driving';
+    // Note: OSRM expects lng,lat order
+    const primaryUrl = `https://router.project-osrm.org/route/v1/${osrmProfile}/${userLng},${userLat};${officeLng},${officeLat}?overview=full&geometries=geojson&steps=false`;
+    const secondaryUrl = `https://osrm.project-osrm.org/route/v1/${osrmProfile}/${userLng},${userLat};${officeLng},${officeLat}?overview=full&geometries=geojson&steps=false`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    try {
+        let res;
+        try {
+            res = await fetch(primaryUrl, { signal: controller.signal });
+        } catch (e) {
+            console.warn('[Route] Primary server failed, trying backup...', e.message);
+            res = await fetch(secondaryUrl, { signal: controller.signal });
+        }
+        
+        clearTimeout(timeoutId);
+        if (!res.ok) throw new Error(`OSRM HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (!data.routes || data.routes.length === 0) throw new Error('No route found');
+
+        const route = data.routes[0];
+        const distMetres = route.distance;     // metres
+        const durationSec = route.duration;    // seconds
+        const geometry = route.geometry;       // GeoJSON LineString
+
+        // Update distance display
+        if (distValEl && distUnitEl) {
+            if (distMetres >= 1000) {
+                distValEl.textContent = (distMetres / 1000).toFixed(2);
+                distUnitEl.textContent = 'km';
+            } else {
+                distValEl.textContent = Math.round(distMetres);
+                distUnitEl.textContent = 'm';
+            }
+        }
+
+        // Update ETA
+        if (etaEl) {
+            const modeLabel = mode === 'cycling' ? ' by bike' : mode === 'walking' ? ' walk' : ' drive';
+            etaEl.textContent = formatDuration(durationSec) + modeLabel;
+        }
+
+        // Draw route polyline on map
+        if (locationMap && geometry) {
+            // Remove old route layer
+            if (_routePolyline) {
+                locationMap.removeLayer(_routePolyline);
+                _routePolyline = null;
+            }
+
+            // GeoJSON coords are [lng, lat], Leaflet needs [lat, lng]
+            const latlngs = geometry.coordinates.map(c => [c[1], c[0]]);
+
+            const routeColor = mode === 'cycling' ? '#10b981' : mode === 'walking' ? '#f59e0b' : '#6366f1';
+            _routePolyline = L.polyline(latlngs, {
+                color: routeColor,
+                weight: 4,
+                opacity: 0.85,
+                dashArray: mode === 'cycling' ? '10 6' : null,
+                lineJoin: 'round',
+                lineCap: 'round'
+            }).addTo(locationMap);
+
+            // Add distance label directly on the map line
+            const distLabel = distMetres >= 1000 ? (distMetres/1000).toFixed(1) + ' km' : Math.round(distMetres) + ' m';
+            _routePolyline.bindTooltip(`${distLabel} ${mode==='cycling'?'bike':'drive'}`, {
+                permanent: true,
+                direction: 'center',
+                className: 'route-label-tooltip',
+                opacity: 0.9
+            });
+
+            // Update the sidebar card labels
+            const slEl = document.getElementById('routeStraightLine');
+            if (slEl) {
+                const straightDist = haversineDistance(userLat, userLng, officeLat, officeLng);
+                const slText = straightDist >= 1000 
+                    ? `${(straightDist/1000).toFixed(1)}km straight` 
+                    : `${Math.round(straightDist)}m straight`;
+                slEl.textContent = `(via road) · ${slText}`;
+            }
+
+            // Bring markers on top of the route line
+            if (officeMarker) officeMarker.bringToFront();
+            if (userMarker) userMarker.bringToFront();
+        }
+
+    } catch (err) {
+        clearTimeout(timeoutId);
+        console.error('[Route] OSRM error:', err.name, err.message);
+        
+        // No longer resetting distValEl.textContent to '—' 
+        // We keep the straight-line fallback value that was set by updateDistanceCard
+        
+        if (etaEl) {
+            etaEl.textContent = err.name === 'AbortError' ? 'Timed out (poor signal)' : 'Road route unavailable';
+        }
+        const slEl = document.getElementById('routeStraightLine');
+        if (slEl) {
+            slEl.textContent = '(showing straight-line only)';
+            slEl.style.color = 'var(--text-muted)';
+        }
+    } finally {
+        if (spinnerEl) spinnerEl.style.display = 'none';
+    }
+}
+
+/** Format seconds into "X h Y min" or "Y min" */
+function formatDuration(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h} h ${m} min`;
+    if (m > 0) return `${m} min`;
+    return '< 1 min';
+}
+
+/** Remove route line from map */
+function clearRoutePolyline() {
+    if (_routePolyline && locationMap) {
+        locationMap.removeLayer(_routePolyline);
+        _routePolyline = null;
+    }
+}
+
+// Wire up travel mode buttons
+document.querySelectorAll('.route-mode-btn').forEach(btn => {
+    btn.onclick = () => {
+        _routeMode = btn.dataset.mode;
+        document.querySelectorAll('.route-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // Recalculate immediately on mode switch
+        if (window._lastUserPos && _currentOfficeLat !== null) {
+            // Cancel any pending debounce
+            clearTimeout(_routeCalcTimeout);
+            calculateRoute(
+                window._lastUserPos.lat, window._lastUserPos.lng,
+                _currentOfficeLat, _currentOfficeLng,
+                _routeMode
+            );
+        }
+    };
+});
+
+/**
+ * Single source of truth for live location tracking.
+ * Uses watchPosition with maximumAge:0 to always get a fresh GPS fix.
+ * Updates the user marker and distance card on every position update.
+ */
+function startLiveTracking() {
+    if (!navigator.geolocation) return;
+
+    // Clear any previous watch
+    if (_distanceWatchId !== null) {
+        navigator.geolocation.clearWatch(_distanceWatchId);
+        _distanceWatchId = null;
+    }
+
+    // Show "acquiring" state in distance card
+    const statusEl = document.getElementById('distanceStatus');
+    if (statusEl) {
+        statusEl.textContent = 'Acquiring GPS…';
+        statusEl.className = 'distance-status-badge';
+    }
+
+    _distanceWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const acc = pos.coords.accuracy; // metres
+            window._lastUserPos = { lat, lng, acc };
+
+            console.log(`[Location] Live position: ${lat.toFixed(6)}, ${lng.toFixed(6)} ±${Math.round(acc)}m`);
+
+            // Update user marker on map (map must exist)
+            if (locationMap) {
+                if (userMarker) locationMap.removeLayer(userMarker);
+                userMarker = L.marker([lat, lng], {
+                    icon: L.divIcon({
+                        className: 'user-location-marker',
+                        html: '<div class="user-dot-inner"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    })
+                }).addTo(locationMap).bindPopup(`📍 You are here<br><small style="color:#999">${lat.toFixed(5)}, ${lng.toFixed(5)}</small>`);
+            }
+
+            // Update distance card
+            updateDistanceCard(lat, lng, acc);
+        },
+        (err) => {
+            console.warn('[Location] Watch error:', err.code, err.message);
+            const statusEl = document.getElementById('distanceStatus');
+            if (statusEl) {
+                statusEl.textContent = `GPS Error: ${err.message}`;
+                statusEl.className = 'distance-status-badge outside';
+            }
+        },
+        {
+            enableHighAccuracy: true,
+            maximumAge: 0,        // always fresh — no stale cached position
+            timeout: 20000
+        }
+    );
+}
+
+function centerOnUser() {
+    if (!navigator.geolocation) {
+        alert('Geolocation is not supported by this browser/app.');
+        return;
+    }
+
+    const resetBtn = () => {
+        if (locateMeBtn) {
+            locateMeBtn.disabled = false;
+            locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> My Current Location`;
+        }
+    };
+
+    if (locateMeBtn) {
+        locateMeBtn.disabled = true;
+        locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Locating…`;
+    }
+
+    const geoOptions = { enableHighAccuracy: true, timeout: 25000, maximumAge: 10000 };
+
+    const successCallback = (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy;
+        window._lastUserPos = { lat, lng, acc };
+
+        console.log(`[Location] Locate-Me: ${lat.toFixed(6)}, ${lng.toFixed(6)} ±${Math.round(acc)}m`);
+
+        if (locationMap) {
+            if (userMarker) locationMap.removeLayer(userMarker);
+            userMarker = L.marker([lat, lng], {
+                icon: L.divIcon({
+                    className: 'user-location-marker',
+                    html: '<div class="user-dot-inner"></div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                })
+            }).addTo(locationMap)
+              .bindPopup(`📍 You are here<br><small style="color:#999">${lat.toFixed(5)}, ${lng.toFixed(5)}<br>Accuracy ±${Math.round(acc)}m</small>`)
+              .openPopup();
+            locationMap.setView([lat, lng], 16, { animate: true });
+        }
+
+        updateDistanceCard(lat, lng, acc);
+        resetBtn();
+    };
+
+    const errorCallback = (err) => {
+        if (geoOptions.enableHighAccuracy) {
+            console.warn('[Location] High accuracy failed for CenterOnUser, retrying with low accuracy...');
+            geoOptions.enableHighAccuracy = false;
+            geoOptions.timeout = 10000;
+            navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
+        } else {
+            alert(`Could not get your location: ${err.message}\n\nMake sure location access is granted in System Settings → Privacy & Security → Location Services.`);
+            resetBtn();
+        }
+    };
+
+    navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
+}
 
 const mapTiles = {
     dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -543,6 +915,10 @@ function initLocationView() {
     // Fix tile rendering after view switch
     setTimeout(() => locationMap.invalidateSize(), 200);
 
+    // Wire up "Locate Me" buttons
+    if (locateMeBtn) locateMeBtn.onclick = centerOnUser;
+    if (mapLocateMeBtn) mapLocateMeBtn.onclick = centerOnUser;
+
     // Load current settings and render
     loadLocationData();
 }
@@ -550,29 +926,8 @@ function initLocationView() {
 async function loadLocationData() {
     console.log('[Location] Loading location data and requesting permission...');
 
-    // Request current location immediately and in parallel
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-            const userLat = pos.coords.latitude;
-            const userLng = pos.coords.longitude;
-            console.log('[Location] Current position acquired:', userLat, userLng);
-
-            if (userMarker) locationMap.removeLayer(userMarker);
-            userMarker = L.marker([userLat, userLng], {
-                icon: L.divIcon({
-                    className: 'user-location-marker',
-                    html: '<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 8px rgba(59,130,246,0.6);"></div>',
-                    iconSize: [20, 20],
-                    iconAnchor: [10, 10]
-                })
-            }).addTo(locationMap).bindPopup('📍 You are here');
-
-            // Center on user if no office set (checked later after fetch)
-            window._lastUserPos = { lat: userLat, lng: userLng };
-        }, (err) => {
-            console.warn('[Location] Geolocation error:', err.message);
-        }, { enableHighAccuracy: true, timeout: 10000 });
-    }
+    // Start live GPS tracking (single watchPosition, no race conditions)
+    startLiveTracking();
 
     try {
         const res = await fetch(`${API_BASE}/settings`);
@@ -586,19 +941,34 @@ async function loadLocationData() {
         updateRadiusUI(radius);
 
         if (!isNaN(lat) && !isNaN(lng) && data.officeLat !== '') {
+            _currentOfficeLat = lat;
+            _currentOfficeLng = lng;
+            _currentOfficeRadius = radius;
             renderOfficeOnMap(lat, lng, radius);
-            locationStatusBadge.textContent = 'Office Location Configured ✓';
-            locationStatusBadge.className = 'status-badge status-active';
+            if (locationStatusBadge) {
+                locationStatusBadge.textContent = 'Office Location Configured ✓';
+                locationStatusBadge.className = 'status-badge status-active';
+            }
             document.getElementById('locationAutoStatus').textContent = 'Live Monitoring Active';
             document.getElementById('locationAutoStatus').parentElement.classList.add('pulse-active');
             document.getElementById('locationAutoStatus').style.color = 'var(--secondary)';
+
+            // Update distance card if user pos is already known
+            if (window._lastUserPos) {
+                updateDistanceCard(window._lastUserPos.lat, window._lastUserPos.lng);
+            }
         } else {
-            locationStatusBadge.textContent = 'Not Configured';
-            locationStatusBadge.className = 'status-badge status-offline';
+            _currentOfficeLat = null;
+            _currentOfficeLng = null;
+            if (distanceCard) distanceCard.style.display = 'none';
+            if (locationStatusBadge) {
+                locationStatusBadge.textContent = 'Not Configured';
+                locationStatusBadge.className = 'status-badge status-offline';
+            }
             document.getElementById('locationAutoStatus').textContent = 'Monitoring Inactive';
             document.getElementById('locationAutoStatus').parentElement.classList.remove('pulse-active');
             document.getElementById('locationAutoStatus').style.color = '';
-            
+
             // If office not configured and we have user pos, center on user
             if (window._lastUserPos) {
                 locationMap.setView([window._lastUserPos.lat, window._lastUserPos.lng], 15);
@@ -738,21 +1108,40 @@ const saveRadiusToServer = debounce(async (radius) => {
 }, 1000);
 
 if (officeRadiusSlider) {
-    officeRadiusSlider.oninput = (e) => updateRadiusUI(e.target.value);
+    officeRadiusSlider.oninput = (e) => {
+        _currentOfficeRadius = parseInt(e.target.value);
+        updateRadiusUI(e.target.value);
+        // Refresh distance card with updated radius
+        if (window._lastUserPos) {
+            updateDistanceCard(window._lastUserPos.lat, window._lastUserPos.lng);
+        }
+    };
 }
 
 if (radiusDecrease) {
     radiusDecrease.onclick = () => {
         const val = parseInt(officeRadiusSlider.value) - 10;
+        _currentOfficeRadius = val;
         updateRadiusUI(val);
+        if (window._lastUserPos) updateDistanceCard(window._lastUserPos.lat, window._lastUserPos.lng);
     };
 }
 
 if (radiusIncrease) {
     radiusIncrease.onclick = () => {
         const val = parseInt(officeRadiusSlider.value) + 10;
+        _currentOfficeRadius = val;
         updateRadiusUI(val);
+        if (window._lastUserPos) updateDistanceCard(window._lastUserPos.lat, window._lastUserPos.lng);
     };
+}
+
+// Locate Me buttons
+if (locateMeBtn) {
+    locateMeBtn.onclick = () => centerOnUser();
+}
+if (mapLocateMeBtn) {
+    mapLocateMeBtn.onclick = () => centerOnUser();
 }
 
 function escapeHTML(str) {

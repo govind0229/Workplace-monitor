@@ -2494,6 +2494,261 @@ body[data-theme="light"] .color-swatch.active {
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* ─── Distance Info Card ─── */
+.distance-info-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 20px !important;
+    border: 1px solid var(--border) !important;
+    background: linear-gradient(135deg, rgba(var(--primary-dim), 0.05), transparent) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.distance-info-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--primary-dim) 0%, transparent 60%);
+    opacity: 0.15;
+    pointer-events: none;
+}
+
+.distance-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+}
+
+.distance-value-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.distance-value {
+    font-size: 2.4rem;
+    font-weight: 200;
+    color: var(--text);
+    line-height: 1;
+    letter-spacing: -1px;
+    font-variant-numeric: tabular-nums;
+}
+
+.distance-unit {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-dim);
+}
+
+.distance-status-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    width: fit-content;
+    letter-spacing: 0.3px;
+    transition: all 0.3s ease;
+}
+
+.distance-status-badge.inside {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.distance-status-badge.outside {
+    background: rgba(248, 113, 113, 0.12);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.25);
+}
+
+.distance-coords-hint {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.2px;
+    word-break: break-all;
+    line-height: 1.4;
+}
+
+/* ─── Route ETA Row ─── */
+.route-eta-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-weight: 500;
+}
+
+.route-eta-divider {
+    opacity: 0.4;
+    font-size: 0.9rem;
+}
+
+.route-straight-line {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ─── Route Mode Switcher ─── */
+.route-mode-switcher {
+    margin-left: auto;
+    display: flex;
+    gap: 3px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px;
+}
+
+.route-mode-btn {
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.route-mode-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+}
+
+.route-mode-btn.active {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 2px 6px var(--primary-dim);
+}
+
+/* ─── Route Spinner ─── */
+.route-spinner {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+}
+
+.spin-anim {
+    animation: spinRoute 0.9s linear infinite;
+    transform-origin: center;
+}
+
+@keyframes spinRoute {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* ─── Map Tooltip Labels ─── */
+.route-label-tooltip {
+    background: rgba(15, 23, 42, 0.85); /* Slate 900 */
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    white-space: nowrap;
+}
+
+.leaflet-tooltip-left.route-label-tooltip::before { border-left-color: rgba(15, 23, 42, 0.85); }
+.leaflet-tooltip-right.route-label-tooltip::before { border-right-color: rgba(15, 23, 42, 0.85); }
+
+body[data-theme="light"] .route-label-tooltip {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: #0f172a;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* ─── Floating "Locate Me" Map Button ─── */
+.map-locate-btn {
+    position: absolute;
+    bottom: 70px;
+    right: 16px;
+    z-index: 1000;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(8px);
+}
+
+.map-locate-btn:hover {
+    transform: scale(1.1);
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4), 0 0 0 4px var(--primary-dim);
+}
+
+.map-locate-btn:active {
+    transform: scale(0.97);
+}
+
+/* ─── Live User Location Dot ─── */
+.user-location-marker {
+    background: transparent !important;
+    border: none !important;
+}
+
+.user-dot-inner {
+    width: 14px;
+    height: 14px;
+    background: #3b82f6;
+    border: 3px solid white;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6);
+    animation: userDotPulse 2s infinite ease-out;
+}
+
+@keyframes userDotPulse {
+    0%   { box-shadow: 0 0 0 0   rgba(59, 130, 246, 0.6); }
+    70%  { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0);   }
+    100% { box-shadow: 0 0 0 0   rgba(59, 130, 246, 0);   }
+}
+
+/* .btn.accent style if not already present */
+.btn.accent {
+    background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(59,130,246,0.08));
+    color: #60a5fa;
+    border: 1px solid rgba(59,130,246,0.3);
+}
+
+.btn.accent:hover {
+    background: linear-gradient(135deg, rgba(59,130,246,0.25), rgba(59,130,246,0.15));
+    border-color: rgba(59,130,246,0.5);
+    color: #93c5fd;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(59,130,246,0.2);
+}
+
 /* ─── Animated Background Orbs ─── */
 .bg-orb {
   position: absolute;
