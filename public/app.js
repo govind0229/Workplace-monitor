@@ -580,10 +580,14 @@ function updateDistanceCard(userLat, userLng, accuracy) {
         }
     }
 
-    // The "straight" label below shows it's straight-line until road route loads
+    // The "straight" label below is now removed per user request
     const slEl = document.getElementById('routeStraightLine');
-    if (slEl) slEl.textContent = 'straight-line (loading road…)';
-    if (etaEl) etaEl.textContent = 'Calculating…';
+    if (slEl) slEl.textContent = ''; 
+    if (etaEl) etaEl.textContent = 'Calculating route…';
+    
+    // Ensure the row is visible when we start a new calculation
+    const etaRow = document.querySelector('.route-eta-row');
+    if (etaRow) etaRow.style.display = 'flex';
 
     // Coordinates + accuracy hint
     const coordsEl = document.getElementById('distanceCoords');
@@ -709,16 +713,19 @@ async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'dr
         clearTimeout(timeoutId);
         console.error('[Route] OSRM error:', err.name, err.message);
         
-        // No longer resetting distValEl.textContent to '—' 
-        // We keep the straight-line fallback value that was set by updateDistanceCard
+        // Optimization: Instead of showing "Road route unavailable", we just hide the ETA row 
+        // and keep the main distance display which already shows the straight-line fallback.
+        const etaRow = document.querySelector('.route-eta-row');
+        if (etaRow) {
+            etaRow.style.display = 'none';
+        }
         
         if (etaEl) {
-            etaEl.textContent = err.name === 'AbortError' ? 'Timed out (poor signal)' : 'Road route unavailable';
+            etaEl.textContent = '';
         }
         const slEl = document.getElementById('routeStraightLine');
         if (slEl) {
-            slEl.textContent = '(showing straight-line only)';
-            slEl.style.color = 'var(--text-muted)';
+            slEl.textContent = '';
         }
     } finally {
         if (spinnerEl) spinnerEl.style.display = 'none';
@@ -841,6 +848,17 @@ function centerOnUser() {
         locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Locating…`;
     }
 
+    // --- NATIVE BRIDGE CHECK ---
+    // If running in the Workplace Monitor macOS app, use the native bridge
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
+        console.log('[Location] Requesting location via Native Bridge...');
+        window.webkit.messageHandlers.requestLocation.postMessage({});
+        
+        // Auto-reset if native doesn't respond in 10s
+        setTimeout(resetBtn, 10000);
+        return;
+    }
+
     // Pass 1: Try High Accuracy (GPS)
     const geoOptions = { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 };
 
@@ -897,6 +915,34 @@ function centerOnUser() {
 
     navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
 }
+
+// Global callback for native location bridge
+window.onNativeLocation = (lat, lng, acc) => {
+    window._lastUserPos = { lat, lng, acc };
+    console.log(`[Location] Received Native Coordinates: ${lat}, ${lng} ±${Math.round(acc)}m`);
+    
+    if (locationMap) {
+        if (userMarker) locationMap.removeLayer(userMarker);
+        userMarker = L.marker([lat, lng], {
+            icon: L.divIcon({
+                className: 'user-location-marker',
+                html: '<div class="user-dot-inner"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            })
+        }).addTo(locationMap).bindPopup(`📍 You are here (Native GPS)<br><small style="color:#999">${lat.toFixed(5)}, ${lng.toFixed(5)}</small>`);
+        
+        locationMap.setView([lat, lng], 16);
+    }
+    
+    updateDistanceCard(lat, lng, acc);
+
+    // Reset the "Locate Me" button if it's currently in "Locating..." state
+    if (locateMeBtn && locateMeBtn.innerText.includes('Locating')) {
+        locateMeBtn.disabled = false;
+        locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> My Current Location`;
+    }
+};
 
 const mapTiles = {
     dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',

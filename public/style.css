@@ -2519,11 +2519,12 @@ body[data-theme="light"] .color-swatch.active {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.75rem;
-    font-weight: 700;
+    font-size: 0.72rem;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-muted);
+    letter-spacing: 1.2px;
+    color: var(--primary);
+    opacity: 0.8;
 }
 
 .distance-value-row {
@@ -2533,12 +2534,13 @@ body[data-theme="light"] .color-swatch.active {
 }
 
 .distance-value {
-    font-size: 2.4rem;
+    font-size: 2.8rem;
     font-weight: 200;
-    color: var(--text);
+    color: #fff;
     line-height: 1;
-    letter-spacing: -1px;
+    letter-spacing: -1.5px;
     font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 20px rgba(167, 139, 250, 0.2);
 }
 
 .distance-unit {
@@ -2576,8 +2578,8 @@ body[data-theme="light"] .color-swatch.active {
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.2px;
-    word-break: break-all;
-    line-height: 1.4;
+    margin-top: 4px;
+    opacity: 0.6;
 }
 
 /* ─── Route ETA Row ─── */
@@ -2596,9 +2598,9 @@ body[data-theme="light"] .color-swatch.active {
 }
 
 .route-straight-line {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
-    font-style: italic;
+    font-weight: 400;
 }
 
 /* ─── Route Mode Switcher ─── */

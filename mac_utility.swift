@@ -278,7 +278,7 @@ class LocalhostSchemeHandler: NSObject, WKURLSchemeHandler {
 }
 
 // MARK: - Dashboard Window Controller
-class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate {
+class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var window: NSWindow?
     var webView: WKWebView?
     let serverURL: String
@@ -304,6 +304,10 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "app")
+        
+        // Add Native Bridges
+        config.userContentController.add(self, name: "requestLocation")
+        config.userContentController.add(self, name: "requestStatus")
         
         // CRITICAL: Force clear WKWebView internal caches (Memory/Disk) on every launch
         let dataStore = WKWebsiteDataStore.default()
@@ -444,6 +448,40 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
         alert.addButton(withTitle: "Cancel")
         let response = alert.runModal()
         completionHandler(response == .alertFirstButtonReturn)
+    }
+
+    // MARK: - WKScriptMessageHandler
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "requestLocation" {
+            print("[Bridge] Web requested location")
+            // Fetch current location from the MenuBarUtility
+            if let appDelegate = NSApp.delegate as? AppDelegate,
+               let menuBar = appDelegate.menuBarUtility,
+               let loc = menuBar.locationManager?.location {
+                sendLocationToWeb(loc)
+            } else {
+                print("[Bridge] Location not available yet, starting manager...")
+                if let appDelegate = NSApp.delegate as? AppDelegate {
+                    appDelegate.menuBarUtility?.locationManager?.startUpdatingLocation()
+                }
+            }
+        } else if message.name == "requestStatus" {
+            // Force a status refresh
+            if let appDelegate = NSApp.delegate as? AppDelegate {
+                appDelegate.menuBarUtility?.fetchStatus()
+            }
+        }
+    }
+
+    func sendLocationToWeb(_ location: CLLocation) {
+        let lat = location.coordinate.latitude
+        let lng = location.coordinate.longitude
+        let acc = location.horizontalAccuracy
+        
+        let js = "if(typeof onNativeLocation==='function'){ onNativeLocation(\(lat), \(lng), \(acc)); }"
+        DispatchQueue.main.async {
+            self.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
     }
 
     // MARK: - NSWindowDelegate
@@ -835,6 +873,9 @@ extension MenuBarUtility: CLLocationManagerDelegate {
         let lng = location.coordinate.longitude
         let acc = location.horizontalAccuracy
         print("[Location] Native Updated: \(lat), \(lng) (Accuracy: \(acc)m)")
+        
+        // Push to dashboard if open
+        dashboardController?.sendLocationToWeb(location)
         
         // Send location to local server for automation rule processing
         guard let url = URL(string: "\(serverURL)/location") else { return }

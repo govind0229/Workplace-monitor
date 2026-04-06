@@ -2,6 +2,20 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.5.1] - 2026-04-06
+
+### Added
+- **Native Geolocation Bridge** — Implemented a `WKScriptMessageHandler` bridge between macOS and the dashboard. This bypasses `WKWebView` permission restrictions by retrieving GPS data natively via Swift and "feeding" it directly into the map. Resolves "Location access denied" errors inside the app.
+- **Hardened Runtime Entitlements** — Introduced a dedicated `.entitlements` configuration. The application is now signed with explicit `personal-information.location` authorization, ensuring macOS trusts the binary to handle GPS data.
+
+### Fixed
+- **Swift Compilation Errors** — Resolved redundant delegate conformance and handled macOS-specific `CLAuthorizationStatus` constants to ensure stable builds on macOS 12+.
+- **Identifier Synchronization** — Completed the full migration from `com.user.workinghours` to `com.workplacemonitor.app` across all native codebases and LaunchAgent logic.
+
+### Improved
+- **Dashboard UI Optimization** — Streamlined the **"Route to Office"** card by removing redundant "Road route unavailable" and "(showing straight-line only)" labels. The UI now collapses gracefully when data is missing, maintaining a clean, professional aesthetic.
+- **Visual Hierarchy** — Bolder typography and an elegant glow effect added to the distance metrics for a more premium "state-of-the-art" dashboard feel.
+
 ## [1.5.0] - 2026-04-06
 
 ### Added
