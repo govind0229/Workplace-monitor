@@ -67,7 +67,7 @@ jobs:
 
             pkg "WorkplaceMonitor.pkg"
 
-            uninstall pkgutil: "com.user.workinghours"
+            uninstall pkgutil: "com.workplacemonitor.app"
           end
           EOF
           }
