@@ -13,7 +13,7 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────
 
 # ── Configuration (override via environment) ─────────────────
-APP_NAME="${APP_NAME:-WorkingHours}"
+APP_NAME="${APP_NAME:-WorkplaceMonitor}"
 IDENTIFIER="${IDENTIFIER:-com.user.workinghours}"
 INSTALL_LOCATION="/Applications"
 
@@ -117,7 +117,7 @@ cat > "$SCRIPTS_DIR/preinstall" << 'PREINSTALL_EOF'
 #!/bin/bash
 # preinstall — Stops running app processes before replacing the bundle
 
-APP_NAME="WorkingHours"
+APP_NAME="WorkplaceMonitor"
 APP_PATH="/Applications/${APP_NAME}.app"
 
 echo "[preinstall] Stopping running ${APP_NAME} processes..."
@@ -146,7 +146,7 @@ cat > "$SCRIPTS_DIR/postinstall" << 'POSTINSTALL_EOF'
 #!/bin/bash
 # postinstall — Removes quarantine, fixes permissions, loads LaunchAgent
 
-APP_NAME="WorkingHours"
+APP_NAME="WorkplaceMonitor"
 APP_PATH="/Applications/${APP_NAME}.app"
 IDENTIFIER="com.user.workinghours"
 PLIST_NAME="${IDENTIFIER}.plist"

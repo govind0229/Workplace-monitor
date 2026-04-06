@@ -2,6 +2,24 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.5.0] - 2026-04-06
+
+### Added
+- **Workplace Monitor Branding** — Officially renamed the application to **"Workplace Monitor"** consistently across the UI, installer, and metadata to align with the project identity.
+- **Interactive Map Route Labels** — High-fidelity distance labels now appear directly on the map route line (e.g., "1.2 km drive"). Features a modern glassmorphism design that adapts to dark/light themes.
+- **Routing Reliability Fallback** — Implemented a primary/backup OSRM server architecture. If the primary routing engine is congested, the app automatically switches to a backup to ensure road distances are calculated.
+- **Robust Geolocation Fallback** — Added an automatic "Standard Accuracy" fallback for GPS. If a high-precision fix fails (indoors or poor signal), the app now retries with WiFi/Cell triangulation to prevent timeout errors.
+
+### Fixed
+- **Distance UI Reset Bug** — Fixed a critical issue where the main distance display would reset to "— km" if a road-route calculation failed. It now gracefully retains the straight-line distance as a fallback.
+- **Geolocation Timeouts** — Significantly increased the GPS acquisition timeout (from 10s back to 30s) to improve reliability in dense urban environments or building interiors.
+- **Dashboard Script Errors** — Cleaned up duplicate script tags and refined the frontend auto-refresh logic for smoother map updates.
+
+### Refactored
+- **Version Management Script** — Completely overhauled `bump_version.sh` to support robust, multi-line regex replacements across `Info.plist`, `distribution.xml`, and metadata files.
+- **Distance Card Logic** — Streamlined `updateDistanceCard` and `calculateRoute` interaction to be more reactive and prevent race conditions during location updates.
+
+
 ## [1.4.1] - 2026-04-05
 
 ### Added

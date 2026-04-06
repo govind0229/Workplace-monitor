@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>WorkingHours</title>
+    <title>Workplace Monitor</title>
     <organization>com.user.workinghours</organization>
     <domains enable_localSystem="true" />
     <options customize="never" require-scripts="true" rootVolumeOnly="true" />
@@ -30,7 +30,7 @@
     </choice>
 
     <pkg-ref id="com.user.workinghours.pkg"
-             version="1.4.1"
-             onConclusion="none">WorkingHours-component.pkg</pkg-ref>
+             version="1.5.0"
+             onConclusion="none">WorkplaceMonitor-component.pkg</pkg-ref>
 
 </installer-gui-script>

@@ -9,11 +9,13 @@
     <key>CFBundleIdentifier</key>
     <string>com.user.workinghours</string>
     <key>CFBundleName</key>
-    <string>Working Hours</string>
+    <string>Workplace Monitor</string>
+    <key>CFBundleDisplayName</key>
+    <string>Workplace Monitor</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.4.1</string>
+    <string>1.5.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSPrincipalClass</key>
