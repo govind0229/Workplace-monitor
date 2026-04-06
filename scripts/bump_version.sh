@@ -12,29 +12,34 @@ echo "Bumping all files to version: $VERSION"
 
 # 1. package.json
 if [ -f package.json ]; then
-  # Use awk/sed or npm version without creating a git tag
-  npm --no-git-tag-version version "$VERSION" > /dev/null
+  # Use --no-git-tag-version and ignore if the version is already at the target
+  npm --no-git-tag-version version "$VERSION" --allow-same-version > /dev/null 2>&1 || true
   echo "✅ Updated package.json"
 fi
 
 # 2. public/index.html
 if [ -f public/index.html ]; then
-  # Replace ?v=old_version with ?v=$VERSION
-  sed -i '' -E "s/href=\"style\.css\?v=[0-9\.]+\"/href=\"style.css?v=$VERSION\"/" public/index.html
-  sed -i '' -E "s/src=\"app\.js\?v=[0-9\.]+\"/src=\"app.js?v=$VERSION\"/" public/index.html
-  sed -i '' -E "s/<span class=\"version-badge\">v[0-9\.]+<\/span>/<span class=\"version-badge\">v$VERSION<\/span>/" public/index.html
+  # Replace ?v=old_version with ?v=$VERSION for all occurrences
+  sed -i '' -E "s/(\?v=)[0-9\.]+/\1$VERSION/g" public/index.html
+  # Update version badge
+  sed -i '' -E "s/(<span class=\"version-badge\">v?)[0-9\.]+/\1$VERSION/g" public/index.html
   echo "✅ Updated public/index.html"
 fi
 
 # 3. pkg_installer/distribution.xml
 if [ -f pkg_installer/distribution.xml ]; then
-  sed -i '' -E "s/<pkg-ref id=\"com\.user\.workinghours\.pkg\"[ ]*version=\"[0-9\.]+\"/<pkg-ref id=\"com.user.workinghours.pkg\" version=\"$VERSION\"/" pkg_installer/distribution.xml
+  # More robust regex for multiline version tag inside the pkg-ref block
+  # We find the line containing 'version="' immediately after the pkg ID
+  sed -i '' -E "/com\.user\.workinghours\.pkg/{n;s/version=\"[0-9\.]+\"/version=\"$VERSION\"/;}" pkg_installer/distribution.xml
   echo "✅ Updated pkg_installer/distribution.xml"
 fi
 
 # 4. Info.plist
 if [ -f Info.plist ]; then
-  sed -i '' -e "/<key>CFBundleShortVersionString<\/key>/{n;s/<string>.*<\/string>/<string>$VERSION<\/string>/;}" Info.plist
+  # Robust update for CFBundleShortVersionString
+  sed -i '' -E "/CFBundleShortVersionString/{n;s/<string>.*<\/string>/<string>$VERSION<\/string>/;}" Info.plist
+  # Also sync CFBundleVersion if it exists
+  sed -i '' -E "/CFBundleVersion/{n;s/<string>.*<\/string>/<string>$VERSION<\/string>/;}" Info.plist
   echo "✅ Updated Info.plist"
 fi
 

@@ -34,7 +34,11 @@ jobs:
       - name: Build PKG Installer
         env:
           VERSION: ${{ env.VERSION }}
-        run: bash pkg_installer/build_pkg.sh
+        run: |
+          bash pkg_installer/build_pkg.sh
+          bash pkg_installer/build_distribution_pkg.sh
+          # Final asset for release
+          mv WorkplaceMonitor-Installer.pkg WorkplaceMonitor.pkg
 
       - name: Update Homebrew Tap
         env:
@@ -46,7 +50,7 @@ jobs:
             exit 0
           fi
           
-          SHA256=$(shasum -a 256 WorkingHours.pkg | awk '{print $1}')
+          SHA256=$(shasum -a 256 WorkplaceMonitor.pkg | awk '{print $1}')
           
           git clone https://${TAP_GITHUB_TOKEN}@github.com/govind0229/homebrew-tap.git tap-repo
           cd tap-repo
@@ -58,12 +62,12 @@ jobs:
             version "$VERSION"
             sha256 "$SHA256"
 
-            url "https://github.com/govind0229/Workplace-monitor/releases/download/v#{version}/WorkingHours.pkg"
-            name "Working Hours Monitor"
+            url "https://github.com/govind0229/Workplace-monitor/releases/download/v#{version}/WorkplaceMonitor.pkg"
+            name "Workplace Monitor"
             desc "Location-based automatic time tracking and monitoring"
             homepage "https://github.com/govind0229/Workplace-monitor"
 
-            pkg "WorkingHours.pkg"
+            pkg "WorkplaceMonitor.pkg"
 
             uninstall pkgutil: "com.user.workinghours"
           end
@@ -83,8 +87,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
-          name: WorkingHours v${{ env.VERSION }}
+          name: WorkplaceMonitor v${{ env.VERSION }}
           files: |
-            WorkingHours.pkg
+            WorkplaceMonitor.pkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
