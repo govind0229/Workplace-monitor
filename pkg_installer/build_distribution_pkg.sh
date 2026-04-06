@@ -10,7 +10,7 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────
 
 APP_NAME="${APP_NAME:-WorkplaceMonitor}"
-IDENTIFIER="${IDENTIFIER:-com.user.workinghours}"
+IDENTIFIER="${IDENTIFIER:-com.workplacemonitor.app}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

@@ -14,7 +14,7 @@ set -euo pipefail
 
 # ── Configuration (override via environment) ─────────────────
 APP_NAME="${APP_NAME:-WorkplaceMonitor}"
-IDENTIFIER="${IDENTIFIER:-com.user.workinghours}"
+IDENTIFIER="${IDENTIFIER:-com.workplacemonitor.app}"
 INSTALL_LOCATION="/Applications"
 
 # Directories (relative to repo root)
@@ -148,7 +148,7 @@ cat > "$SCRIPTS_DIR/postinstall" << 'POSTINSTALL_EOF'
 
 APP_NAME="WorkplaceMonitor"
 APP_PATH="/Applications/${APP_NAME}.app"
-IDENTIFIER="com.user.workinghours"
+IDENTIFIER="com.workplacemonitor.app"
 PLIST_NAME="${IDENTIFIER}.plist"
 
 echo "[postinstall] Configuring ${APP_NAME}..."

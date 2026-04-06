@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Configuration
-IDENTIFIER="com.user.workinghours"
+IDENTIFIER="com.workplacemonitor.app"
 PLIST_NAME="$IDENTIFIER.plist"
-APP_DIR="/Applications/WorkingHours.app"
+APP_DIR="/Applications/WorkplaceMonitor.app"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 
 echo "Running postinstall script..."

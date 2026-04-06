@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>Workplace Monitor</title>
-    <organization>com.user.workinghours</organization>
+    <organization>com.workplacemonitor.app</organization>
     <domains enable_localSystem="true" />
     <options customize="never" require-scripts="true" rootVolumeOnly="true" />
 
@@ -17,19 +17,19 @@
 
     <choices-outline>
         <line choice="default">
-            <line choice="com.user.workinghours.pkg" />
+            <line choice="com.workplacemonitor.app.pkg" />
         </line>
     </choices-outline>
 
     <choice id="default" />
 
-    <choice id="com.user.workinghours.pkg"
+    <choice id="com.workplacemonitor.app.pkg"
             visible="false"
             customLocation="/Applications">
-        <pkg-ref id="com.user.workinghours.pkg" />
+        <pkg-ref id="com.workplacemonitor.app.pkg" />
     </choice>
 
-    <pkg-ref id="com.user.workinghours.pkg"
+    <pkg-ref id="com.workplacemonitor.app.pkg"
              version="1.5.0"
              onConclusion="none">WorkplaceMonitor-component.pkg</pkg-ref>
 
