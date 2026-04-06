@@ -9,7 +9,7 @@ set -euo pipefail
 #   bash build_distribution_pkg.sh
 # ──────────────────────────────────────────────────────────────
 
-APP_NAME="${APP_NAME:-WorkingHours}"
+APP_NAME="${APP_NAME:-WorkplaceMonitor}"
 IDENTIFIER="${IDENTIFIER:-com.user.workinghours}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -50,3 +50,7 @@ fi
 echo ""
 echo "✅  Distribution package: $DIST_PKG"
 echo "📏  Size: $(du -h "$DIST_PKG" | cut -f1)"
+
+if [ -f $DIST_PKG ]; then 
+    mv $DIST_PKG $REPO_ROOT/WorkplaceMonitor.pkg
+fi
