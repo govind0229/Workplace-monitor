@@ -2,6 +2,16 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.5.2] - 2026-04-06
+
+### Added
+- **Active Call Detection (Teams/Zoom/Meet Support)** — Integrated hardware-level monitoring via `AVFoundation`. The app can now detect if the Microphone or Camera is active and will **bypass the 5-minute idle-pause** during these calls. Resolves the issue of timers pausing during long meetings.
+- **Microphone & Camera Usage Metadata** — Added required usage descriptions to `Info.plist` to comply with macOS security standards for hardware-state observation.
+
+### Improved
+- **Geofence-aware UI Optimization** — The "Route to Office" card now intelligently simplifies its display when the user is inside the geofence boundary. It automatically hides the commuting distance and ETA, showing only the "✓ Inside Geofence" status.
+- **Resource Efficiency** — Suppressed unnecessary road-route and ETA calculations while inside the geofence to save battery and reduce network bandwidth.
+
 ## [1.5.1] - 2026-04-06
 
 ### Added

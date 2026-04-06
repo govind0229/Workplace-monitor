@@ -15,7 +15,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.5.1</string>
+    <string>1.5.2</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSPrincipalClass</key>
@@ -34,6 +34,10 @@
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>We need your location in the background to automatically switch timers.</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>WorkMonitor needs to read the active browser tab URL to categorize your time by website.</string>
+    <string>Workplace Monitor needs to read the active browser tab URL to categorize your time by website.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>To keep the timer active during your meetings, we check if the microphone is currently in use.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>To keep the timer active during your video calls, we check if the camera is currently in use.</string>
 </dict>
 </plist>

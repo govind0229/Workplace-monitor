@@ -3,6 +3,7 @@ import WebKit
 import CoreGraphics
 import CoreLocation
 import UserNotifications
+import AVFoundation
 
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -804,6 +805,16 @@ class MenuBarUtility: NSObject {
     func checkIdleState() {
         guard !isScreenLocked else { return }
 
+        // If a call is active (Mic or Camera is "On"), we are NOT idle
+        if isCallHardwareActive() {
+            if isIdle {
+                isIdle = false
+                sendEvent("unlock")
+                print("[Call] Call detected — resuming sessions from idle")
+            }
+            return
+        }
+
         let idleTime = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
         let idleKeyboard = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
         let minIdle = min(idleTime, idleKeyboard)
@@ -817,6 +828,39 @@ class MenuBarUtility: NSObject {
             sendEvent("unlock") // Resume sessions — user is back
             print("User returned from idle — resuming sessions")
         }
+    }
+
+    /// Checks if any microphone or camera is currently active/recording on the system.
+    func isCallHardwareActive() -> Bool {
+        // Check Camera
+        let videoDevices = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .externalUnknown],
+            mediaType: .video,
+            position: .unspecified
+        ).devices
+        
+        for device in videoDevices {
+            // isInUseByAnotherApplication is the most direct indicator for cameras
+            if device.isInUseByAnotherApplication {
+                return true
+            }
+        }
+
+        // Check Microphone
+        // Note: For Microphones, we check if any session is active.
+        let audioSession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInMicrophone, .externalUnknown],
+            mediaType: .audio,
+            position: .unspecified
+        ).devices
+
+        for device in audioSession {
+            if device.isInUseByAnotherApplication {
+                return true
+            }
+        }
+
+        return false
     }
 
     func sendEvent(_ eventType: String) {

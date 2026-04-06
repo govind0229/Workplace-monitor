@@ -566,28 +566,39 @@ function updateDistanceCard(userLat, userLng, accuracy) {
         statusEl.className = 'distance-status-badge ' + (inside ? 'inside' : 'outside');
     }
 
-    // Show straight-line value right away in the main display (fallback until road route loads)
-    const distValEl = document.getElementById('routeDistValue');
-    const distUnitEl = document.getElementById('routeDistUnit');
-    const etaEl = document.getElementById('routeEta');
-    if (distValEl && distUnitEl) {
-        if (straightDist >= 1000) {
-            distValEl.textContent = (straightDist / 1000).toFixed(2);
-            distUnitEl.textContent = 'km';
-        } else {
-            distValEl.textContent = Math.round(straightDist);
-            distUnitEl.textContent = 'm';
-        }
-    }
-
-    // The "straight" label below is now removed per user request
-    const slEl = document.getElementById('routeStraightLine');
-    if (slEl) slEl.textContent = ''; 
-    if (etaEl) etaEl.textContent = 'Calculating route…';
-    
-    // Ensure the row is visible when we start a new calculation
+    // ── DISTANCE CARD OPTIMIZATION ──
+    // If inside, we hide the distance and ETA, and don't calculate road routes
+    const distRow = document.querySelector('.distance-value-row');
     const etaRow = document.querySelector('.route-eta-row');
-    if (etaRow) etaRow.style.display = 'flex';
+
+    if (inside) {
+        if (distRow) distRow.style.display = 'none';
+        if (etaRow) etaRow.style.display = 'none';
+        clearTimeout(_routeCalcTimeout);
+        return; // Don't proceed to route calculation
+    } else {
+        if (distRow) distRow.style.display = 'flex';
+        if (etaRow) etaRow.style.display = 'flex';
+
+        // Show straight-line value right away in the main display (fallback until road route loads)
+        const distValEl = document.getElementById('routeDistValue');
+        const distUnitEl = document.getElementById('routeDistUnit');
+        const etaEl = document.getElementById('routeEta');
+        
+        if (distValEl && distUnitEl) {
+            if (straightDist >= 1000) {
+                distValEl.textContent = (straightDist / 1000).toFixed(2);
+                distUnitEl.textContent = 'km';
+            } else {
+                distValEl.textContent = Math.round(straightDist);
+                distUnitEl.textContent = 'm';
+            }
+        }
+        
+        if (etaEl) etaEl.textContent = 'Calculating route…';
+        const slEl = document.getElementById('routeStraightLine');
+        if (slEl) slEl.textContent = '';
+    }
 
     // Coordinates + accuracy hint
     const coordsEl = document.getElementById('distanceCoords');
@@ -614,9 +625,13 @@ async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'dr
     const distUnitEl = document.getElementById('routeDistUnit');
     const etaEl = document.getElementById('routeEta');
 
+    // Final check: if user moved inside while starting calc, abort
+    const straightDist = haversineDistance(userLat, userLng, officeLat, officeLng);
+    if (straightDist <= _currentOfficeRadius) return;
+
     // Show spinner
     if (spinnerEl) spinnerEl.style.display = 'inline-flex';
-    if (etaEl) etaEl.textContent = 'Calculating…';
+    if (etaEl) etaEl.textContent = 'Calculating route…';
 
     // OSRM profiles: 'driving', 'bike', 'foot'
     const osrmProfile = mode === 'cycling' ? 'bike' : mode === 'walking' ? 'foot' : 'driving';
