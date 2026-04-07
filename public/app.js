@@ -2470,3 +2470,30 @@ loadSettings = async function() {
     await _origLoadSettings();
     loadCloudSettings();
 };
+
+function stopLiveTracking() {
+    if (_distanceWatchId !== null) {
+        console.log('[Location] Stopping live tracking.');
+        navigator.geolocation.clearWatch(_distanceWatchId);
+        _distanceWatchId = null;
+    }
+}
+
+function suspendApp() {
+    console.log('[App] Suspending background activity.');
+    stopLiveTracking();
+}
+
+function resumeApp() {
+    console.log('[App] Resuming background activity.');
+    if (currentTab === 'location') {
+        startLiveTracking();
+    }
+    if (typeof updateStatus === 'function') {
+        updateStatus(true);
+    }
+}
+
+// Ensure resume is available globally for Swift
+window.suspendApp = suspendApp;
+window.resumeApp = resumeApp;
