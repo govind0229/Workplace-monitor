@@ -30,9 +30,6 @@ const locateMeBtn = document.getElementById('locateMeBtn');
 const mapLocateMeBtn = document.getElementById('mapLocateMeBtn');
 const distanceCard = document.getElementById('distanceCard');
 
-// Location Request State
-let locationRequestDeferred = null;
-
 // Category Mapping
 const appNameInput = document.getElementById('appNameInput');
 const categorySelect = document.getElementById('categorySelect');
@@ -410,45 +407,81 @@ saveSettingsBtn.onclick = async () => {
     }
 };
 
+let _isSettingOfficeLocation = false;
+
 if (setOfficeLocationBtn) {
     setOfficeLocationBtn.onclick = async () => {
         setOfficeLocationBtn.disabled = true;
         setOfficeLocationBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim">
+            <svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
             </svg>
-            Getting Location...
+            Locating...
         `;
 
-        try {
-            const position = await requestLocation();
-            const { latitude, longitude, accuracy } = position;
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
+            console.log('[Location] Requesting office location via Native Bridge...');
+            _isSettingOfficeLocation = true;
+            window.webkit.messageHandlers.requestLocation.postMessage({});
+            
+            // Auto-reset if native doesn't respond in 15s to prevent UI hang
+            setTimeout(() => {
+                if (_isSettingOfficeLocation) {
+                    console.warn('[Location] Native bridge timed out for office set');
+                    _isSettingOfficeLocation = false;
+                    resetLocationBtn();
+                }
+            }, 15000);
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            resetLocationBtn();
+            return;
+        }
+
+        const geoOptions = { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 };
+        
+        const successCallback = async (position) => {
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
             const radius = officeRadiusInput ? parseInt(officeRadiusInput.value) || 200 : 200;
 
-            await fetch(`${API_BASE}/set-office-location`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ latitude, longitude, radius })
-            });
+            try {
+                await fetch(`${API_BASE}/set-office-location`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ latitude, longitude, radius })
+                });
 
-            alert('Office location successfully set!');
-            if (locationStatusBadge) {
-                locationStatusBadge.textContent = 'Office Location Configured ✓';
-                locationStatusBadge.className = 'status-badge status-active';
+                _isSettingOfficeLocation = false;
+                resetLocationBtn();
+                if (locationMap) loadLocationData();
+                console.log('Office location successfully set via Browser API!');
+            } catch (e) {
+                console.error(e);
+                _isSettingOfficeLocation = false;
+                alert('Failed to save office location.');
+                resetLocationBtn();
             }
-            setOfficeLocationBtn.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                </svg>
-                Update to Current Location
-            `;
-            setOfficeLocationBtn.disabled = false;
-            if (locationMap) loadLocationData();
-        } catch (e) {
-            console.error('[Location] Set office error:', e);
-            alert(`Failed to get location: ${e.message || 'Unknown error'}`);
-            resetLocationBtn();
-        }
+        };
+
+        const errorCallback = (error) => {
+            if (geoOptions.enableHighAccuracy) {
+                console.warn('[Location] High accuracy failed, retrying with low accuracy...');
+                geoOptions.enableHighAccuracy = false;
+                geoOptions.timeout = 10000;
+                navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
+            } else {
+                console.error(error);
+                _isSettingOfficeLocation = false;
+                alert(`Location access denied or unavailable: ${error.message}`);
+                resetLocationBtn();
+            }
+        };
+
+        navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
     };
 }
 
@@ -823,60 +856,12 @@ function startLiveTracking() {
     );
 }
 
-/**
- * Unified location requester. Highlights:
- * 1. Prioritizes macOS Native Bridge (WKWebView message handler)
- * 2. Falls back to standard browser Geolocation
- * 3. Returns a Promise for cleaner async/await usage
- */
-function requestLocation() {
-    return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-            return reject(new Error('Geolocation is not supported by your browser.'));
-        }
+function centerOnUser() {
+    if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser.');
+        return;
+    }
 
-        // Set global deferred so onNativeLocation can resolve it
-        locationRequestDeferred = { resolve, reject };
-
-        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
-            console.log('[Location] Triggering Native Bridge...');
-            window.webkit.messageHandlers.requestLocation.postMessage({});
-            
-            // Safety timeout for native bridge
-            setTimeout(() => {
-                if (locationRequestDeferred) {
-                    locationRequestDeferred.reject(new Error('Native location request timed out.'));
-                    locationRequestDeferred = null;
-                }
-            }, 12000);
-        } else {
-            console.log('[Location] Using Browser Geolocation...');
-            const geoOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 };
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    const res = { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy };
-                    if (locationRequestDeferred) {
-                        locationRequestDeferred.resolve(res);
-                        locationRequestDeferred = null;
-                    } else {
-                        resolve(res);
-                    }
-                },
-                (err) => {
-                    if (locationRequestDeferred) {
-                        locationRequestDeferred.reject(err);
-                        locationRequestDeferred = null;
-                    } else {
-                        reject(err);
-                    }
-                },
-                geoOptions
-            );
-        }
-    });
-}
-
-async function centerOnUser() {
     const resetBtn = () => {
         if (locateMeBtn) {
             locateMeBtn.disabled = false;
@@ -886,51 +871,96 @@ async function centerOnUser() {
 
     if (locateMeBtn) {
         locateMeBtn.disabled = true;
-        locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Locating…`;
+        locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Locating…`;
     }
 
-    try {
-        const { latitude, longitude, accuracy } = await requestLocation();
-        window._lastUserPos = { lat: latitude, lng: longitude, acc: accuracy };
+    // --- NATIVE BRIDGE CHECK ---
+    // If running in the Workplace Monitor macOS app, use the native bridge
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
+        console.log('[Location] Requesting location via Native Bridge...');
+        window.webkit.messageHandlers.requestLocation.postMessage({});
+        
+        // Auto-reset if native doesn't respond in 10s
+        setTimeout(resetBtn, 10000);
+        return;
+    }
 
-        console.log(`[Location] Success: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} ±${Math.round(accuracy)}m`);
+    // Pass 1: Try High Accuracy (GPS)
+    const geoOptions = { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 };
+
+    const successCallback = (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy;
+        window._lastUserPos = { lat, lng, acc };
+
+        console.log(`[Location] Locate-Me Success: ${lat.toFixed(6)}, ${lng.toFixed(6)} ±${Math.round(acc)}m`);
 
         if (locationMap) {
             if (userMarker) locationMap.removeLayer(userMarker);
-            userMarker = L.marker([latitude, longitude], {
+            userMarker = L.marker([lat, lng], {
                 icon: L.divIcon({
                     className: 'user-location-marker',
                     html: '<div class="user-dot-inner"></div>',
                     iconSize: [20, 20],
                     iconAnchor: [10, 10]
                 })
-            }).addTo(locationMap).bindPopup(`📍 You are here<br><small style="color:#999">${latitude.toFixed(5)}, ${longitude.toFixed(5)}</small>`);
+            }).addTo(locationMap).bindPopup(`📍 You are here<br><small style="color:#999">${lat.toFixed(5)}, ${lng.toFixed(5)}</small>`);
             
-            locationMap.setView([latitude, longitude], 16);
+            locationMap.setView([lat, lng], 16);
         }
 
-        updateDistanceCard(latitude, longitude, accuracy);
-    } catch (err) {
-        console.warn(`[Location] Error: ${err.message}`);
-        if (err.code === 1) { // PERMISSION_DENIED
-            alert('Location access was denied. Please go to System Settings → Privacy & Security → Location Services and toggle ON for Workplace Monitor.');
-        } else {
-            alert(`Could not get your location: ${err.message}`);
-        }
-    } finally {
+        updateDistanceCard(lat, lng, acc);
         resetBtn();
-    }
+    };
+
+    const errorCallback = (err) => {
+        console.warn(`[Location] Locate-Me Error (Code ${err.code}): ${err.message}`);
+        
+        if (err.code === err.PERMISSION_DENIED) {
+            alert('Location access was denied. Please go to System Settings → Privacy & Security → Location Services and toggle ON for Workplace Monitor.');
+            resetBtn();
+            return;
+        }
+
+        // Pass 2 Fallback: If high accuracy fails/times out, try Standard accuracy (WiFi/Cell)
+        if (geoOptions.enableHighAccuracy) {
+            console.log('[Location] Retrying with Standard accuracy fallback...');
+            geoOptions.enableHighAccuracy = false;
+            geoOptions.timeout = 15000;
+            navigator.geolocation.getCurrentPosition(successCallback, (err2) => {
+                console.error('[Location] Standard accuracy fallback also failed:', err2.message);
+                alert(`Could not get your location: ${err2.message}`);
+                resetBtn();
+            }, geoOptions);
+        } else {
+            alert(`Could not get your location: ${err.message}\n\nMake sure location access is granted in System Settings → Privacy & Security → Location Services.`);
+            resetBtn();
+        }
+    };
+
+    navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
 }
 
 // Global callback for native location bridge
 window.onNativeLocation = (lat, lng, acc) => {
     window._lastUserPos = { lat, lng, acc };
-    console.log(`[Location] Received Native Coordinates: ${lat}, ${lng} ±${Math.round(acc)}m`);
+    console.log(`[Location] Received Native Coordinates: ${lat}, ${lng} ±${Math.round(acc)}m (SetOffice: ${_isSettingOfficeLocation})`);
     
-    // Resolve any pending promise from requestLocation()
-    if (locationRequestDeferred) {
-        locationRequestDeferred.resolve({ latitude: lat, longitude: lng, accuracy: acc });
-        locationRequestDeferred = null;
+    // Check if this location update was specifically for setting the office
+    if (_isSettingOfficeLocation) {
+        // Construct a position object similar to the Geolocation API
+        const pos = {
+            coords: {
+                latitude: lat,
+                longitude: lng,
+                accuracy: acc
+            }
+        };
+        
+        // Find the success callback logic from the setOfficeLocationBtn scope
+        // Since we refactored, we need to handle the saving logic here or reuse the same logic
+        saveOfficeLocation(pos);
     }
 
     if (locationMap) {
@@ -955,6 +985,31 @@ window.onNativeLocation = (lat, lng, acc) => {
         locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> My Current Location`;
     }
 };
+
+async function saveOfficeLocation(position) {
+    try {
+        const { latitude, longitude } = position.coords;
+        const radius = parseInt(officeRadiusSlider?.value) || 200;
+
+        console.log(`[Location] Saving office location via bridge: ${latitude}, ${longitude}`);
+
+        await fetch(`${API_BASE}/set-office-location`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude, longitude, radius })
+        });
+
+        _isSettingOfficeLocation = false;
+        resetLocationBtn();
+
+        if (locationMap) loadLocationData();
+        console.log('Office location successfully set via Native Bridge!');
+    } catch (error) {
+        console.error('[Location] Bridge save failed:', error);
+        _isSettingOfficeLocation = false;
+        resetLocationBtn();
+    }
+}
 
 const mapTiles = {
     dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -2061,18 +2116,44 @@ window.addEventListener('offline', () => {
 updateStatus(true);
 loadDashboardCharts();
 
-// Use requestAnimationFrame for smoother updates instead of setInterval
-function animationLoop() {
-    updateStatus(false);
-    animationFrameId = requestAnimationFrame(animationLoop);
+// Global reference for loop management
+let _mainUpdateInterval = null;
+
+// Throttled update loop (1s resolution is plenty for a dashboard timer)
+function startMainLoop() {
+    if (_mainUpdateInterval) return;
+    
+    console.log('[App] Starting main update loop (1s interval)');
+    _mainUpdateInterval = setInterval(() => {
+        updateStatus(false);
+    }, 1000);
 }
-animationFrameId = requestAnimationFrame(animationLoop);
+
+function stopMainLoop() {
+    if (_mainUpdateInterval) {
+        console.log('[App] Stopping main update loop (power saving)');
+        clearInterval(_mainUpdateInterval);
+        _mainUpdateInterval = null;
+    }
+}
+
+// Initial start
+startMainLoop();
+
+// --- POWER SAVING: Page Visibility API ---
+// This stops all UI updates and heartbeats when the window is minimized or hidden
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopMainLoop();
+    } else {
+        startMainLoop();
+        updateStatus(true); // Force sync when coming back to dashboard
+    }
+});
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
-    if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-    }
+    stopMainLoop();
 });
 
 // --- NEW STATS CHART LOGIC ---
@@ -2467,30 +2548,3 @@ loadSettings = async function() {
     await _origLoadSettings();
     loadCloudSettings();
 };
-
-function stopLiveTracking() {
-    if (_distanceWatchId !== null) {
-        console.log('[Location] Stopping live tracking.');
-        navigator.geolocation.clearWatch(_distanceWatchId);
-        _distanceWatchId = null;
-    }
-}
-
-function suspendApp() {
-    console.log('[App] Suspending background activity.');
-    stopLiveTracking();
-}
-
-function resumeApp() {
-    console.log('[App] Resuming background activity.');
-    if (currentTab === 'location') {
-        startLiveTracking();
-    }
-    if (typeof updateStatus === 'function') {
-        updateStatus(true);
-    }
-}
-
-// Ensure resume is available globally for Swift
-window.suspendApp = suspendApp;
-window.resumeApp = resumeApp;

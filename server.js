@@ -168,10 +168,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Prevent caching for all routes (important for static assets in local webview)
+app.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    next();
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
-    maxAge: '1d',
-    etag: true
-})); // Serve frontend files with caching enabled
+    etag: false,
+    maxAge: 0
+})); // Serve frontend files from restricted folder
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -338,10 +347,16 @@ function runBackgroundLoop() {
     } catch (error) {
         console.error("Error in background timer loop:", error);
     } finally {
-        setTimeout(runBackgroundLoop, 10000);
+        // Adaptive scaling: Poll every 5s during active sessions, 15s when idle
+        const manualSession = getActiveSession('manual');
+        const autoSession = getTodayAutomaticSession();
+        const isActive = (manualSession && manualSession.status === 'active') || 
+                       (autoSession && autoSession.status === 'active');
+        
+        setTimeout(runBackgroundLoop, isActive ? 5000 : 15000);
     }
 }
-setTimeout(runBackgroundLoop, 10000);
+setTimeout(runBackgroundLoop, 5000);
 
 // --- Cloud Sync Background Worker ---
 let lastSyncAttempt = null;
@@ -648,13 +663,20 @@ app.get('/status', (req, res) => {
     if (consume && pendingNotification) {
         console.log(`[Notification] Shifted from queue: ${pendingNotification.title}`);
     }
+    // Calculate suggested polling interval for the client (native app)
+    // If a session is active, client should poll every 5s.
+    // If idle/locked, client can back off to 20s to save energy.
+    const isAnyActive = (manual && manual.status === 'active') || (automatic && automatic.status === 'active');
+    const suggestedPollMs = isAnyActive ? 5000 : 20000;
+
     res.json({
         manual,
         automatic,
         officeLat,
         officeLng,
         officeRadius: parseInt(officeRadius),
-        pending_notification: pendingNotification
+        pending_notification: pendingNotification,
+        suggested_poll_ms: suggestedPollMs
     });
 });
 

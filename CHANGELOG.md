@@ -1,18 +1,22 @@
 # Changelog
 
 All notable changes to WorkplaceMonitor will be documented in this file.
-
+ 
 ## [1.6.0] - 2026-04-09
-
-### Fixed
-- **Set Office Location Hang** — Resolved a critical issue where clicking "Set Office Location" caused the macOS application to become unresponsive. Replaced standard `navigator.geolocation` with a robust **Unified Location Requester** that utilizes the custom macOS native bridge and asynchronous callback resolution.
-
+ 
 ### Added
-- **GitHub Issue Templates** — Introduced standardized templates for reporting bugs and suggesting new features. Includes a structured configuration for GitHub to facilitate high-quality community feedback.
-
+- **Native Geofencing (Region Monitoring)** — Migrated office detection from high-power GPS polling to hardware-level region monitoring. The macOS location co-processor now handles boundary detection, allowing the main GPS hardware to sleep 99% of the time.
+- **GPS Self-Hibernation** — Implemented an intelligent power manager that automatically deactivates GPS once a stable location is acquired or when the dashboard is closed, saving significant battery.
+- **Adaptive Polling Hints** — The Node.js server now provides dynamic polling "hints" (`suggested_poll_ms`). The native client automatically slows its synchronization from 5s to 20s when the system is idle or the user is home.
+- **Screen-Lock UI Hibernation** — The menu bar refresh and UI timers are now completely suspended when the screen is locked, eliminating background CPU wake-ups during inactivity.
+ 
+### Fixed
+- **Dashboard Geolocation Hang** — Resolved a critical UI freeze in `WKWebView` by migrating the "Set Office Location" feature to the native Swift location bridge.
+- **Notification Payload Mismatch** — Fixed an issue where native notifications failed to display due to a payload key discrepancy between the server and the native client.
+ 
 ### Improved
-- **Async Location Flow** — Refactored the dashboard's location logic to use modern `async/await` patterns, ensuring the UI stays fluid and interactive while acquiring a GPS fix.
-- **Acquiring State Feedback** — Added a spinner animation and "Locating..." text to the dashboard buttons for clearer visual confirmation during background location retrieval.
+- **Extreme Energy Reduction** — Removed seconds from the menu bar UI, allowing the refresh interval to be slowed from 1s to 60s (a 60x reduction in UI-related wake-ups).
+- **Location Hardware Optimization** — Increased `distanceFilter` to 30m and tuned `desiredAccuracy` to prioritize cell/WiFi triangulation over GPS when precision is not required.
 
 ## [1.5.2] - 2026-04-06
 

@@ -1,0 +1,39 @@
+name: ✨ Feature Request
+description: Suggest an idea or UI improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a problem? Please describe.
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: What should happen instead?
+      placeholder: A clear and concise description of the feature...
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: Value Proposition
+      description: Why is this important?
+      placeholder: This will help users who...
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Suggested Priority
+      options:
+        - Low (Nice to have)
+        - Medium (Helpful)
+        - High (Critical for workflow)
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other screenshots or examples?
