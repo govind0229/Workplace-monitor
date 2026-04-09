@@ -81,11 +81,17 @@ jobs:
           git commit -m "Update workinghours to v$VERSION" || echo "No changes to commit"
           git push origin main
 
+      - name: Extract Release Notes
+        run: |
+          # Extract section from ## [VERSION] to the next ## header
+          sed -n "/^## \[${{ env.VERSION }}\]/,/^## /p" CHANGELOG.md | sed '$d' > release_notes.md
+
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
           name: WorkplaceMonitor v${{ env.VERSION }}
+          body_path: release_notes.md
           files: |
             WorkplaceMonitor.pkg
         env:
