@@ -168,10 +168,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Prevent caching for all routes (important for static assets in local webview)
+app.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    next();
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
-    maxAge: '1d',
-    etag: true
-})); // Serve frontend files with caching enabled
+    etag: false,
+    maxAge: 0
+})); // Serve frontend files from restricted folder
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -338,10 +347,10 @@ function runBackgroundLoop() {
     } catch (error) {
         console.error("Error in background timer loop:", error);
     } finally {
-        setTimeout(runBackgroundLoop, 10000);
+        setTimeout(runBackgroundLoop, 5000);
     }
 }
-setTimeout(runBackgroundLoop, 10000);
+setTimeout(runBackgroundLoop, 5000);
 
 // --- Cloud Sync Background Worker ---
 let lastSyncAttempt = null;

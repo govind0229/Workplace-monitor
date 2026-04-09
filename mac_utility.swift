@@ -297,8 +297,8 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
             existingWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             NSApp.setActivationPolicy(.regular)
-            // Resume JS activity
-            webView?.evaluateJavaScript("if(typeof resumeApp==='function'){resumeApp();}", completionHandler: nil)
+            // Trigger data refresh in the existing WebView
+            webView?.evaluateJavaScript("if(typeof updateStatus==='function'){updateStatus(true);loadDashboardCharts();}", completionHandler: nil)
             return
         }
 
@@ -488,15 +488,11 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
     // MARK: - NSWindowDelegate
     func windowWillClose(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        // Suspend JS activity to save battery
-        webView?.evaluateJavaScript("if(typeof suspendApp==='function'){suspendApp();}", completionHandler: nil)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
         NSApp.setActivationPolicy(.accessory)
-        // Suspend JS activity to save battery
-        webView?.evaluateJavaScript("if(typeof suspendApp==='function'){suspendApp();}", completionHandler: nil)
         return false
     }
 }
@@ -524,10 +520,6 @@ class MenuBarUtility: NSObject {
     var idleCheckTimer: Timer?
     var isIdle: Bool = false
     let idleThresholdSeconds: Double = 300 // 5 minutes
-    
-    // Geofencing state
-    var officeRegion: CLCircularRegion?
-    var isAtOffice: Bool = false
     
     var appMenu: NSMenu!
 
@@ -615,27 +607,24 @@ class MenuBarUtility: NSObject {
     func setupLocationManager() {
         locationManager = CLLocationManager()
         locationManager?.delegate = self
-        locationManager?.desiredAccuracy = kCLLocationAccuracyNearestTenMeters // Reduced from Best
-        locationManager?.distanceFilter = 50.0 // Increased from 10.0m to 50.0m
-        locationManager?.pausesLocationUpdatesAutomatically = true
+        locationManager?.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager?.distanceFilter = 10.0 // Send updates when moved > 10 meters (more sensitive)
         
-        // Request authorization
+        // Request authorization then start updating
         print("Requesting Location Authorization...")
         locationManager?.requestAlwaysAuthorization()
-        
-        // Start with energy-efficient Significant Location Changes
-        locationManager?.startMonitoringSignificantLocationChanges()
+        locationManager?.startUpdatingLocation()
     }
 
     func startTimers() {
-        // Sync with server every 5s — fast enough for timely notifications, slow enough to avoid jitter
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+        // Sync with server every 2s — fast enough for timely notifications, slow enough to avoid jitter
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             self.fetchStatus()
         }
         
-        // Render UI 1x per second for efficient display
+        // Render UI 4x per second for smooth, lag-free display
         // The uiTimer interpolates elapsed time between server syncs
-        uiTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        uiTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
             self.updateUI()
         }
 
@@ -649,14 +638,11 @@ class MenuBarUtility: NSObject {
             self.checkIdleState()
         }
 
-        // Fallback: Force a location update check every 15 minutes if no movement detected
-        Timer.scheduledTimer(withTimeInterval: 900.0, repeats: true) { _ in
+        // Fallback: Force a location update check every 5 minutes if no movement detected
+        Timer.scheduledTimer(withTimeInterval: 300.0, repeats: true) { _ in
             print("[Location] Triggering fallback location update check...")
             self.locationManager?.stopUpdatingLocation()
             self.locationManager?.startUpdatingLocation()
-            
-            // Re-sync significant updates just in case
-            self.locationManager?.startMonitoringSignificantLocationChanges()
         }
         
         // Initial fetch
@@ -735,11 +721,11 @@ class MenuBarUtility: NSObject {
                     self.autoStatus = automatic["status"] as? String ?? "idle"
                 }
 
-                // Handle Office Region Sync
-                if let oLatStr = json["officeLat"] as? String, let oLat = Double(oLatStr),
-                   let oLngStr = json["officeLng"] as? String, let oLng = Double(oLngStr),
-                   let oRad = json["officeRadius"] as? Int {
-                    self.updateOfficeRegion(lat: oLat, lng: oLng, radius: Double(oRad))
+                // Handle Pending Notifications relayed from server
+                if let notify = json["pending_notification"] as? [String: Any],
+                   let title = notify["title"] as? String,
+                   let message = notify["message"] as? String {
+                    self.showNotification(title: title, message: message)
                 }
 
                 self.lastSyncTime = Date()
@@ -749,33 +735,16 @@ class MenuBarUtility: NSObject {
         }.resume()
     }
 
-    func updateOfficeRegion(lat: Double, lng: Double, radius: Double) {
-        let identifier = "office-location"
+    func showNotification(title: String, message: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = message
+        content.sound = .default
         
-        // Only update if changed
-        if let current = officeRegion {
-            if current.center.latitude == lat && current.center.longitude == lng && current.radius == radius {
-                return
-            }
-            // Stop monitoring old region
-            locationManager?.stopMonitoring(for: current)
-        }
-        
-        print("[Location] Updating monitored Office Region: \(lat), \(lng) (Radius: \(radius)m)")
-        let region = CLCircularRegion(center: CLLocationCoordinate2D(latitude: lat, longitude: lng), radius: radius, identifier: identifier)
-        region.notifyOnEntry = true
-        region.notifyOnExit = true
-        
-        self.officeRegion = region
-        locationManager?.startMonitoring(for: region)
-        
-        // Initial check if we are already inside
-        if let currentLoc = locationManager?.location {
-            let inside = region.contains(currentLoc.coordinate)
-            if inside != self.isAtOffice {
-                self.isAtOffice = inside
-                self.sendEvent(inside ? "unlock" : "lock") 
-                // We use lock/unlock as proxies for arrival/departure in the current server logic
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Failed to show native notification: \(error.localizedDescription)")
             }
         }
     }
@@ -810,13 +779,6 @@ class MenuBarUtility: NSObject {
 
         var trackedName = appName
 
-        // Optimization: Only run AppleScript if it's a known browser
-        guard browserScripts.keys.contains(appName) else {
-            // Heartbeat for non-browser apps
-            sendHeartbeat(trackedName)
-            return
-        }
-
         // If it's a known browser, try to get the active tab URL via AppleScript
         if let scriptSource = browserScripts[appName] {
             if let script = NSAppleScript(source: scriptSource) {
@@ -830,10 +792,6 @@ class MenuBarUtility: NSObject {
             }
         }
 
-        sendHeartbeat(trackedName)
-    }
-
-    func sendHeartbeat(_ trackedName: String) {
         // Send heartbeat — 5 seconds of usage for this tracked name
         guard let url = URL(string: "\(serverURL)/app-heartbeat") else { return }
         var request = URLRequest(url: url)
@@ -955,32 +913,9 @@ extension MenuBarUtility: CLLocationManagerDelegate {
     @objc func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
-        // If movement is significant, throttle updates
         let lat = location.coordinate.latitude
         let lng = location.coordinate.longitude
         let acc = location.horizontalAccuracy
-        
-        // Optimization: adaptive accuracy
-        // If we are far from the office region, we don't need continuous high precision
-        if let region = officeRegion {
-            let distance = location.distance(from: CLLocation(latitude: region.center.latitude, longitude: region.center.longitude))
-            if distance > region.radius * 2 {
-                // We are far out — switch to lower precision if not already
-                if manager.desiredAccuracy != kCLLocationAccuracyHundredMeters {
-                    print("[Location] Far from office. Switching to Low Power mode.")
-                    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-                    manager.distanceFilter = 250.0
-                }
-            } else {
-                // We are close — switch to higher precision
-                if manager.desiredAccuracy != kCLLocationAccuracyNearestTenMeters {
-                    print("[Location] Approaching office. Switching to Balanced mode.")
-                    manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-                    manager.distanceFilter = 50.0
-                }
-            }
-        }
-
         print("[Location] Native Updated: \(lat), \(lng) (Accuracy: \(acc)m)")
         
         // Push to dashboard if open
@@ -1014,34 +949,6 @@ extension MenuBarUtility: CLLocationManagerDelegate {
     
     @objc func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("[Location] Native Error: \(error.localizedDescription)")
-    }
-
-    func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
-        if region.identifier == "office-location" {
-            print("[Location] Entered Office Region — triggering arrival")
-            self.isAtOffice = true
-            self.sendEvent("unlock")
-            // Boost accuracy briefly to confirm arrival
-            manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-            manager.startUpdatingLocation()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) {
-                manager.stopUpdatingLocation()
-            }
-        }
-    }
-
-    func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
-        if region.identifier == "office-location" {
-            print("[Location] Exited Office Region — triggering departure")
-            self.isAtOffice = false
-            self.sendEvent("lock")
-            // Boost accuracy briefly to confirm departure
-            manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-            manager.startUpdatingLocation()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) {
-                manager.stopUpdatingLocation()
-            }
-        }
     }
     
     @objc func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
