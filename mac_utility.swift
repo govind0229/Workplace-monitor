@@ -576,10 +576,13 @@ class MenuBarUtility: NSObject {
         dnc.addObserver(forName: NSNotification.Name("com.apple.screenIsLocked"), object: nil, queue: .main) { _ in
             self.isScreenLocked = true
             self.sendEvent("lock")
+            self.stopUITimer() // Save CPU when screen is locked
         }
         dnc.addObserver(forName: NSNotification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main) { _ in
             self.isScreenLocked = false
             self.sendEvent("unlock")
+            self.startUITimer() // Resume rendering
+            self.fetchStatus(force: true) // Immediate refresh
         }
 
         // System sleep/wake — sleep doesn't always trigger screen lock
@@ -617,15 +620,11 @@ class MenuBarUtility: NSObject {
     }
 
     func startTimers() {
-        // Sync with server every 5s — reduction from 2s saves battery and reduces server load
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
-            self.fetchStatus()
-        }
+        // Adaptive polling: started at 5s, will adjust based on server response
+        startPollTimer(interval: 5.0)
         
-        // Render UI every 1s — 4x reduction from 0.25s saves CPU while keeping clock accurate
-        uiTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            self.updateUI()
-        }
+        // Render UI every 1s — only when unlocked
+        startUITimer()
 
         // Track frontmost app every 5s
         appTrackTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
@@ -695,7 +694,29 @@ class MenuBarUtility: NSObject {
         }
     }
 
-    func fetchStatus() {
+    func startPollTimer(interval: Double) {
+        pollTimer?.invalidate()
+        pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+            self.fetchStatus()
+        }
+        print("[Timer] Poll interval set to \(interval)s")
+    }
+
+    func startUITimer() {
+        uiTimer?.invalidate()
+        // Slowed down to 60s because we no longer show seconds (battery saving)
+        uiTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { _ in
+            self.updateUI()
+        }
+    }
+
+    func stopUITimer() {
+        uiTimer?.invalidate()
+        uiTimer = nil
+        print("[Timer] UI Rendering suspended (Power Saving)")
+    }
+
+    func fetchStatus(force: Bool = false) {
         guard let url = URL(string: "http://127.0.0.1:3000/status?consume=true") else { return }
         localSession.dataTask(with: url) { data, _, error in
             if let _ = error {
@@ -720,6 +741,21 @@ class MenuBarUtility: NSObject {
                     self.autoStatus = automatic["status"] as? String ?? "idle"
                 }
 
+                // Adaptive Poll Logic: If the server suggests a new interval, adjust the timer
+                if let suggestedMs = json["suggested_poll_ms"] as? Double {
+                    let newInterval = suggestedMs / 1000.0
+                    if self.pollTimer?.timeInterval != newInterval && !force {
+                        self.startPollTimer(interval: newInterval)
+                    }
+                }
+
+                // Geofence Optimization: Ensure native monitoring is active for office
+                if let lat = json["officeLat"] as? String, let lng = json["officeLng"] as? String,
+                   let latVal = Double(lat), let lngVal = Double(lng) {
+                    let radius = json["officeRadius"] as? Double ?? 300.0
+                    self.updateOfficeGeofence(lat: latVal, lng: lngVal, radius: radius)
+                }
+
                 // Handle Pending Notifications relayed from server
                 if let notify = json["pending_notification"] as? [String: Any],
                    let title = notify["title"] as? String,
@@ -728,8 +764,7 @@ class MenuBarUtility: NSObject {
                 }
 
                 self.lastSyncTime = Date()
-                // Don't call updateUI() here — the uiTimer owns all rendering.
-                // Calling it here too causes a double-render and visible stutter.
+                self.updateUI() // Keep UI fresh on every server sync (5s-20s)
             }
         }.resume()
     }
@@ -875,8 +910,8 @@ class MenuBarUtility: NSObject {
     func formatTime(_ seconds: Int) -> String {
         let h = seconds / 3600
         let m = (seconds % 3600) / 60
-        let s = seconds % 60
-        return String(format: "%02d:%02d:%02d", h, m, s)
+        // Reduced to HH:mm to allow 60s refresh intervals (Power Saving)
+        return String(format: "%02d:%02d", h, m)
     }
 
     func showDashboard() {
@@ -920,47 +955,85 @@ extension MenuBarUtility: CLLocationManagerDelegate {
         // Push to dashboard if open
         dashboardController?.sendLocationToWeb(location)
         
-        // Send location to local server for automation rule processing
+        // Send location to local server
+        sendLocationToServer(lat: lat, lng: lng, acc: acc)
+        
+        // --- POWER SAVING: AUTO-HIBERNATE GPS ---
+        // If we have a stable location (accuracy < 50m) and no dashboard is open, 
+        // we can stop active GPS and rely on geofencing transitions.
+        if acc < 50 && (dashboardController?.window?.isVisible == false || dashboardController?.window == nil) {
+            print("[Location] Stable location acquired. Hibernating GPS to save power.")
+            manager.stopUpdatingLocation()
+        }
+    }
+    
+    func sendLocationToServer(lat: Double, lng: Double, acc: Double) {
         guard let url = URL(string: "\(serverURL)/location") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let json: [String: Any] = [
-            "latitude": lat,
-            "longitude": lng,
-            "accuracy": acc
-        ]
-        
+        let json: [String: Any] = ["latitude": lat, "longitude": lng, "accuracy": acc]
         request.httpBody = try? JSONSerialization.data(withJSONObject: json)
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                print("[Location] Failed to send to server: \(error.localizedDescription)")
-            } else if let httpResponse = response as? HTTPURLResponse {
-                if httpResponse.statusCode == 200 {
-                    print("[Location] Server processed update successfully")
-                } else {
-                    print("[Location] Server returned error status: \(httpResponse.statusCode)")
-                }
-            }
-        }.resume()
+        URLSession.shared.dataTask(with: request).resume()
     }
     
-    @objc func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    // --- GEOFENCING DELEGATES ---
+    func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        print("[Geofence] ENTERED Office: \(region.identifier). Resuming GPS for precise tracking.")
+        manager.startUpdatingLocation() // Get precise coordinates once moved into range
+        fetchStatus(force: true)
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        print("[Geofence] EXITED Office: \(region.identifier).")
+        fetchStatus(force: true)
+        // Keep GPS off or limited until next significant move or transition
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("[Location] Native Error: \(error.localizedDescription)")
     }
     
-    @objc func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status: CLAuthorizationStatus
         if #available(macOS 11.0, *) {
-            let status = manager.authorizationStatus
-            print("[Location] Native Authorization Changed: \(status.rawValue)")
-            if status == .authorizedAlways {
-                manager.startUpdatingLocation()
-            }
+            status = manager.authorizationStatus
         } else {
-            // Legacy/Deprecated path check as fallback
+            status = CLLocationManager.authorizationStatus()
+        }
+        
+        print("[Location] Native Authorization Changed: \(status.rawValue)")
+        if status == .authorizedAlways {
             manager.startUpdatingLocation()
         }
+    }
+}
+
+// MARK: - Geofence Helpers
+extension MenuBarUtility {
+    func updateOfficeGeofence(lat: Double, lng: Double, radius: Double) {
+        guard let manager = locationManager else { return }
+        
+        let identifier = "OfficeGeofence"
+        
+        // Check if we already have this region monitored to avoid redundant re-arms
+        let monitored = manager.monitoredRegions
+        if let existing = monitored.first(where: { $0.identifier == identifier }) as? CLCircularRegion {
+            if existing.center.latitude == lat && existing.center.longitude == lng && existing.radius == radius {
+                return // Already armed with same config
+            }
+            manager.stopMonitoring(for: existing)
+        }
+        
+        let region = CLCircularRegion(center: CLLocationCoordinate2D(latitude: lat, longitude: lng), 
+                                     radius: radius, 
+                                identifier: identifier)
+        region.notifyOnEntry = true
+        region.notifyOnExit = true
+        
+        manager.startMonitoring(for: region)
+        print("[Geofence] Armed: \(lat), \(lng) (Radius: \(radius)m)")
     }
 }
 

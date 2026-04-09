@@ -663,13 +663,20 @@ app.get('/status', (req, res) => {
     if (consume && pendingNotification) {
         console.log(`[Notification] Shifted from queue: ${pendingNotification.title}`);
     }
+    // Calculate suggested polling interval for the client (native app)
+    // If a session is active, client should poll every 5s.
+    // If idle/locked, client can back off to 20s to save energy.
+    const isAnyActive = (manual && manual.status === 'active') || (automatic && automatic.status === 'active');
+    const suggestedPollMs = isAnyActive ? 5000 : 20000;
+
     res.json({
         manual,
         automatic,
         officeLat,
         officeLng,
         officeRadius: parseInt(officeRadius),
-        pending_notification: pendingNotification
+        pending_notification: pendingNotification,
+        suggested_poll_ms: suggestedPollMs
     });
 });
 
