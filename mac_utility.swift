@@ -557,7 +557,7 @@ class MenuBarUtility: NSObject {
 
     func setupStatusItem() {
         if let button = statusItem.button {
-            button.title = "🕒 00:00:00"
+            button.title = "🕒 00:00"
             button.action = #selector(menuBarClicked(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -633,9 +633,9 @@ class MenuBarUtility: NSObject {
             self.fetchStatus()
         }
         
-        // Render UI 1x per second for efficient display
+        // Render UI every 30 seconds for maximum efficiency (no seconds displayed)
         // The uiTimer interpolates elapsed time between server syncs
-        uiTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        uiTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
             self.updateUI()
         }
 
@@ -743,8 +743,7 @@ class MenuBarUtility: NSObject {
                 }
 
                 self.lastSyncTime = Date()
-                // Don't call updateUI() here — the uiTimer owns all rendering.
-                // Calling it here too causes a double-render and visible stutter.
+                self.updateUI()
             }
         }.resume()
     }
@@ -918,8 +917,7 @@ class MenuBarUtility: NSObject {
     func formatTime(_ seconds: Int) -> String {
         let h = seconds / 3600
         let m = (seconds % 3600) / 60
-        let s = seconds % 60
-        return String(format: "%02d:%02d:%02d", h, m, s)
+        return String(format: "%02d:%02d", h, m)
     }
 
     func showDashboard() {

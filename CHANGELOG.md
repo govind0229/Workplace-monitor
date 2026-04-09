@@ -2,6 +2,18 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [1.6.0] - 2026-04-09
+
+### Fixed
+- **Set Office Location Hang** — Resolved a critical issue where clicking "Set Office Location" caused the macOS application to become unresponsive. Replaced standard `navigator.geolocation` with a robust **Unified Location Requester** that utilizes the custom macOS native bridge and asynchronous callback resolution.
+
+### Added
+- **GitHub Issue Templates** — Introduced standardized templates for reporting bugs and suggesting new features. Includes a structured configuration for GitHub to facilitate high-quality community feedback.
+
+### Improved
+- **Async Location Flow** — Refactored the dashboard's location logic to use modern `async/await` patterns, ensuring the UI stays fluid and interactive while acquiring a GPS fix.
+- **Acquiring State Feedback** — Added a spinner animation and "Locating..." text to the dashboard buttons for clearer visual confirmation during background location retrieval.
+
 ## [1.5.2] - 2026-04-06
 
 ### Added
