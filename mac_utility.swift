@@ -607,8 +607,8 @@ class MenuBarUtility: NSObject {
     func setupLocationManager() {
         locationManager = CLLocationManager()
         locationManager?.delegate = self
-        locationManager?.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager?.distanceFilter = 10.0 // Send updates when moved > 10 meters (more sensitive)
+        locationManager?.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        locationManager?.distanceFilter = 30.0 // Send updates when moved > 30 meters (power saving)
         
         // Request authorization then start updating
         print("Requesting Location Authorization...")
@@ -617,14 +617,13 @@ class MenuBarUtility: NSObject {
     }
 
     func startTimers() {
-        // Sync with server every 2s — fast enough for timely notifications, slow enough to avoid jitter
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+        // Sync with server every 5s — reduction from 2s saves battery and reduces server load
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             self.fetchStatus()
         }
         
-        // Render UI 4x per second for smooth, lag-free display
-        // The uiTimer interpolates elapsed time between server syncs
-        uiTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+        // Render UI every 1s — 4x reduction from 0.25s saves CPU while keeping clock accurate
+        uiTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             self.updateUI()
         }
 

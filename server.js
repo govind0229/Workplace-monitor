@@ -347,7 +347,13 @@ function runBackgroundLoop() {
     } catch (error) {
         console.error("Error in background timer loop:", error);
     } finally {
-        setTimeout(runBackgroundLoop, 5000);
+        // Adaptive scaling: Poll every 5s during active sessions, 15s when idle
+        const manualSession = getActiveSession('manual');
+        const autoSession = getTodayAutomaticSession();
+        const isActive = (manualSession && manualSession.status === 'active') || 
+                       (autoSession && autoSession.status === 'active');
+        
+        setTimeout(runBackgroundLoop, isActive ? 5000 : 15000);
     }
 }
 setTimeout(runBackgroundLoop, 5000);

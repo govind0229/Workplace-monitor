@@ -2116,18 +2116,44 @@ window.addEventListener('offline', () => {
 updateStatus(true);
 loadDashboardCharts();
 
-// Use requestAnimationFrame for smoother updates instead of setInterval
-function animationLoop() {
-    updateStatus(false);
-    animationFrameId = requestAnimationFrame(animationLoop);
+// Global reference for loop management
+let _mainUpdateInterval = null;
+
+// Throttled update loop (1s resolution is plenty for a dashboard timer)
+function startMainLoop() {
+    if (_mainUpdateInterval) return;
+    
+    console.log('[App] Starting main update loop (1s interval)');
+    _mainUpdateInterval = setInterval(() => {
+        updateStatus(false);
+    }, 1000);
 }
-animationFrameId = requestAnimationFrame(animationLoop);
+
+function stopMainLoop() {
+    if (_mainUpdateInterval) {
+        console.log('[App] Stopping main update loop (power saving)');
+        clearInterval(_mainUpdateInterval);
+        _mainUpdateInterval = null;
+    }
+}
+
+// Initial start
+startMainLoop();
+
+// --- POWER SAVING: Page Visibility API ---
+// This stops all UI updates and heartbeats when the window is minimized or hidden
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopMainLoop();
+    } else {
+        startMainLoop();
+        updateStatus(true); // Force sync when coming back to dashboard
+    }
+});
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
-    if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-    }
+    stopMainLoop();
 });
 
 // --- NEW STATS CHART LOGIC ---
