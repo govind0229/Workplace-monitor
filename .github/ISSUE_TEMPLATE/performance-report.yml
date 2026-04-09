@@ -1,0 +1,44 @@
+name: ⚡ Power & Performance Report
+description: Report high CPU or battery usage.
+labels: ["performance", "optimization"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Help us optimize!
+        Use this form to report high resource usage so we can analyze the background loops.
+  - type: input
+    id: app-version
+    attributes:
+      label: App Version
+      placeholder: e.g. 1.6.0
+    validations:
+      required: true
+  - type: input
+    id: cpu-usage
+    attributes:
+      label: CPU Usage (%)
+      description: What is the avg CPU % in Activity Monitor?
+      placeholder: e.g. 2.5%
+  - type: input
+    id: energy-impact
+    attributes:
+      label: Energy Impact Score
+      description: What is the "Energy Impact" score in Activity Monitor?
+      placeholder: e.g. 15.0
+  - type: dropdown
+    id: state
+    attributes:
+      label: App State
+      description: When does the high usage occur?
+      options:
+        - While Active (Dashboard Open)
+        - While Idle (Background/Home)
+        - While Locked (Screen Off)
+        - During a Meeting (Mic/Camera active)
+  - type: textarea
+    id: details
+    attributes:
+      label: Performance Details
+      description: Any patterns you noticed?
+      placeholder: It stays high even when I lock my screen...
