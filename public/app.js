@@ -407,15 +407,33 @@ saveSettingsBtn.onclick = async () => {
     }
 };
 
+let _isSettingOfficeLocation = false;
+
 if (setOfficeLocationBtn) {
     setOfficeLocationBtn.onclick = async () => {
         setOfficeLocationBtn.disabled = true;
         setOfficeLocationBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
             </svg>
-            Getting Location...
+            Locating...
         `;
+
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
+            console.log('[Location] Requesting office location via Native Bridge...');
+            _isSettingOfficeLocation = true;
+            window.webkit.messageHandlers.requestLocation.postMessage({});
+            
+            // Auto-reset if native doesn't respond in 15s to prevent UI hang
+            setTimeout(() => {
+                if (_isSettingOfficeLocation) {
+                    console.warn('[Location] Native bridge timed out for office set');
+                    _isSettingOfficeLocation = false;
+                    resetLocationBtn();
+                }
+            }, 15000);
+            return;
+        }
 
         if (!navigator.geolocation) {
             alert('Geolocation is not supported by your browser.');
@@ -437,21 +455,13 @@ if (setOfficeLocationBtn) {
                     body: JSON.stringify({ latitude, longitude, radius })
                 });
 
-                alert('Office location successfully set!');
-                if (locationStatusBadge) {
-                    locationStatusBadge.textContent = 'Office Location Configured ✓';
-                    locationStatusBadge.className = 'status-badge status-active';
-                }
-                setOfficeLocationBtn.innerHTML = `
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                    </svg>
-                    Update to Current Location
-                `;
-                setOfficeLocationBtn.disabled = false;
+                _isSettingOfficeLocation = false;
+                resetLocationBtn();
                 if (locationMap) loadLocationData();
+                console.log('Office location successfully set via Browser API!');
             } catch (e) {
                 console.error(e);
+                _isSettingOfficeLocation = false;
                 alert('Failed to save office location.');
                 resetLocationBtn();
             }
@@ -465,6 +475,7 @@ if (setOfficeLocationBtn) {
                 navigator.geolocation.getCurrentPosition(successCallback, errorCallback, geoOptions);
             } else {
                 console.error(error);
+                _isSettingOfficeLocation = false;
                 alert(`Location access denied or unavailable: ${error.message}`);
                 resetLocationBtn();
             }
@@ -934,8 +945,24 @@ function centerOnUser() {
 // Global callback for native location bridge
 window.onNativeLocation = (lat, lng, acc) => {
     window._lastUserPos = { lat, lng, acc };
-    console.log(`[Location] Received Native Coordinates: ${lat}, ${lng} ±${Math.round(acc)}m`);
+    console.log(`[Location] Received Native Coordinates: ${lat}, ${lng} ±${Math.round(acc)}m (SetOffice: ${_isSettingOfficeLocation})`);
     
+    // Check if this location update was specifically for setting the office
+    if (_isSettingOfficeLocation) {
+        // Construct a position object similar to the Geolocation API
+        const pos = {
+            coords: {
+                latitude: lat,
+                longitude: lng,
+                accuracy: acc
+            }
+        };
+        
+        // Find the success callback logic from the setOfficeLocationBtn scope
+        // Since we refactored, we need to handle the saving logic here or reuse the same logic
+        saveOfficeLocation(pos);
+    }
+
     if (locationMap) {
         if (userMarker) locationMap.removeLayer(userMarker);
         userMarker = L.marker([lat, lng], {
@@ -958,6 +985,31 @@ window.onNativeLocation = (lat, lng, acc) => {
         locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> My Current Location`;
     }
 };
+
+async function saveOfficeLocation(position) {
+    try {
+        const { latitude, longitude } = position.coords;
+        const radius = parseInt(officeRadiusSlider?.value) || 200;
+
+        console.log(`[Location] Saving office location via bridge: ${latitude}, ${longitude}`);
+
+        await fetch(`${API_BASE}/set-office-location`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude, longitude, radius })
+        });
+
+        _isSettingOfficeLocation = false;
+        resetLocationBtn();
+
+        if (locationMap) loadLocationData();
+        console.log('Office location successfully set via Native Bridge!');
+    } catch (error) {
+        console.error('[Location] Bridge save failed:', error);
+        _isSettingOfficeLocation = false;
+        resetLocationBtn();
+    }
+}
 
 const mapTiles = {
     dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
