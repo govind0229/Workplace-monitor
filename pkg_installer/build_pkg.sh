@@ -207,10 +207,17 @@ chmod +x "$SCRIPTS_DIR/postinstall"
 
 # ── 5. Build .pkg with pkgbuild ──────────────────────────────
 echo "[6/7] Building .pkg with pkgbuild..."
+
+# Prevent automatic relocation by creating a component plist
+PLIST_FILE="$BUILD_DIR/component.plist"
+pkgbuild --analyze --root "$ROOT_DIR" "$PLIST_FILE"
+plutil -replace 0.BundleIsRelocatable -bool false "$PLIST_FILE"
+
 pkgbuild \
     --identifier "$IDENTIFIER" \
     --version "$VERSION" \
     --install-location "$INSTALL_LOCATION" \
+    --component-plist "$PLIST_FILE" \
     --root "$ROOT_DIR" \
     --scripts "$SCRIPTS_DIR" \
     --ownership recommended \

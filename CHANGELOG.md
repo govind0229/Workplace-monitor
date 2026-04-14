@@ -2,6 +2,11 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [2.0.3] - 2026-04-14
+
+### Fixed
+- **MacOS Installer Relocation** — Fixed an issue where Apple's `PackageKit` would automatically relocate the app installation to existing development builds instead of strictly installing to `/Applications`. Disabled the `BundleIsRelocatable` flag during `.pkg` compilation to ensure strict installation paths and resolve Homebrew installation failures.
+
 ## [2.0.2] - 2026-04-14
 
 ### Added
