@@ -91,11 +91,8 @@ jobs:
 
             version "$VERSION"
             
-            if Hardware::CPU.intel?
-              sha256 "$SHA_X64"
-            else
-              sha256 "$SHA_ARM64"
-            end
+            sha256 arm:   "$SHA_ARM64",
+                   intel: "$SHA_X64"
 
             url "https://github.com/govind0229/Workplace-monitor/releases/download/v#{version}/WorkplaceMonitor-#{arch}.pkg"
             name "Workplace Monitor"

@@ -1,4 +1,4 @@
-<?xml version="2.0.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>Workplace Monitor</title>
     <organization>com.workplacemonitor.app</organization>
@@ -30,7 +30,7 @@
     </choice>
 
     <pkg-ref id="com.workplacemonitor.app.pkg"
-             version="2.0.0"
+             version="2.0.1"
              onConclusion="none">WorkplaceMonitor-component.pkg</pkg-ref>
 
 </installer-gui-script>

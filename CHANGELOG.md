@@ -2,6 +2,12 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [2.0.1] - 2026-04-14
+
+### Fixed
+- **Version Bumping Script** — Fixed a bug in `bump_version.sh` that accidentally overwrote the XML declaration version in `distribution.xml`. The script now correctly targets only the application version within the `pkg-ref` tags.
+- **Homebrew Cask Syntax** — Standardized the multi-architecture Cask syntax to use the preferred `sha256 arm: ..., intel: ...` format for cleaner architecture-specific verification.
+
 ## [2.0.0] - 2026-04-14
 
 ### Added

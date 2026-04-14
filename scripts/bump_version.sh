@@ -28,8 +28,8 @@ fi
 
 # 3. pkg_installer/distribution.xml
 if [ -f pkg_installer/distribution.xml ]; then
-  # More robust regex for version tag
-  sed -i '' -E "s/(version=\")[0-9\.]+(\")/\1$VERSION\2/g" pkg_installer/distribution.xml
+  # Target only line 2 onwards to avoid the XML declaration on line 1
+  sed -i '' -E "2,$ s/(version=\")[0-9\.]+(\")/\1$VERSION\2/g" pkg_installer/distribution.xml
   echo "✅ Updated pkg_installer/distribution.xml"
 fi
 
