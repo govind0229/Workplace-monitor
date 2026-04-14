@@ -2,6 +2,11 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [2.0.4] - 2026-04-14
+
+### Fixed
+- **Native CI Compilation** — Transitioned from a single generic runner to dedicated hardware runners in the build pipeline (`macos-13` for Intel and `macos-14` for ARM). This ensures that native Node.js dependencies (e.g., `better-sqlite3`) are compiled natively for their target architectures, permanently resolving `dlopen` incompatible architecture errors on Intel machines.
+
 ## [2.0.3] - 2026-04-14
 
 ### Fixed
