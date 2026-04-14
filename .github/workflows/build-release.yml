@@ -37,6 +37,7 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           bash pkg_installer/build_pkg.sh
+          bash pkg_installer/build_distribution_pkg.sh
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

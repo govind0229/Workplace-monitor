@@ -2,6 +2,14 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [2.0.2] - 2026-04-14
+
+### Added
+- **Polished Professional Installer** — Re-enabled the distribution-style installer using `productbuild`. Users now experience a standard, branded macOS installation interface with a streamlined license and component selection process.
+
+### Improved
+- **Distribution Script Architecture** — Updated `build_distribution_pkg.sh` to support multi-architecture workflows, allowing the creation of distinct, polished installers for both Intel and Apple Silicon.
+
 ## [2.0.1] - 2026-04-14
 
 ### Fixed

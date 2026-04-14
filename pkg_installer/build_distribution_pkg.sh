@@ -12,12 +12,16 @@ set -euo pipefail
 APP_NAME="${APP_NAME:-WorkplaceMonitor}"
 IDENTIFIER="${IDENTIFIER:-com.workplacemonitor.app}"
 
+# Detect or set architecture (x64 or arm64)
+ARCH="${ARCH:-$(uname -m)}"
+if [ "$ARCH" = "x86_64" ]; then ARCH="x64"; fi  # Normalize to x64
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 VERSION="${VERSION:-$(cat "$REPO_ROOT/.version")}"
-COMPONENT_PKG="$REPO_ROOT/${APP_NAME}.pkg"
-DIST_PKG="$REPO_ROOT/${APP_NAME}-Installer.pkg"
+COMPONENT_PKG="$REPO_ROOT/${APP_NAME}-${ARCH}.pkg"
+DIST_PKG="$REPO_ROOT/${APP_NAME}-Installer-${ARCH}.pkg"
 
 if [ ! -f "$COMPONENT_PKG" ]; then
     echo "Error: Component package not found at $COMPONENT_PKG"
@@ -51,6 +55,6 @@ echo ""
 echo "✅  Distribution package: $DIST_PKG"
 echo "📏  Size: $(du -h "$DIST_PKG" | cut -f1)"
 
-if [ -f $DIST_PKG ]; then 
-    mv $DIST_PKG $REPO_ROOT/WorkplaceMonitor.pkg
+if [ -f "$DIST_PKG" ]; then 
+    mv "$DIST_PKG" "$REPO_ROOT/WorkplaceMonitor-${ARCH}.pkg"
 fi
