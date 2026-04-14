@@ -1,7 +1,19 @@
 # Changelog
 
 All notable changes to WorkplaceMonitor will be documented in this file.
- 
+
+## [2.0.0] - 2026-04-14
+
+### Added
+- **Architecture-Optimized Packages** — The build pipeline now produces separate, optimized `.pkg` installers for Intel/AMD (`x64`) and Apple Silicon (`arm64`). This ensures the smallest possible footprint for each architecture (~50MB vs ~250MB for a universal bundle).
+- **Smart Multi-Arch Homebrew Cask** — Overhauled the Homebrew tap logic. The `workinghours` Cask now dynamically detects the host architecture and automatically fetches the correct package.
+- **Legacy macOS Support (v11.0+)** — Standardized the deployment target to **macOS 11.0 (Big Sur)** across all native components (Swift utility and Node.js), ensuring robust support for older hardware.
+- **Matrix-Powered Build Pipeline** — Migrated to a dual-stage GitHub Actions architecture with matrix builds for parallel compilation, improving release speed and reliability.
+
+### Improved
+- **Download Efficiency** — By providing split packages instead of a universal binary, users now download 80% less data during installation and updates.
+- **Build Script Robustness** — Updated `download_node.sh` and `build_pkg.sh` with architecture-aware logic and explicit target-triplet compilation.
+
 ## [1.6.0] - 2026-04-09
  
 ### Added

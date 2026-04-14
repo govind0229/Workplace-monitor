@@ -9,10 +9,10 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-
-    permissions:
-      contents: write
-
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -29,26 +29,56 @@ jobs:
         run: npm install
 
       - name: Download Bundled Node.js
-        run: bash download_node.sh ./bundled_node
+        run: bash download_node.sh ./bundled_node ${{ matrix.arch }}
 
       - name: Build PKG Installer
         env:
           VERSION: ${{ env.VERSION }}
+          ARCH: ${{ matrix.arch }}
         run: |
           bash pkg_installer/build_pkg.sh
-          bash pkg_installer/build_distribution_pkg.sh
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkplaceMonitor-${{ matrix.arch }}
+          path: WorkplaceMonitor-${{ matrix.arch }}.pkg
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: Read Version
+        run: echo "VERSION=$(cat .version)" >> $GITHUB_ENV
+
+      - name: Calculate SHA256
+        run: |
+          echo "SHA_X64=$(sha256sum ./artifacts/WorkplaceMonitor-x64.pkg | awk '{print $1}')" >> $GITHUB_ENV
+          echo "SHA_ARM64=$(sha256sum ./artifacts/WorkplaceMonitor-arm64.pkg | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Update Homebrew Tap
         env:
           VERSION: ${{ env.VERSION }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          SHA_X64: ${{ env.SHA_X64 }}
+          SHA_ARM64: ${{ env.SHA_ARM64 }}
         run: |
           if [ -z "$TAP_GITHUB_TOKEN" ]; then
             echo "TAP_GITHUB_TOKEN is missing. Skipping Homebrew tap update."
             exit 0
           fi
-          
-          SHA256=$(shasum -a 256 WorkplaceMonitor.pkg | awk '{print $1}')
           
           git clone https://${TAP_GITHUB_TOKEN}@github.com/govind0229/homebrew-tap.git tap-repo
           cd tap-repo
@@ -57,15 +87,22 @@ jobs:
           generate_cask() {
             cat > "Casks/${1}.rb" << EOF
           cask "${1}" do
-            version "$VERSION"
-            sha256 "$SHA256"
+            arch arm: "arm64", intel: "x64"
 
-            url "https://github.com/govind0229/Workplace-monitor/releases/download/v#{version}/WorkplaceMonitor.pkg"
+            version "$VERSION"
+            
+            if Hardware::CPU.intel?
+              sha256 "$SHA_X64"
+            else
+              sha256 "$SHA_ARM64"
+            end
+
+            url "https://github.com/govind0229/Workplace-monitor/releases/download/v#{version}/WorkplaceMonitor-#{arch}.pkg"
             name "Workplace Monitor"
             desc "Location-based automatic time tracking and monitoring"
             homepage "https://github.com/govind0229/Workplace-monitor"
 
-            pkg "WorkplaceMonitor.pkg"
+            pkg "WorkplaceMonitor-#{arch}.pkg"
 
             uninstall pkgutil: "com.workplacemonitor.app"
           end
@@ -78,21 +115,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/
-          git commit -m "Update workinghours to v$VERSION" || echo "No changes to commit"
+          git commit -m "Update workinghours to v$VERSION (multi-arch)" || echo "No changes to commit"
           git push origin main
 
       - name: Extract Release Notes
         run: |
-          # Extract section from ## [VERSION] to the next ## header
           sed -n "/^## \[${{ env.VERSION }}\]/,/^## /p" CHANGELOG.md | sed '$d' > release_notes.md
 
-      - name: Upload Release Asset
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
           name: WorkplaceMonitor v${{ env.VERSION }}
           body_path: release_notes.md
-          files: |
-            WorkplaceMonitor.pkg
+          files: ./artifacts/WorkplaceMonitor-*.pkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

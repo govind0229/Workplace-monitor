@@ -28,9 +28,8 @@ fi
 
 # 3. pkg_installer/distribution.xml
 if [ -f pkg_installer/distribution.xml ]; then
-  # More robust regex for multiline version tag inside the pkg-ref block
-  # We find the line containing 'version="' immediately after the pkg ID
-  sed -i '' -E "/com\.user\.workinghours\.pkg/{n;s/version=\"[0-9\.]+\"/version=\"$VERSION\"/;}" pkg_installer/distribution.xml
+  # More robust regex for version tag
+  sed -i '' -E "s/(version=\")[0-9\.]+(\")/\1$VERSION\2/g" pkg_installer/distribution.xml
   echo "✅ Updated pkg_installer/distribution.xml"
 fi
 

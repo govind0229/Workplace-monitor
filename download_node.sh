@@ -11,7 +11,14 @@ else
 fi
 OUTPUT_DIR="${1:-.}"
 
-ARCH=$(uname -m)
+# Support overriding architecture (x64 or arm64)
+REQUESTED_ARCH="${2:-}"
+if [ -n "$REQUESTED_ARCH" ]; then
+    ARCH="$REQUESTED_ARCH"
+else
+    ARCH=$(uname -m)
+fi
+
 if [ "$ARCH" = "arm64" ]; then
     PLATFORM="darwin-arm64"
 else

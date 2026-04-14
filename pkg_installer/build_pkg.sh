@@ -17,6 +17,10 @@ APP_NAME="${APP_NAME:-WorkplaceMonitor}"
 IDENTIFIER="${IDENTIFIER:-com.workplacemonitor.app}"
 INSTALL_LOCATION="/Applications"
 
+# Detect or set architecture (x64 or arm64)
+ARCH="${ARCH:-$(uname -m)}"
+if [ "$ARCH" = "x86_64" ]; then ARCH="x64"; fi  # Normalize to x64
+
 # Directories (relative to repo root)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -26,7 +30,7 @@ VERSION="${VERSION:-$(cat "$REPO_ROOT/.version")}"
 BUILD_DIR="$SCRIPT_DIR/_build"
 ROOT_DIR="$BUILD_DIR/root"            # payload for pkgbuild --root
 SCRIPTS_DIR="$BUILD_DIR/scripts"      # pre/post-install scripts
-PKG_OUTPUT="$REPO_ROOT/${APP_NAME}.pkg"
+PKG_OUTPUT="$REPO_ROOT/${APP_NAME}-${ARCH}.pkg"
 
 echo "═══════════════════════════════════════════════════"
 echo "  Building ${APP_NAME}.pkg  (v${VERSION})"
@@ -40,8 +44,16 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$ROOT_DIR" "$SCRIPTS_DIR"
 
 # ── 1. Compile Swift binary ──────────────────────────────────
-echo "[2/7] Compiling mac_utility.swift..."
-swiftc "$REPO_ROOT/mac_utility.swift" -framework WebKit -o "$REPO_ROOT/mac_utility"
+echo "[2/7] Compiling mac_utility.swift for architecture: ${ARCH}..."
+
+if [ "$ARCH" = "arm64" ]; then
+    TARGET="arm64-apple-macos11.0"
+else
+    TARGET="x86_64-apple-macos11.0"
+fi
+
+export MACOSX_DEPLOYMENT_TARGET=11.0
+swiftc "$REPO_ROOT/mac_utility.swift" -target "$TARGET" -framework WebKit -o "$REPO_ROOT/mac_utility"
 
 # ── 2. Generate App Icon ─────────────────────────────────────
 if [ -f "$REPO_ROOT/icon.png" ]; then
