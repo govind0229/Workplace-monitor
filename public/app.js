@@ -1349,6 +1349,22 @@ async function updateStatus(forceSync = false) {
                 statusBadge.textContent = manualStatus;
                 statusBadge.className = 'status-badge status-' + manualStatus;
 
+                const arrivalTimeDisplay = document.getElementById('arrivalTimeDisplay');
+                const arrivalTimeVal = document.getElementById('arrivalTimeVal');
+                if (arrivalTimeDisplay && arrivalTimeVal && data.arrivalTime) {
+                    const formatTimeVal = (timeStr) => {
+                        if (!timeStr) return '--:--';
+                        const timeOnly = timeStr.split(' ')[1] || timeStr;
+                        const parts = timeOnly.split(':');
+                        return `${parts[0].padStart(2, '0')}:${parts[1]}:${parts[2] || '00'}`;
+                    };
+                    
+                    arrivalTimeVal.textContent = formatTimeVal(data.arrivalTime);
+                    arrivalTimeDisplay.style.display = 'block';
+                } else if (arrivalTimeDisplay) {
+                    arrivalTimeDisplay.style.display = 'none';
+                }
+
                 if (manualStatus === 'active') {
                     startBtn.disabled = true;
                     startBtn.classList.add('pulse');

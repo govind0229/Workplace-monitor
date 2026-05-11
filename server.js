@@ -572,8 +572,12 @@ app.post('/location', asyncHandler(async (req, res) => {
     if (isAtOffice) {
         // Stop home timer, start office timer
         if (!manualSession) {
-            const id = startSession('manual');
-            manualSession = { id, status: 'active', total_seconds: 0, type: 'manual' };
+            let targetProjectId = null;
+            const defaultProjectId = getSetting('defaultProjectId');
+            if (defaultProjectId) targetProjectId = parseInt(defaultProjectId);
+            
+            const id = startSession('manual', targetProjectId);
+            manualSession = { id, status: 'active', total_seconds: 0, type: 'manual', project_id: targetProjectId };
             console.log(`[Location] Arrived at office (Distance: ${Math.round(distance)}m). Starting Office Timer.`);
             sendNativeNotification('Workplace Monitor', 'Arrived at the office. Workplace tracking started.');
         } else if (manualSession.status !== 'active') {
@@ -674,6 +678,7 @@ app.get('/status', (req, res) => {
     res.json({
         manual,
         automatic,
+        arrivalTime,
         officeLat,
         officeLng,
         officeRadius: parseInt(officeRadius),
