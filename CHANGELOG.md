@@ -2,6 +2,16 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [2.3.0] - 2026-05-11
+
+### Added
+- **Monthly Project Breakdown** — Added a new analytical section to the Projects tab in History. You can now see a month-by-month breakdown of time spent on each project, helping you track long-term work trends and project lifecycles.
+- **Enhanced Office Span Tracking** — Introduced a new "Office Span" column in the Visits report. This automatically calculates the total elapsed time between your first arrival and last departure of the day, providing context for your total time spent at the workplace.
+
+### Improved
+- **Visits Report UI** — Renamed the "Duration" column to "Workplace Duration" for better clarity and updated the layout to a 5-column grid to accommodate the new Office Span data.
+- **Project Report API** — Updated the backend to efficiently aggregate project data by month while maintaining high-performance history lookups.
+
 ## [2.2.0] - 2026-05-11
 
 ### Added

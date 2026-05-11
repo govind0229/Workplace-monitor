@@ -708,7 +708,7 @@ h2 {
 }
 
 .visits-grid .report-item {
-  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr 1fr 1.2fr 1.3fr;
 }
 
 .report-item:last-child {

@@ -831,9 +831,10 @@ app.get('/today-apps', (req, res) => {
 });
 
 app.get('/project-reports', (req, res) => {
-    const { getProjectReport, getDetailedProjectHistory } = require('./db');
+    const { getProjectReport, getProjectMonthlyReport, getDetailedProjectHistory } = require('./db');
     res.json({
         summary: getProjectReport(),
+        monthly: getProjectMonthlyReport(),
         history: getDetailedProjectHistory()
     });
 });

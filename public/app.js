@@ -1596,6 +1596,34 @@ async function renderProjectReport() {
                 fragment.appendChild(row);
             });
         }
+
+        // --- MONTHLY SECTION ---
+        const monthly = data.monthly || [];
+        if (monthly.length > 0) {
+            const monthlyHeader = document.createElement('div');
+            monthlyHeader.className = 'report-item report-header';
+            monthlyHeader.style.marginTop = '24px';
+            monthlyHeader.innerHTML = `
+                <span>Monthly Breakdown</span>
+                <span>Time</span>
+                <span>Month</span>
+            `;
+            fragment.appendChild(monthlyHeader);
+
+            monthly.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'report-item';
+                row.innerHTML = `
+                    <span style="display:flex; align-items:center; gap:8px;">
+                        <span style="width:10px; height:10px; border-radius:50%; background:${item.color || 'var(--primary)'}"></span>
+                        ${escapeHTML(item.name || 'No Project')}
+                    </span>
+                    <span style="font-weight:600">${formatTime(item.total_seconds)}</span>
+                    <span class="auto-total-dim">${escapeHTML(item.month)}</span>
+                `;
+                fragment.appendChild(row);
+            });
+        }
         
         // --- HISTORY SECTION ---
         const historyTitle = document.createElement('div');
@@ -1655,7 +1683,8 @@ function renderActiveTab() {
             <span>Date</span>
             <span>In Time</span>
             <span>Out Time</span>
-            <span>Duration</span>
+            <span>Office Span</span>
+            <span>Workplace Duration</span>
         `;
     } else {
         reportsList.classList.remove('visits-grid');
@@ -1696,6 +1725,7 @@ function renderActiveTab() {
                     <span>${escapeHTML(item.date)}</span>
                     <span style="color:var(--primary); font-weight:500;">${escapeHTML(inTime)}</span>
                     <span style="color:var(--accent); font-weight:500;">${escapeHTML(outTime)}</span>
+                    <span style="color:var(--text-dim); font-style:italic;">${formatTime(item.office_span || 0)}</span>
                     <span class="auto-total-dim">${formatTime(item.total_seconds)}</span>
                 `;
             } else {

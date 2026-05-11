@@ -174,7 +174,8 @@ module.exports = {
       SELECT date,
              MIN(datetime(start_time, 'localtime')) as in_time,
              MAX(datetime(end_time, 'localtime')) as out_time,
-             SUM(total_seconds) as total_seconds
+             SUM(total_seconds) as total_seconds,
+             (strftime('%s', MAX(end_time)) - strftime('%s', MIN(start_time))) as office_span
       FROM sessions
       WHERE type = 'manual'
       GROUP BY date
@@ -256,6 +257,21 @@ module.exports = {
       LEFT JOIN sessions s ON s.project_id = p.id
       GROUP BY p.id
       ORDER BY total_seconds DESC
+    `).all();
+  },
+  getProjectMonthlyReport: () => {
+    return db.prepare(`
+      SELECT 
+        p.id, 
+        p.name, 
+        p.color, 
+        strftime('%Y-%m', s.date) as month,
+        SUM(s.total_seconds) as total_seconds,
+        COUNT(s.id) as session_count
+      FROM projects p
+      JOIN sessions s ON s.project_id = p.id
+      GROUP BY p.id, month
+      ORDER BY month DESC, total_seconds DESC
     `).all();
   },
   // --- Cloud Sync Helpers ---
