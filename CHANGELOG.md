@@ -2,6 +2,20 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [2.1.0] - 2026-05-11
+
+### Added
+- **Office Attendance Reporting** — Introduced a new "Visits" tab in the History section that provides a daily breakdown of office arrival ("In-Time") and departure ("Out-Time") timestamps, along with total session duration.
+- **Dynamic Time Formatting** — Added a UI toggle to switch between **24-hour** (with seconds) and **AM/PM** time formats for the office visits report. Preferences are persisted across sessions.
+- **Dashboard Arrival Tracker** — The main dashboard now displays your first office arrival time for the day in a high-precision 24-hour format (HH:MM:SS) directly in the timer card.
+
+### Fixed
+- **Automatic Project Assignment** — Fixed an issue where office sessions triggered by geofencing/arrival detection would start without a project. Automatic sessions now correctly inherit the user's **Default Project** setting.
+- **Report Export Consistency** — Enhanced the CSV export engine to respect the user's selected time format preference when downloading office visit data.
+
+### Improved
+- **Contextual UI Controls** — The time format toggle now intelligently appears only when viewing reports where time precision is relevant, keeping the interface clean and focused.
+
 ## [2.0.4] - 2026-04-14
 
 ### Fixed
