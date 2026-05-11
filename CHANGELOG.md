@@ -2,6 +2,16 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [2.2.0] - 2026-05-11
+
+### Added
+- **Smart Sleep Detection (User vs. System)** — The application now intelligently distinguishes between user-initiated sleep (closing the lid, selecting Sleep from the menu) and system-idle sleep (timeout).
+- **Accurate Logout Timestamps** — When a user-initiated sleep is detected, both Office (Manual) and WFH (Automatic) sessions are now completed immediately. This ensures departure times are recorded precisely at the moment the Mac was closed, rather than when it is re-opened.
+- **Granular Automatic Sessions** — Updated the database architecture to support multiple automatic session segments per day. This provides a more accurate timeline of WFH activity if the machine is closed and re-opened multiple times throughout the day.
+
+### Improved
+- **Session Continuity** — System-idle sleep now correctly pauses sessions instead of completing them, allowing for automatic resumption after short breaks while still maintaining high-precision time tracking.
+
 ## [2.1.0] - 2026-05-11
 
 ### Added
