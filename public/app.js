@@ -41,6 +41,7 @@ let customAppCategories = {};
 let currentTab = 'daily';
 let currentStatsRange = 7;
 let reportsData = null;
+let timeFormat = localStorage.getItem('timeFormat') || '24h';
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
 let goalLinePercent = getStoredInt('goalLinePercent', 44);
 let defaultProjectId = null;
@@ -1631,11 +1632,23 @@ function renderActiveTab() {
     // Add header
     const header = document.createElement('div');
     header.className = 'report-item report-header';
-    header.innerHTML = `
-        <span>Period</span>
-        <span>Workplace</span>
-        <span>Day Total</span>
-    `;
+    
+    if (currentTab === 'visits') {
+        reportsList.classList.add('visits-grid');
+        header.innerHTML = `
+            <span>Date</span>
+            <span>In Time</span>
+            <span>Out Time</span>
+            <span>Duration</span>
+        `;
+    } else {
+        reportsList.classList.remove('visits-grid');
+        header.innerHTML = `
+            <span>Period</span>
+            <span>Workplace</span>
+            <span>Day Total</span>
+        `;
+    }
     fragment.appendChild(header);
 
     if (data.length) {
@@ -1643,11 +1656,39 @@ function renderActiveTab() {
             const row = document.createElement('div');
             row.className = 'report-item';
             row.style.animation = 'fadeIn 0.3s ease-out';
-            row.innerHTML = `
-                <span>${escapeHTML(item.date || item.week || item.month)}</span>
-                <span>${formatTime(item.manual_total)}</span>
-                <span class="auto-total-dim">${formatTime(item.auto_total)}</span>
-            `;
+            
+            if (currentTab === 'visits') {
+                const formatTimeVal = (timeStr) => {
+                    if (!timeStr || timeStr === '—') return timeStr;
+                    const parts = timeStr.split(':');
+                    const h_24 = parseInt(parts[0]);
+                    const m = parts[1];
+                    const s = parts[2] || '00';
+                    
+                    if (timeFormat === 'ampm') {
+                        const ampm = h_24 >= 12 ? 'PM' : 'AM';
+                        let h = h_24 % 12;
+                        h = h ? h : 12;
+                        return `${h}:${m} ${ampm}`;
+                    }
+                    return `${parts[0].padStart(2, '0')}:${m}:${s}`;
+                };
+
+                const inTime = item.in_time ? formatTimeVal(item.in_time.split(' ')[1].substring(0, 8)) : '—';
+                const outTime = item.out_time ? formatTimeVal(item.out_time.split(' ')[1].substring(0, 8)) : '—';
+                row.innerHTML = `
+                    <span>${escapeHTML(item.date)}</span>
+                    <span style="color:var(--primary); font-weight:500;">${escapeHTML(inTime)}</span>
+                    <span style="color:var(--accent); font-weight:500;">${escapeHTML(outTime)}</span>
+                    <span class="auto-total-dim">${formatTime(item.total_seconds)}</span>
+                `;
+            } else {
+                row.innerHTML = `
+                    <span>${escapeHTML(item.date || item.week || item.month)}</span>
+                    <span>${formatTime(item.manual_total)}</span>
+                    <span class="auto-total-dim">${formatTime(item.auto_total)}</span>
+                `;
+            }
             fragment.appendChild(row);
         });
     } else {
@@ -1669,12 +1710,30 @@ tabButtons.forEach(btn => {
         tabButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentTab = btn.dataset.tab;
+        
+        // Show/hide time format toggle
+        if (timeFormatToggle) {
+            timeFormatToggle.style.display = currentTab === 'visits' ? 'block' : 'none';
+        }
+        
         fetchReports();
     };
 });
 
+const timeFormatToggle = document.getElementById('timeFormatToggle');
+if (timeFormatToggle) {
+    timeFormatToggle.style.display = currentTab === 'visits' ? 'block' : 'none';
+    timeFormatToggle.textContent = `Format: ${timeFormat.toUpperCase()}`;
+    timeFormatToggle.onclick = () => {
+        timeFormat = timeFormat === '24h' ? 'ampm' : '24h';
+        localStorage.setItem('timeFormat', timeFormat);
+        timeFormatToggle.textContent = `Format: ${timeFormat.toUpperCase()}`;
+        if (currentTab === 'visits') renderActiveTab();
+    };
+}
+
 document.getElementById('exportCsvBtn').onclick = () => {
-    const url = `${API_BASE}/export-csv?tab=${currentTab}`;
+    const url = `${API_BASE}/export-csv?tab=${currentTab}&timeFormat=${timeFormat}`;
     const a = document.createElement('a');
     a.href = url;
     a.download = `${currentTab}_report.csv`;

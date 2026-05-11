@@ -13,9 +13,9 @@ jobs:
       matrix:
         include:
           - arch: x64
-            runner: [self-hosted, macos-12]
+            runner: self-hosted
           - arch: arm64
-            runner: macos-14
+            runner: macos-latest
     
     steps:
       - name: Checkout Code

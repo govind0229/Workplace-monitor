@@ -707,6 +707,10 @@ h2 {
   transition: background 0.2s;
 }
 
+.visits-grid .report-item {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
 .report-item:last-child {
   border-bottom: none;
 }

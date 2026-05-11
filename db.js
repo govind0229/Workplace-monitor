@@ -169,6 +169,19 @@ module.exports = {
       LIMIT 12
     `).all();
   },
+  getOfficeVisitsReport: () => {
+    return db.prepare(`
+      SELECT date,
+             MIN(datetime(start_time, 'localtime')) as in_time,
+             MAX(datetime(end_time, 'localtime')) as out_time,
+             SUM(total_seconds) as total_seconds
+      FROM sessions
+      WHERE type = 'manual'
+      GROUP BY date
+      ORDER BY date DESC
+      LIMIT 30
+    `).all();
+  },
   getTodayManualTotal: () => {
     const result = db.prepare("SELECT SUM(total_seconds) as sum FROM sessions WHERE date = date('now') AND type = 'manual'").get();
     return result ? (result.sum || 0) : 0;

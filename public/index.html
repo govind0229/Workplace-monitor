@@ -315,19 +315,23 @@
                     <div class="history-toolbar">
                         <div class="tabs">
                             <button class="tab-btn active" data-tab="daily">Daily</button>
+                            <button class="tab-btn" data-tab="visits">Visits</button>
                             <button class="tab-btn" data-tab="weekly">Weekly</button>
                             <button class="tab-btn" data-tab="monthly">Monthly</button>
                             <button class="tab-btn" data-tab="projects">Projects</button>
                         </div>
-                        <button id="exportCsvBtn" class="btn secondary btn-sm">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="7 10 12 15 17 10" />
-                                <line x1="12" y1="15" x2="12" y2="3" />
-                            </svg>
-                            Export CSV
-                        </button>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button id="timeFormatToggle" class="btn btn-sm secondary" style="font-size: 0.7rem; padding: 6px 12px;">Format: 24h</button>
+                            <button id="exportCsvBtn" class="btn btn-sm primary">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                </svg>
+                                Export CSV
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div id="reportsList" class="reports-list">

@@ -7,7 +7,7 @@ function sendNativeNotification(title, message) {
     console.log(`[Queueing Notification] ${title}: ${message} (Queue length: ${notificationQueue.length})`);
 }
 
-const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent, createProject, getProjects, deleteProject, getProjectReport, getLastSyncedId, updateSyncedId, getUnsyncedData } = require('./db');
+const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent, createProject, getProjects, deleteProject, getProjectReport, getLastSyncedId, updateSyncedId, getUnsyncedData } = require('./db');
 const cors = require('cors');
 
 // Pre-compiled prepared statements for hot paths (avoids SQLite re-planning on every tick)
@@ -628,6 +628,8 @@ app.get('/status', (req, res) => {
     const now = Date.now();
     const manual = getActiveSession('manual') || { status: 'idle', total_seconds: 0 };
     const automatic = getTodayAutomaticSession();
+    const firstManual = db.prepare("SELECT MIN(datetime(start_time, 'localtime')) as first FROM sessions WHERE date = date('now') AND type = 'manual'").get();
+    const arrivalTime = firstManual ? firstManual.first : null;
 
     const officeLat = getSetting('officeLat', '');
     const officeLng = getSetting('officeLng', '');
@@ -823,8 +825,9 @@ app.get('/today-events', (req, res) => {
 });
 
 app.get('/export-csv', (req, res) => {
-    const { getDailyReport, getWeeklyReport, getMonthlyReport } = require('./db');
+    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport } = require('./db');
     const tab = req.query.tab || 'daily';
+    const timeFormat = req.query.timeFormat || '24h';
     let data, headers;
 
     if (tab === 'weekly') {
@@ -835,6 +838,38 @@ app.get('/export-csv', (req, res) => {
         data = getMonthlyReport();
         headers = 'Month,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total';
         res.setHeader('Content-Disposition', 'attachment; filename=monthly_report.csv');
+    } else if (tab === 'visits') {
+        data = getOfficeVisitsReport();
+        headers = 'Date,In Time,Out Time,Total Duration (seconds),Total Duration';
+        res.setHeader('Content-Disposition', 'attachment; filename=office_visits_report.csv');
+        const fmtTime = (s) => {
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            return `${h}h ${m}m ${sec}s`;
+        };
+        const formatTimeVal = (timeStr) => {
+            if (!timeStr || timeStr === '—') return timeStr;
+            const parts = timeStr.split(':');
+            const h_24 = parseInt(parts[0]);
+            const m = parts[1];
+            const s = parts[2] || '00';
+            
+            if (timeFormat === 'ampm') {
+                const ampm = h_24 >= 12 ? 'PM' : 'AM';
+                let h = h_24 % 12;
+                h = h ? h : 12;
+                return `${h}:${m} ${ampm}`;
+            }
+            return `${parts[0].padStart(2, '0')}:${m}:${s}`;
+        };
+        const rows = data.map(item => {
+            const inTime = item.in_time ? formatTimeVal(item.in_time.split(' ')[1].substring(0, 8)) : '—';
+            const outTime = item.out_time ? formatTimeVal(item.out_time.split(' ')[1].substring(0, 8)) : '—';
+            return `${item.date},${inTime},${outTime},${item.total_seconds},${fmtTime(item.total_seconds)}`;
+        });
+        res.setHeader('Content-Type', 'text/csv');
+        return res.send(headers + '\n' + rows.join('\n'));
     } else {
         data = getDailyReport();
         headers = 'Date,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total';
@@ -858,11 +893,12 @@ app.get('/export-csv', (req, res) => {
 });
 
 app.get('/reports', (req, res) => {
-    const { getDailyReport, getWeeklyReport, getMonthlyReport } = require('./db');
+    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport } = require('./db');
     res.json({
         daily: getDailyReport(),
         weekly: getWeeklyReport(),
-        monthly: getMonthlyReport()
+        monthly: getMonthlyReport(),
+        visits: getOfficeVisitsReport()
     });
 });
 
