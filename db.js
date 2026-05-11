@@ -97,7 +97,7 @@ module.exports = {
     return db.prepare("SELECT * FROM sessions WHERE status != 'completed' AND type = ? ORDER BY id DESC LIMIT 1").get(type);
   },
   getTodayAutomaticSession: () => {
-    let session = db.prepare("SELECT * FROM sessions WHERE date = date('now') AND type = 'automatic' LIMIT 1").get();
+    let session = db.prepare("SELECT * FROM sessions WHERE date = date('now') AND type = 'automatic' AND status != 'completed' LIMIT 1").get();
     const defaultProjectIdStr = module.exports.getSetting('defaultProjectId');
     const defaultProjectId = defaultProjectIdStr ? parseInt(defaultProjectIdStr) : null;
 

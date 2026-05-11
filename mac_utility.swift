@@ -589,7 +589,13 @@ class MenuBarUtility: NSObject {
         let wsnc = NSWorkspace.shared.notificationCenter
         wsnc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
             self.isScreenLocked = true
-            self.sendEvent("lock")
+            
+            // Heuristic: If idle for < 10s, user likely triggered sleep (lid close, menu, key chord)
+            let idleTime = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
+            let reason = (idleTime < 10.0) ? "user_initiated" : "system_idle"
+            
+            print("[Sleep] System going to sleep. Reason: \(reason) (Idle: \(Int(idleTime))s)")
+            self.sendEvent("lock", metadata: ["reason": reason])
         }
         wsnc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
             self.isScreenLocked = false
@@ -599,7 +605,7 @@ class MenuBarUtility: NSObject {
         // Additional reliable observers for session state
         wsnc.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) { _ in
             self.isScreenLocked = true
-            self.sendEvent("lock")
+            self.sendEvent("lock", metadata: ["reason": "session_resign"])
         }
         wsnc.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main) { _ in
             self.isScreenLocked = false
@@ -897,12 +903,17 @@ class MenuBarUtility: NSObject {
         return false
     }
 
-    func sendEvent(_ eventType: String) {
+    func sendEvent(_ eventType: String, metadata: [String: Any]? = nil) {
         guard let url = URL(string: "\(serverURL)/event") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let json: [String: Any] = ["event": eventType]
+        
+        var json: [String: Any] = ["event": eventType]
+        if let metadata = metadata {
+            json["metadata"] = metadata
+        }
+        
         request.httpBody = try? JSONSerialization.data(withJSONObject: json)
         URLSession.shared.dataTask(with: request).resume()
     }
