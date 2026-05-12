@@ -36,13 +36,47 @@ jobs:
             exit 1
           fi
           
-          # Check if this version already exists as a tag or release
+          echo "Validating if version v$VERSION is unique and a valid increment..."
+          
+          # Fetch tags to ensure we can check against them
+          git fetch --tags > /dev/null 2>&1
+
+          # 1. Check if EXACT version already exists
           if gh release view "v$VERSION" > /dev/null 2>&1 || git rev-parse "v$VERSION" > /dev/null 2>&1; then
-            echo "Error: Version v$VERSION has already been released or tagged. Please bump the version in .version!"
+            echo "::error::Version v$VERSION already exists. Please bump the version!"
+            exit 1
+          fi
+
+          # 2. Validate SemVer Increment (New > Latest)
+          LATEST_TAG=$(git describe --tags --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION=${LATEST_TAG#v}
+          
+          echo "Latest version found: $LATEST_VERSION"
+          echo "Proposed version: $VERSION"
+
+          # Parse versions into arrays
+          IFS='.' read -r L_MAJOR L_MINOR L_PATCH <<< "$LATEST_VERSION"
+          IFS='.' read -r N_MAJOR N_MINOR N_PATCH <<< "$VERSION"
+
+          IS_GREATER=false
+          if [ "$N_MAJOR" -gt "$L_MAJOR" ]; then
+            IS_GREATER=true
+          elif [ "$N_MAJOR" -eq "$L_MAJOR" ]; then
+            if [ "$N_MINOR" -gt "$L_MINOR" ]; then
+              IS_GREATER=true
+            elif [ "$N_MINOR" -eq "$L_MINOR" ]; then
+              if [ "$N_PATCH" -gt "$L_PATCH" ]; then
+                IS_GREATER=true
+              fi
+            fi
+          fi
+
+          if [ "$IS_GREATER" = false ]; then
+            echo "::error::Proposed version $VERSION is not greater than the latest release $LATEST_VERSION. Please provide a higher Major, Minor, or Patch number!"
             exit 1
           fi
           
-          echo "Version validated: $VERSION (New release detected)"
+          echo "Success: Version v$VERSION is a valid increment over $LATEST_VERSION."
 
       - name: Compile Swift Native App
         run: |
