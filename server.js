@@ -919,12 +919,13 @@ app.get('/export-csv', (req, res) => {
 });
 
 app.get('/reports', (req, res) => {
+    const { start, end } = req.query;
     const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport } = require('./db');
     res.json({
-        daily: getDailyReport(),
-        weekly: getWeeklyReport(),
-        monthly: getMonthlyReport(),
-        visits: getOfficeVisitsReport()
+        daily: getDailyReport(start, end),
+        weekly: getWeeklyReport(start, end),
+        monthly: getMonthlyReport(start, end),
+        visits: getOfficeVisitsReport(start, end)
     });
 });
 

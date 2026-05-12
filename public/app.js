@@ -45,6 +45,8 @@ let timeFormat = localStorage.getItem('timeFormat') || '24h';
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
 let goalLinePercent = getStoredInt('goalLinePercent', 44);
 let defaultProjectId = null;
+let filterStartDate = null;
+let filterEndDate = null;
 
 function getStoredInt(key, defaultValue) {
     const val = localStorage.getItem(key);
@@ -1280,6 +1282,32 @@ function formatTime(seconds = 0) {
     return [h, m, s].map(v => v < 10 ? '0' + v : v).join(':');
 }
 
+function formatWeekLabel(dateStr) {
+    if (!dateStr) return '—';
+    // Robust manual parsing of YYYY-MM-DD to avoid "Invalid Date" in some environments
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    
+    try {
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1;
+        const day = parseInt(parts[2]);
+        
+        const date = new Date(year, month, day);
+        if (isNaN(date.getTime())) return dateStr;
+
+        const options = { month: 'short', day: 'numeric' };
+        const start = date.toLocaleDateString(undefined, options);
+        
+        const end = new Date(year, month, day + 6);
+        const endStr = end.toLocaleDateString(undefined, options);
+        
+        return `${start} - ${endStr}`;
+    } catch (e) {
+        return dateStr;
+    }
+}
+
 let baseManualSeconds = 0;
 let baseAutoSeconds = 0;
 let lastSyncRealTime = 0;
@@ -1548,7 +1576,16 @@ async function fetchReports() {
             await renderProjectReport();
             return;
         }
-        const res = await fetch(`${API_BASE}/reports`);
+        
+        let url = `${API_BASE}/reports`;
+        if (filterStartDate || filterEndDate) {
+            const params = new URLSearchParams();
+            if (filterStartDate) params.append('start', filterStartDate);
+            if (filterEndDate) params.append('end', filterEndDate);
+            url += `?${params.toString()}`;
+        }
+
+        const res = await fetch(url);
         reportsData = await res.json();
         renderActiveTab();
     } catch (e) {
@@ -1725,14 +1762,19 @@ function renderActiveTab() {
                     <span>${escapeHTML(item.date)}</span>
                     <span style="color:var(--primary); font-weight:500;">${escapeHTML(inTime)}</span>
                     <span style="color:var(--accent); font-weight:500;">${escapeHTML(outTime)}</span>
-                    <span style="color:var(--text-dim); font-style:italic;">${formatTime(item.office_span || 0)}</span>
-                    <span class="auto-total-dim">${formatTime(item.total_seconds)}</span>
+                    <span style="color:var(--text-dim); font-style:italic;">${item.office_span > 0 ? formatTime(item.office_span) : '—'}</span>
+                    <span class="auto-total-dim">${item.total_seconds > 0 ? formatTime(item.total_seconds) : '—'}</span>
                 `;
             } else {
+                let label = item.date || item.week || item.month;
+                if (currentTab === 'weekly' && item.week) {
+                    label = formatWeekLabel(item.week);
+                }
+                
                 row.innerHTML = `
-                    <span>${escapeHTML(item.date || item.week || item.month)}</span>
-                    <span>${formatTime(item.manual_total)}</span>
-                    <span class="auto-total-dim">${formatTime(item.auto_total)}</span>
+                    <span>${escapeHTML(label)}</span>
+                    <span>${item.manual_total > 0 ? formatTime(item.manual_total) : '—'}</span>
+                    <span class="auto-total-dim">${item.auto_total > 0 ? formatTime(item.auto_total) : '—'}</span>
                 `;
             }
             fragment.appendChild(row);
@@ -2566,8 +2608,101 @@ if (projectNameInput) {
     });
 }
 
-// Load projects on startup
+function initReportFilters() {
+    const toggleBtn = document.getElementById('toggleFilterBtn');
+    const closeBtn = document.getElementById('closeFilterBtn');
+    const popup = document.getElementById('filterPopup');
+    const activeDot = document.getElementById('filterActiveDot');
+    
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    const resetBtn = document.getElementById('resetFiltersBtn');
+    const startInp = document.getElementById('filterStartDate');
+    const endInp = document.getElementById('filterEndDate');
+    const presets = document.querySelectorAll('.preset-btn');
+
+    // Force reset on fresh load to prevent browser input persistence
+    if (startInp) startInp.value = '';
+    if (endInp) endInp.value = '';
+    filterStartDate = null;
+    filterEndDate = null;
+    if (activeDot) activeDot.style.display = 'none';
+
+    if (toggleBtn) {
+        toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            const isHidden = popup.style.display === 'none';
+            popup.style.display = isHidden ? 'flex' : 'none';
+        };
+    }
+
+    if (closeBtn) {
+        closeBtn.onclick = () => popup.style.display = 'none';
+    }
+
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+        if (popup && !popup.contains(e.target) && e.target !== toggleBtn) {
+            popup.style.display = 'none';
+        }
+    });
+
+    if (applyBtn) {
+        applyBtn.onclick = () => {
+            filterStartDate = startInp.value || null;
+            filterEndDate = endInp.value || null;
+            presets.forEach(b => b.classList.remove('active'));
+            if (activeDot) activeDot.style.display = (filterStartDate || filterEndDate) ? 'block' : 'none';
+            popup.style.display = 'none';
+            fetchReports();
+        };
+    }
+
+    if (resetBtn) {
+        resetBtn.onclick = () => {
+            filterStartDate = null;
+            filterEndDate = null;
+            if (startInp) startInp.value = '';
+            if (endInp) endInp.value = '';
+            presets.forEach(b => b.classList.remove('active'));
+            if (activeDot) activeDot.style.display = 'none';
+            popup.style.display = 'none';
+            fetchReports();
+        };
+    }
+
+    presets.forEach(btn => {
+        btn.onclick = () => {
+            const range = btn.dataset.range;
+            presets.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const now = new Date();
+            let start = new Date();
+            let end = new Date();
+
+            if (range === '7') {
+                start.setDate(now.getDate() - 7);
+            } else if (range === '30') {
+                start.setDate(now.getDate() - 30);
+            } else if (range === 'this-month') {
+                start = new Date(now.getFullYear(), now.getMonth(), 1);
+            }
+
+            filterStartDate = start.toISOString().split('T')[0];
+            filterEndDate = end.toISOString().split('T')[0];
+            if (startInp) startInp.value = filterStartDate;
+            if (endInp) endInp.value = filterEndDate;
+            
+            if (activeDot) activeDot.style.display = 'block';
+            popup.style.display = 'none';
+            fetchReports();
+        };
+    });
+}
+
+// Initializations
 loadProjects();
+initReportFilters();
 
 // ===== CLOUD SYNC SETTINGS =====
 let _cloudSyncEnabled = false;

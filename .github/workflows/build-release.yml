@@ -10,13 +10,15 @@ jobs:
   build:
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          # - arch: x64
-          #   runner: self-hosted
+          - arch: x64
+            runner: self-hosted
           - arch: arm64
             runner: macos-latest
     
+    timeout-minutes: 15
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -52,6 +54,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    if: always() && (needs.build.result == 'success' || needs.build.result == 'failure')
     permissions:
       contents: write
 
@@ -64,14 +67,27 @@ jobs:
         with:
           path: ./artifacts
           merge-multiple: true
+        continue-on-error: true
 
       - name: Read Version
         run: echo "VERSION=$(cat .version)" >> $GITHUB_ENV
 
       - name: Calculate SHA256
+        id: shasum
         run: |
-          echo "SHA_X64=$(sha256sum ./artifacts/WorkplaceMonitor-x64.pkg | awk '{print $1}')" >> $GITHUB_ENV
-          echo "SHA_ARM64=$(sha256sum ./artifacts/WorkplaceMonitor-arm64.pkg | awk '{print $1}')" >> $GITHUB_ENV
+          if [ -f ./artifacts/WorkplaceMonitor-x64.pkg ]; then
+            echo "SHA_X64=$(sha256sum ./artifacts/WorkplaceMonitor-x64.pkg | awk '{print $1}')" >> $GITHUB_ENV
+            echo "HAS_X64=true" >> $GITHUB_ENV
+          else
+            echo "HAS_X64=false" >> $GITHUB_ENV
+          fi
+          
+          if [ -f ./artifacts/WorkplaceMonitor-arm64.pkg ]; then
+            echo "SHA_ARM64=$(sha256sum ./artifacts/WorkplaceMonitor-arm64.pkg | awk '{print $1}')" >> $GITHUB_ENV
+            echo "HAS_ARM64=true" >> $GITHUB_ENV
+          else
+            echo "HAS_ARM64=false" >> $GITHUB_ENV
+          fi
 
       - name: Update Homebrew Tap
         env:
@@ -79,25 +95,39 @@ jobs:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           SHA_X64: ${{ env.SHA_X64 }}
           SHA_ARM64: ${{ env.SHA_ARM64 }}
+          HAS_X64: ${{ env.HAS_X64 }}
+          HAS_ARM64: ${{ env.HAS_ARM64 }}
         run: |
           if [ -z "$TAP_GITHUB_TOKEN" ]; then
             echo "TAP_GITHUB_TOKEN is missing. Skipping Homebrew tap update."
             exit 0
           fi
           
+          if [ "$HAS_ARM64" != "true" ] && [ "$HAS_X64" != "true" ]; then
+            echo "No artifacts found to release. Skipping Homebrew update."
+            exit 0
+          fi
+
           git clone https://${TAP_GITHUB_TOKEN}@github.com/govind0229/homebrew-tap.git tap-repo
           cd tap-repo
           mkdir -p Casks
           
           generate_cask() {
-            cat > "Casks/${1}.rb" << EOF
-          cask "${1}" do
+            local cask_name=$1
+            # If an architecture is missing, we use a placeholder or keep old value?
+            # For simplicity, if one is missing, we use the other one as fallback or a dummy.
+            # Usually users want both, so we'll just use the available ones.
+            local final_sha_arm="${SHA_ARM64:-$SHA_X64}"
+            local final_sha_intel="${SHA_X64:-$SHA_ARM64}"
+
+            cat > "Casks/${cask_name}.rb" << EOF
+          cask "${cask_name}" do
             arch arm: "arm64", intel: "x64"
 
             version "$VERSION"
             
-            sha256 arm:   "$SHA_ARM64",
-                   intel: "$SHA_X64"
+            sha256 arm:   "$final_sha_arm",
+                   intel: "$final_sha_intel"
 
             url "https://github.com/govind0229/Workplace-monitor/releases/download/v#{version}/WorkplaceMonitor-#{arch}.pkg"
             name "Workplace Monitor"

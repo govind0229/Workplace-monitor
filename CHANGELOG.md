@@ -2,6 +2,24 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [3.0.0] - 2026-05-12
+
+### Added
+- **Interactive Calendar Filtering** — Introduced a powerful new date-range filtering system for all history reports. You can now select custom "From" and "To" dates to explore your work data with surgical precision.
+- **Report Filter Presets** — Added quick-select buttons for common time ranges: **7 Days**, **30 Days**, and **This Month**, allowing for one-click navigation of recent history.
+- **Popup-Based Filter UI** — Cleaned up the History interface by moving filter controls into a sleek, floating glassmorphism popup. This prevents layout clutter while maintaining instant access to data controls.
+- **Active Filter Indicator** — Added a visual "active dot" on the filter button that illuminates whenever a custom range is applied, so you always know exactly what data you're looking at.
+
+### Fixed
+- **Weekly Report Grouping** — Overhauled the weekly aggregation logic to use a strict Monday-based segmentation. This ensures your weekly totals align perfectly with the standard work week.
+- **UI Layout Preservation** — Fixed an issue where inline filters would overlap and break the report toolbar. The new popup design ensures a consistent, professional layout across all tabs.
+- **Filter Persistence** — Implemented an automatic filter reset on page refresh and app startup to ensure you always start with a clean view of your most recent data.
+
+### Improved
+- **Premium Glassmorphism 2.0** — Enhanced the transparency and readability of report popups. Boosted backdrop blur (24px) and optimized opacity levels for perfect legibility in both Dark and Light modes.
+- **Development Workflow (`start.sh`)** — Optimized the local development script to use **recursive symlinking**. This ensures that edits to the `public` folder, `server.js`, or `db.js` are immediately reflected in the development app bundle without needing a rebuild.
+- **History Data Limits** — Significantly expanded the lookback period for all reports, allowing you to see up to 1 year of weekly data and 3 years of monthly trends.
+
 ## [2.3.0] - 2026-05-11
 
 ### Added
