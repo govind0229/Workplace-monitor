@@ -51,8 +51,33 @@ jobs:
           name: WorkplaceMonitor-${{ matrix.arch }}
           path: WorkplaceMonitor-${{ matrix.arch }}.pkg
 
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build MSI
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: powershell win_installer/build_msi.ps1
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkplaceMonitor-Windows-${{ matrix.arch }}
+          path: WorkplaceMonitor-${{ matrix.arch }}.msi
+
   release:
-    needs: build
+    needs: [build, build-windows]
     runs-on: ubuntu-latest
     if: always() && (needs.build.result == 'success' || needs.build.result == 'failure')
     permissions:
@@ -160,6 +185,8 @@ jobs:
           tag_name: v${{ env.VERSION }}
           name: WorkplaceMonitor v${{ env.VERSION }}
           body_path: release_notes.md
-          files: ./artifacts/WorkplaceMonitor-*.pkg
+          files: |
+            ./artifacts/WorkplaceMonitor-*.pkg
+            ./artifacts/WorkplaceMonitor-*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

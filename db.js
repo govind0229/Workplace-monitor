@@ -3,9 +3,20 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// Store DB in User's Application Support folder to persist across updates
+// Store DB in OS-specific Application Support folder to persist across updates
 const homeDir = os.homedir();
-const appDataDir = path.join(homeDir, 'Library', 'Application Support', 'WorkingHours');
+let appDataDir;
+
+if (process.platform === 'win32') {
+  // Windows: C:\Users\Name\AppData\Roaming\WorkingHours
+  appDataDir = process.env.APPDATA ? path.join(process.env.APPDATA, 'WorkingHours') : path.join(homeDir, 'AppData', 'Roaming', 'WorkingHours');
+} else if (process.platform === 'darwin') {
+  // macOS: /Users/Name/Library/Application Support/WorkingHours
+  appDataDir = path.join(homeDir, 'Library', 'Application Support', 'WorkingHours');
+} else {
+  // Linux/Other fallback: ~/.workinghours
+  appDataDir = path.join(homeDir, '.workinghours');
+}
 
 // Ensure directory exists
 if (!fs.existsSync(appDataDir)) {

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="Workplace Monitor" Language="1033" Version="3.0.0" Manufacturer="Workplace Monitor Team" UpgradeCode="a1b2c3d4-e5f6-7890-abcd-1234567890ab">
+        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+        <MediaTemplate EmbedCab="yes" />
+
+        <Icon Id="icon.ico" SourceFile="AppIcon.ico"/>
+        <Property Id="ARPPRODUCTICON" Value="icon.ico" />
+
+        <Feature Id="ProductFeature" Title="Workplace Monitor" Level="1">
+            <ComponentGroupRef Id="ProductComponents" />
+            <ComponentGroupRef Id="AppResources" />
+        </Feature>
+    </Product>
+
+    <Fragment>
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLFOLDER" Name="WorkplaceMonitor">
+                    <Directory Id="APPFOLDER" Name="app" />
+                </Directory>
+            </Directory>
+            <Directory Id="StartupFolder" Name="Startup" />
+        </Directory>
+    </Fragment>
+
+    <Fragment>
+        <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+            <!-- Main Executable (C# Native Bridge) -->
+            <Component Id="MainExecutable" Guid="*">
+                <File Id="WorkMonitorEXE" Source="win_utility/bin/Release/net8.0-windows/publish/WorkMonitor.exe" KeyPath="yes" />
+                <!-- Shortcut in Startup folder for auto-start -->
+                <Shortcut Id="StartupShortcut" Directory="StartupFolder" Name="Workplace Monitor" WorkingDirectory="INSTALLFOLDER" Advertise="yes" Icon="icon.ico" />
+            </Component>
+
+            <!-- Bundled Node.js for Windows -->
+            <Component Id="NodeExecutable" Guid="*">
+                <File Id="NodeEXE" Source="node.exe" KeyPath="yes" />
+            </Component>
+        </ComponentGroup>
+
+        <ComponentGroup Id="AppResources" Directory="APPFOLDER">
+            <Component Id="ServerJS" Guid="*">
+                <File Id="ServerJSFile" Source="server.js" KeyPath="yes" />
+            </Component>
+            <Component Id="DbJS" Guid="*">
+                <File Id="DbJSFile" Source="db.js" KeyPath="yes" />
+            </Component>
+            <!-- Note: In reality, we'd use a script to harvest all files from 'public' and 'node_modules' -->
+            <!-- For this example, we assume they are zipped or collected via build script -->
+        </ComponentGroup>
+    </Fragment>
+</Wix>

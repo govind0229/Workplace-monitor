@@ -55,6 +55,21 @@ function getStoredInt(key, defaultValue) {
 
 const API_BASE = window.__API_BASE || 'http://localhost:3000';
 
+// Utility: Native Bridge Helper for Location
+function requestNativeLocation() {
+    // macOS Bridge (WebKit)
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
+        window.webkit.messageHandlers.requestLocation.postMessage({});
+        return true;
+    }
+    // Windows Bridge (WebView2)
+    if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ command: 'requestLocation' });
+        return true;
+    }
+    return false;
+}
+
 // Utility: Debounce function
 function debounce(func, wait) {
     let timeout;
@@ -422,18 +437,15 @@ if (setOfficeLocationBtn) {
             Locating...
         `;
 
-        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
+        if (requestNativeLocation()) {
             console.log('[Location] Requesting office location via Native Bridge...');
             _isSettingOfficeLocation = true;
-            window.webkit.messageHandlers.requestLocation.postMessage({});
             
             // Auto-reset if native doesn't respond in 15s to prevent UI hang
             setTimeout(() => {
-                if (_isSettingOfficeLocation) {
-                    console.warn('[Location] Native bridge timed out for office set');
-                    _isSettingOfficeLocation = false;
-                    resetLocationBtn();
-                }
+                _isSettingOfficeLocation = false;
+                setOfficeLocationBtn.disabled = false;
+                setOfficeLocationBtn.textContent = 'Set Current Location as Office';
             }, 15000);
             return;
         }
@@ -878,10 +890,9 @@ function centerOnUser() {
     }
 
     // --- NATIVE BRIDGE CHECK ---
-    // If running in the Workplace Monitor macOS app, use the native bridge
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
+    // If running in the native app, use the bridge
+    if (requestNativeLocation()) {
         console.log('[Location] Requesting location via Native Bridge...');
-        window.webkit.messageHandlers.requestLocation.postMessage({});
         
         // Auto-reset if native doesn't respond in 10s
         setTimeout(resetBtn, 10000);
