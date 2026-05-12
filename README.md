@@ -1,5 +1,12 @@
 # WorkMonitor — Working Hours Tracker
 
+[![Build and Release PKG](https://github.com/govind0229/Workplace-monitor/actions/workflows/build-release.yml/badge.svg)](https://github.com/govind0229/Workplace-monitor/actions/workflows/build-release.yml)
+[![Homebrew](https://img.shields.io/homebrew/v/workinghours?tap=govind0229/tap&color=orange)](https://github.com/govind0229/tap)
+[![Version](https://img.shields.io/github/v/release/govind0229/Workplace-monitor?color=blue)](https://github.com/govind0229/Workplace-monitor/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://apple.com/macos)
+[![License](https://img.shields.io/badge/license-ISC-green.svg)](https://opensource.org/licenses/ISC)
+
+
 A professional, secure, and automated time tracking application for macOS with a native dashboard, app usage analytics, GPS-based location automation, and smart sleep detection.
 
 ## Screenshots
@@ -96,7 +103,22 @@ A professional, secure, and automated time tracking application for macOS with a
 4. Grant Location permission when macOS prompts.
 5. The system will now automatically:
    - **Start** the Workplace timer when you enter the geofence.
-   - **Finish** the Workplace timer when you leave the geofence.
+    - **Finish** the Workplace timer when you leave the geofence.
+
+## Installation
+
+### Method 1: Homebrew (Recommended)
+Install the latest version natively via our official Homebrew tap:
+
+```bash
+brew tap govind0229/tap
+brew install workinghours
+```
+
+### Method 2: Manual Installation
+1. Download the latest `.pkg` installer for your architecture (**Intel** or **Apple Silicon**) from the [Releases](https://github.com/govind0229/Workplace-monitor/releases) page.
+2. Run the installer and follow the standard macOS setup process.
+3. The application will automatically start and register itself to run on every login.
 
 ## Uninstallation
 
