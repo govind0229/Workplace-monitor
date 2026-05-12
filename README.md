@@ -1,7 +1,7 @@
 # WorkMonitor — Working Hours Tracker
 
 [![Build and Release PKG](https://github.com/govind0229/Workplace-monitor/actions/workflows/build-release.yml/badge.svg)](https://github.com/govind0229/Workplace-monitor/actions/workflows/build-release.yml)
-[![Homebrew](https://img.shields.io/homebrew/v/workinghours?tap=govind0229/tap&color=orange)](https://github.com/govind0229/tap)
+[![Homebrew](https://img.shields.io/homebrew/v/workinghours?tap=govind0229/tap&color=orange)](https://github.com/govind0229/homebrew-tap)
 [![Version](https://img.shields.io/github/v/release/govind0229/Workplace-monitor?color=blue)](https://github.com/govind0229/Workplace-monitor/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://apple.com/macos)
 [![License](https://img.shields.io/badge/license-ISC-green.svg)](https://opensource.org/licenses/ISC)
