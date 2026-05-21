@@ -4,6 +4,7 @@ import CoreGraphics
 import CoreLocation
 import UserNotifications
 import AVFoundation
+import UniformTypeIdentifiers
 
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -242,19 +243,9 @@ class LocalhostSchemeHandler: NSObject, WKURLSchemeHandler {
                 return
             }
 
-            // Build a response with the correct MIME type
-            var headers = httpResponse.allHeaderFields as? [String: String] ?? [:]
-            // Ensure content type is set
-            if headers["Content-Type"] == nil {
-                let pathExt = realURL.pathExtension.lowercased()
-                switch pathExt {
-                case "html": headers["Content-Type"] = "text/html; charset=utf-8"
-                case "css": headers["Content-Type"] = "text/css; charset=utf-8"
-                case "js": headers["Content-Type"] = "application/javascript; charset=utf-8"
-                case "json": headers["Content-Type"] = "application/json; charset=utf-8"
-                default: headers["Content-Type"] = "application/octet-stream"
-                }
-            }
+            // Strip out Content-Disposition for app:// requests to avoid WebKit resource load failures or download interceptions
+            headers.removeValue(forKey: "Content-Disposition")
+            headers.removeValue(forKey: "content-disposition")
 
             let schemeResponse = HTTPURLResponse(
                 url: requestURL, // Use original app:// URL
@@ -309,6 +300,8 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
         // Add Native Bridges
         config.userContentController.add(self, name: "requestLocation")
         config.userContentController.add(self, name: "requestStatus")
+        config.userContentController.add(self, name: "downloadFile")
+        config.userContentController.add(self, name: "consoleLog")
         
         // CRITICAL: Force clear WKWebView internal caches (Memory/Disk) on every launch
         let dataStore = WKWebsiteDataStore.default()
@@ -317,9 +310,45 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
             print("WKWebView caches successfully cleared.")
         }
 
-        // Inject script to override API_BASE before app.js runs
+        // Inject script to override API_BASE and forward console logs to Swift before app.js runs
+        let consoleAndBaseJS = """
+        window.__API_BASE = 'app://localhost';
+        (function() {
+            var origLog = console.log;
+            var origError = console.error;
+            var origWarn = console.warn;
+            
+            console.log = function() {
+                origLog.apply(console, arguments);
+                var msg = Array.prototype.slice.call(arguments).map(function(x) { 
+                    return typeof x === 'object' ? JSON.stringify(x) : String(x); 
+                }).join(' ');
+                window.webkit.messageHandlers.consoleLog.postMessage({type: "log", message: msg});
+            };
+            console.error = function() {
+                origError.apply(console, arguments);
+                var msg = Array.prototype.slice.call(arguments).map(function(x) { 
+                    return typeof x === 'object' ? JSON.stringify(x) : String(x); 
+                }).join(' ');
+                window.webkit.messageHandlers.consoleLog.postMessage({type: "error", message: msg});
+            };
+            console.warn = function() {
+                origWarn.apply(console, arguments);
+                var msg = Array.prototype.slice.call(arguments).map(function(x) { 
+                    return typeof x === 'object' ? JSON.stringify(x) : String(x); 
+                }).join(' ');
+                window.webkit.messageHandlers.consoleLog.postMessage({type: "warn", message: msg});
+            };
+            window.onerror = function(message, source, lineno, colno, error) {
+                var msg = message + ' at ' + source + ':' + lineno + ':' + colno;
+                window.webkit.messageHandlers.consoleLog.postMessage({type: "error", message: msg});
+                return false;
+            };
+        })();
+        """
+        
         let overrideScript = WKUserScript(
-            source: "window.__API_BASE = 'app://localhost';",
+            source: consoleAndBaseJS,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         )
@@ -470,6 +499,69 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
             // Force a status refresh
             if let appDelegate = NSApp.delegate as? AppDelegate {
                 appDelegate.menuBarUtility?.fetchStatus()
+            }
+        } else if message.name == "downloadFile" {
+            print("[Bridge] Received downloadFile message!")
+            guard let dict = message.body as? [String: Any] else {
+                print("[Bridge] Error: message body is not [String: Any]. Type is: \(type(of: message.body))")
+                return
+            }
+            guard let filename = dict["filename"] as? String else {
+                print("[Bridge] Error: 'filename' is missing or not a String")
+                return
+            }
+            guard let content = dict["content"] as? String else {
+                print("[Bridge] Error: 'content' is missing or not a String")
+                return
+            }
+            
+            print("[Bridge] Filename: \(filename), content length: \(content.count) chars")
+            
+            DispatchQueue.main.async {
+                print("[Bridge] Presenting NSSavePanel on main thread")
+                // Force app activation so save panel is brought to the front
+                NSApp.activate(ignoringOtherApps: true)
+                
+                let savePanel = NSSavePanel()
+                savePanel.allowedContentTypes = [.commaSeparatedText]
+                savePanel.nameFieldStringValue = filename
+                savePanel.title = "Save Exported Report"
+                
+                if let window = self.window {
+                    print("[Bridge] Presenting Save Panel as sheet modal")
+                    savePanel.beginSheetModal(for: window) { response in
+                        print("[Bridge] Save Panel sheet modal closed with response: \(response)")
+                        if response == .OK, let url = savePanel.url {
+                            print("[Bridge] Saving file to URL: \(url.path)")
+                            do {
+                                try content.write(to: url, atomically: true, encoding: .utf8)
+                                print("[Bridge] File saved successfully")
+                            } catch {
+                                print("[Bridge] Error writing file: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                } else {
+                    print("[Bridge] Presenting Save Panel as standalone modal")
+                    savePanel.begin { response in
+                        print("[Bridge] Save Panel modal closed with response: \(response)")
+                        if response == .OK, let url = savePanel.url {
+                            print("[Bridge] Saving file to URL: \(url.path)")
+                            do {
+                                try content.write(to: url, atomically: true, encoding: .utf8)
+                                print("[Bridge] File saved successfully")
+                            } catch {
+                                print("[Bridge] Error writing file: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                }
+            }
+        } else if message.name == "consoleLog" {
+            if let dict = message.body as? [String: Any],
+               let type = dict["type"] as? String,
+               let msg = dict["message"] as? String {
+                print("[Console] [\(type.uppercased())] \(msg)")
             }
         }
     }

@@ -136,31 +136,37 @@ navItems.forEach(item => {
     item.onclick = () => {
         const targetView = item.dataset.view;
 
-        // Update UI
+        // Update Active Nav Style
         navItems.forEach(nav => nav.classList.remove('active'));
         item.classList.add('active');
 
+        // Switch Views (using content-visibility)
         views.forEach(view => {
-            view.classList.remove('active');
-            if (view.id === targetView + 'View') {
-                view.classList.add('active');
+            const isTarget = view.id === targetView + 'View';
+            view.classList.toggle('active', isTarget);
+            view.setAttribute('aria-hidden', !isTarget);
+            
+            if (isTarget) {
+                // Modern Focus Management for accessibility
+                view.setAttribute('tabindex', '-1');
+                view.focus({ preventScroll: true });
                 
+                // Trigger staggered animations for active elements
                 requestAnimationFrame(() => {
-                    // Trigger staggered animations for child cards/elements
                     const animatedElements = view.querySelectorAll('.glass-card, .view-title, .status-card');
                     animatedElements.forEach((el, index) => {
-                        el.classList.remove('animate-in', 'delay-1', 'delay-2', 'delay-3', 'delay-4', 'delay-5');
-                        // Force reflow
-                        void el.offsetWidth;
+                        el.classList.remove('animate-in');
+                        void el.offsetWidth; // Force Reflow
                         el.classList.add('animate-in');
-                        if (index < 5) el.classList.add(`delay-${index + 1}`);
-                        else el.classList.add('delay-5');
+                        
+                        // Apply precise micro-animation delay dynamically
+                        el.style.animationDelay = `${index * 0.05}s`;
                     });
                 });
             }
         });
 
-        // Trigger fetches if needed
+        // Trigger fetches only if the tab is actively loaded
         if (targetView === 'history') {
             fetchReports();
             setTimeout(() => {
@@ -1563,9 +1569,8 @@ stopBtn.onclick = async () => {
         const res = await fetch(`${API_BASE}/stop`, { method: 'POST' });
         if (res.ok) {
             updateStatus(true);
-            // Automatically switch to history to show results
-            const historyNav = document.querySelector('[data-view="history"]');
-            if (historyNav) historyNav.click();
+            // Automatically show the beautiful Daily AI Digest modal
+            showAIDigestModal('today');
         }
     }
 };
@@ -1756,8 +1761,21 @@ function renderActiveTab() {
                     return `${parts[0].padStart(2, '0')}:${m}:${s}`;
                 };
 
-                const inTime = item.in_time ? formatTimeVal(item.in_time.split(' ')[1].substring(0, 8)) : '—';
-                const outTime = item.out_time ? formatTimeVal(item.out_time.split(' ')[1].substring(0, 8)) : '—';
+                const safeExtractTime = (datetimeStr) => {
+                    if (!datetimeStr) return '—';
+                    const parts = datetimeStr.split(' ');
+                    if (parts.length < 2) {
+                        const tParts = datetimeStr.split('T');
+                        if (tParts.length >= 2) {
+                            return tParts[1].substring(0, 8);
+                        }
+                        return datetimeStr;
+                    }
+                    return parts[1].substring(0, 8);
+                };
+
+                const inTime = item.in_time ? formatTimeVal(safeExtractTime(item.in_time)) : '—';
+                const outTime = item.out_time ? formatTimeVal(safeExtractTime(item.out_time)) : '—';
                 row.innerHTML = `
                     <span>${escapeHTML(item.date)}</span>
                     <span style="color:var(--primary); font-weight:500;">${escapeHTML(inTime)}</span>
@@ -1820,14 +1838,46 @@ if (timeFormatToggle) {
     };
 }
 
-document.getElementById('exportCsvBtn').onclick = () => {
-    const url = `${API_BASE}/export-csv?tab=${currentTab}&timeFormat=${timeFormat}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${currentTab}_report.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+document.getElementById('exportCsvBtn').onclick = async () => {
+    console.log("CSV Export: Button clicked!");
+    try {
+        let url = `${API_BASE}/export-csv?tab=${currentTab}&timeFormat=${timeFormat}`;
+        if (filterStartDate) url += `&start=${filterStartDate}`;
+        if (filterEndDate) url += `&end=${filterEndDate}`;
+        
+        console.log("CSV Export: Fetching from url:", url);
+        const res = await fetch(url);
+        console.log("CSV Export: Fetch status:", res.status);
+        if (!res.ok) throw new Error("Failed to export report. Status: " + res.status);
+        const text = await res.text();
+        console.log("CSV Export: Fetched text length:", text.length);
+        
+        // Check if running inside our macOS native WebView shell with download bridge
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.downloadFile) {
+            console.log("CSV Export: Detected native bridge 'downloadFile'. Posting message.");
+            window.webkit.messageHandlers.downloadFile.postMessage({
+                filename: `${currentTab}_report.csv`,
+                content: text
+            });
+        } else {
+            console.log("CSV Export: Native bridge not found, running standard web browser download fallback.");
+            // Standard web browser download fallback
+            const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = `${currentTab}_report.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(blobUrl);
+            console.log("CSV Export: Fallback trigger complete.");
+        }
+    } catch (e) {
+        console.error("CSV Export Error:", e);
+        alert("Failed to export report. Please check if the server is running.");
+    }
 };
 
 // ─── Dashboard Charts ───
@@ -2292,8 +2342,10 @@ startMainLoop();
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
         stopMainLoop();
+        document.body.classList.add('animations-paused'); // Pause orb CSS animations
     } else {
         startMainLoop();
+        document.body.classList.remove('animations-paused'); // Resume orb CSS animations
         updateStatus(true); // Force sync when coming back to dashboard
     }
 });
@@ -2703,6 +2755,7 @@ function initReportFilters() {
 // Initializations
 loadProjects();
 initReportFilters();
+initAIDigest();
 
 // ===== CLOUD SYNC SETTINGS =====
 let _cloudSyncEnabled = false;
@@ -2788,3 +2841,281 @@ loadSettings = async function() {
     await _origLoadSettings();
     loadCloudSettings();
 };
+
+// --- AI Digest Frontend Logic ---
+let aiDigestData = null;
+let currentDigestTab = 'today';
+
+async function initAIDigest() {
+    // 1. Inject the floating trigger capsule on the Dashboard greeting row
+    const monitorView = document.getElementById('monitorView');
+    if (monitorView) {
+        const titleRow = monitorView.querySelector('.view-title');
+        if (titleRow && !document.getElementById('aiDigestTriggerBtn')) {
+            const triggerBtn = document.createElement('div');
+            triggerBtn.id = 'aiDigestTriggerBtn';
+            triggerBtn.className = 'ai-digest-trigger-capsule';
+            triggerBtn.innerHTML = `
+                <div class="ai-pulse-dot"></div>
+                <span>AI Digest</span>
+            `;
+            triggerBtn.onclick = () => showAIDigestModal();
+            titleRow.appendChild(triggerBtn);
+        }
+    }
+
+    // 2. Bind DOM Events
+    const closeBtn = document.getElementById('closeDigestBtn');
+    const backdrop = document.getElementById('aiDigestBackdrop');
+    const confirmBtn = document.getElementById('digestConfirmBtn');
+    const toggleToday = document.getElementById('digestToggleToday');
+    const toggleWeek = document.getElementById('digestToggleWeek');
+
+    if (closeBtn) closeBtn.onclick = hideAIDigestModal;
+    if (backdrop) backdrop.onclick = hideAIDigestModal;
+    if (confirmBtn) confirmBtn.onclick = hideAIDigestModal;
+
+    if (toggleToday) {
+        toggleToday.onclick = () => {
+            if (currentDigestTab === 'today') return;
+            currentDigestTab = 'today';
+            toggleToday.classList.add('active');
+            if (toggleWeek) toggleWeek.classList.remove('active');
+            renderAIDigestUI();
+        };
+    }
+
+    if (toggleWeek) {
+        toggleWeek.onclick = () => {
+            if (currentDigestTab === 'week') return;
+            currentDigestTab = 'week';
+            toggleWeek.classList.add('active');
+            if (toggleToday) toggleToday.classList.remove('active');
+            renderAIDigestUI();
+        };
+    }
+}
+
+async function showAIDigestModal(defaultTab = 'today') {
+    const modal = document.getElementById('aiDigestModal');
+    if (!modal) return;
+
+    currentDigestTab = defaultTab;
+    const toggleToday = document.getElementById('digestToggleToday');
+    const toggleWeek = document.getElementById('digestToggleWeek');
+    
+    if (toggleToday && toggleWeek) {
+        if (defaultTab === 'today') {
+            toggleToday.classList.add('active');
+            toggleWeek.classList.remove('active');
+        } else {
+            toggleWeek.classList.add('active');
+            toggleToday.classList.remove('active');
+        }
+    }
+
+    // Reset UI to analyzing state
+    document.getElementById('digestCommentaryText').textContent = "Synthesizing your productivity telemetry...";
+    document.getElementById('digestTimeValue').textContent = "0.0";
+    document.getElementById('digestTimeProgress').style.width = "0%";
+    document.getElementById('digestAppValue').textContent = "Loading...";
+    document.getElementById('digestProjectValue').textContent = "Loading...";
+    document.getElementById('digestProjectsList').innerHTML = "";
+    const digestAppsList = document.getElementById('digestAppsList');
+    if (digestAppsList) digestAppsList.innerHTML = "";
+
+    // Show modal container (initial opacity/transform transition starts)
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => {
+        modal.classList.add('active');
+    });
+
+    try {
+        const res = await fetch(`${API_BASE}/ai-digest`);
+        if (res.ok) {
+            aiDigestData = await res.json();
+            renderAIDigestUI();
+        } else {
+            document.getElementById('digestCommentaryText').textContent = "Unable to reach the AI engine right now. Please try again later.";
+        }
+    } catch (e) {
+        console.error(e);
+        document.getElementById('digestCommentaryText').textContent = "Network error. Failed to retrieve your AI digest.";
+    }
+}
+
+function hideAIDigestModal() {
+    const modal = document.getElementById('aiDigestModal');
+    if (!modal) return;
+    
+    modal.classList.remove('active');
+    setTimeout(() => {
+        modal.style.display = 'none';
+    }, 400); // Wait for transition finish
+}
+
+function renderAIDigestUI() {
+    if (!aiDigestData) return;
+
+    const data = aiDigestData[currentDigestTab];
+    if (!data) return;
+
+    // 1. Set commentary text
+    document.getElementById('digestCommentaryText').textContent = data.commentary;
+
+    // 2. Set hours worked and progress fills
+    const hrs = data.total_hours;
+    document.getElementById('digestTimeValue').textContent = hrs.toFixed(1);
+
+    // Goal Calculations
+    let goalPercent = 0;
+    let goalLabel = "";
+    if (currentDigestTab === 'today') {
+        const goalH = parseInt(document.getElementById('goalHours')?.value || '4');
+        const goalM = parseInt(document.getElementById('goalMinutes')?.value || '10');
+        const goalSec = (goalH * 3600) + (goalM * 60);
+        goalPercent = goalSec > 0 ? Math.min((data.total_seconds / goalSec) * 100, 100) : 0;
+        goalLabel = `Goal: ${goalH}h ${goalM}m`;
+    } else {
+        // Standard 40h weekly goal
+        const weeklyGoalSec = 40 * 3600;
+        goalPercent = Math.min((data.total_seconds / weeklyGoalSec) * 100, 100);
+        goalLabel = "Goal: 40h 0m";
+    }
+
+    document.getElementById('digestGoalHint').textContent = goalLabel;
+    
+    // Animate progress fill
+    setTimeout(() => {
+        document.getElementById('digestTimeProgress').style.width = `${goalPercent}%`;
+    }, 50);
+
+    // 3. Set top app info
+    const appValEl = document.getElementById('digestAppValue');
+    const appTimeEl = document.getElementById('digestAppTime');
+    
+    if (data.most_used_app) {
+        appValEl.textContent = data.most_used_app;
+        appValEl.title = data.most_used_app;
+        appValEl.classList.add('truncate');
+        
+        const appHrs = Math.floor(data.most_used_app_seconds / 3600);
+        const appMins = Math.floor((data.most_used_app_seconds % 3600) / 60);
+        appTimeEl.textContent = `${appHrs}h ${appMins}m focus`;
+    } else {
+        appValEl.textContent = "None";
+        appTimeEl.textContent = "No app active";
+    }
+
+    // 4. Set top project info
+    const projValEl = document.getElementById('digestProjectValue');
+    const projTimeEl = document.getElementById('digestProjectTime');
+    const projPctEl = document.getElementById('digestProjectPct');
+
+    if (data.top_project_name) {
+        projValEl.textContent = data.top_project_name;
+        projValEl.title = data.top_project_name;
+        projValEl.classList.add('truncate');
+        
+        projPctEl.textContent = `${data.top_project_pct}%`;
+        projPctEl.style.display = 'inline-block';
+        if (data.top_project_color) {
+            projPctEl.style.backgroundColor = `${data.top_project_color}1a`; // 10% opacity
+            projPctEl.style.color = data.top_project_color;
+            projPctEl.style.borderColor = `${data.top_project_color}33`; // 20% opacity
+        }
+
+        const projSec = data.projects.find(p => p.name === data.top_project_name)?.seconds || 0;
+        const projHrs = Math.floor(projSec / 3600);
+        const projMins = Math.floor((projSec % 3600) / 60);
+        projTimeEl.textContent = `${projHrs}h ${projMins}m track`;
+    } else {
+        projValEl.textContent = "None";
+        projPctEl.style.display = 'none';
+        projTimeEl.textContent = "No project assigned";
+    }
+
+    // 5. Draw project allocation list
+    const listContainer = document.getElementById('digestProjectsList');
+    if (data.projects.length === 0) {
+        listContainer.innerHTML = '<div class="digest-projects-empty">No projects tracked during this period</div>';
+    } else {
+        listContainer.innerHTML = data.projects.map(proj => {
+            const h = Math.floor(proj.seconds / 3600);
+            const m = Math.floor((proj.seconds % 3600) / 60);
+            
+            return `
+                <div class="digest-proj-row">
+                    <div class="digest-proj-info">
+                        <div class="digest-proj-name-group">
+                            <div class="digest-proj-dot" style="background-color: ${proj.color || 'var(--primary)'}"></div>
+                            <span class="digest-proj-name">${escapeHTML(proj.name)}</span>
+                        </div>
+                        <div class="digest-proj-stats">
+                            <span class="digest-proj-duration">${h}h ${m}m</span>
+                            <span class="digest-proj-pct" style="color: ${proj.color || 'var(--primary)'}">${proj.pct}%</span>
+                        </div>
+                    </div>
+                    <div class="digest-proj-bar-track">
+                        <div class="digest-proj-bar-fill" style="width: 0%; background-color: ${proj.color || 'var(--primary)'}" data-width="${proj.pct}%"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Staggered trigger width fill transition
+        setTimeout(() => {
+            listContainer.querySelectorAll('.digest-proj-bar-fill').forEach(fill => {
+                fill.style.width = fill.dataset.width;
+            });
+        }, 100);
+    }
+
+    // 6. Draw top applications list
+    const appsListContainer = document.getElementById('digestAppsList');
+    if (appsListContainer) {
+        if (!data.apps || data.apps.length === 0) {
+            appsListContainer.innerHTML = '<div class="digest-projects-empty">No applications tracked during this period</div>';
+        } else {
+            const appColors = [
+                '#3b82f6', // Ocean Blue
+                '#ec4899', // Pink
+                '#10b981', // Emerald
+                '#f59e0b', // Amber
+                '#8b5cf6', // Purple
+            ];
+            
+            appsListContainer.innerHTML = data.apps.map((app, index) => {
+                const h = Math.floor(app.total_seconds / 3600);
+                const m = Math.floor((app.total_seconds % 3600) / 60);
+                const pct = data.total_seconds > 0 ? Math.min(Math.round((app.total_seconds / data.total_seconds) * 100), 100) : 0;
+                const color = appColors[index % appColors.length];
+                
+                return `
+                    <div class="digest-proj-row">
+                        <div class="digest-proj-info">
+                            <div class="digest-proj-name-group">
+                                <div class="digest-proj-dot" style="background-color: ${color}"></div>
+                                <span class="digest-proj-name">${escapeHTML(app.app_name)}</span>
+                            </div>
+                            <div class="digest-proj-stats">
+                                <span class="digest-proj-duration">${h > 0 ? `${h}h ` : ''}${m}m</span>
+                                <span class="digest-proj-pct" style="color: ${color}">${pct}%</span>
+                            </div>
+                        </div>
+                        <div class="digest-proj-bar-track">
+                            <div class="digest-proj-bar-fill" style="width: 0%; background-color: ${color}" data-width="${pct}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Staggered trigger width fill transition
+            setTimeout(() => {
+                appsListContainer.querySelectorAll('.digest-proj-bar-fill').forEach(fill => {
+                    fill.style.width = fill.dataset.width;
+                });
+            }, 100);
+        }
+    }
+}

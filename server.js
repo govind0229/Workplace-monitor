@@ -851,29 +851,47 @@ app.get('/today-events', (req, res) => {
 });
 
 app.get('/export-csv', (req, res) => {
-    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport } = require('./db');
+    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getProjectReport } = require('./db');
     const tab = req.query.tab || 'daily';
     const timeFormat = req.query.timeFormat || '24h';
+    const start = req.query.start;
+    const end = req.query.end;
     let data, headers;
 
+    const fmtTime = (s) => {
+        if (!s || isNaN(s)) return '0h 0m 0s';
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        return `${h}h ${m}m ${sec}s`;
+    };
+
+    const safeExtractTime = (datetimeStr) => {
+        if (!datetimeStr) return '—';
+        const parts = datetimeStr.split(' ');
+        if (parts.length < 2) {
+            const tParts = datetimeStr.split('T');
+            if (tParts.length >= 2) {
+                return tParts[1].substring(0, 8);
+            }
+            return datetimeStr;
+        }
+        return parts[1].substring(0, 8);
+    };
+
     if (tab === 'weekly') {
-        data = getWeeklyReport();
+        data = getWeeklyReport(start, end);
         headers = 'Week,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total';
         res.setHeader('Content-Disposition', 'attachment; filename=weekly_report.csv');
     } else if (tab === 'monthly') {
-        data = getMonthlyReport();
+        data = getMonthlyReport(start, end);
         headers = 'Month,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total';
         res.setHeader('Content-Disposition', 'attachment; filename=monthly_report.csv');
     } else if (tab === 'visits') {
-        data = getOfficeVisitsReport();
+        data = getOfficeVisitsReport(start, end);
         headers = 'Date,In Time,Out Time,Total Duration (seconds),Total Duration';
         res.setHeader('Content-Disposition', 'attachment; filename=office_visits_report.csv');
-        const fmtTime = (s) => {
-            const h = Math.floor(s / 3600);
-            const m = Math.floor((s % 3600) / 60);
-            const sec = s % 60;
-            return `${h}h ${m}m ${sec}s`;
-        };
+        
         const formatTimeVal = (timeStr) => {
             if (!timeStr || timeStr === '—') return timeStr;
             const parts = timeStr.split(':');
@@ -889,25 +907,32 @@ app.get('/export-csv', (req, res) => {
             }
             return `${parts[0].padStart(2, '0')}:${m}:${s}`;
         };
+
         const rows = data.map(item => {
-            const inTime = item.in_time ? formatTimeVal(item.in_time.split(' ')[1].substring(0, 8)) : '—';
-            const outTime = item.out_time ? formatTimeVal(item.out_time.split(' ')[1].substring(0, 8)) : '—';
-            return `${item.date},${inTime},${outTime},${item.total_seconds},${fmtTime(item.total_seconds)}`;
+            const inTime = item.in_time ? formatTimeVal(safeExtractTime(item.in_time)) : '—';
+            const outTime = item.out_time ? formatTimeVal(safeExtractTime(item.out_time)) : '—';
+            return `${item.date},${inTime},${outTime},${item.total_seconds || 0},${fmtTime(item.total_seconds || 0)}`;
+        });
+        res.setHeader('Content-Type', 'text/csv');
+        return res.send(headers + '\n' + rows.join('\n'));
+    } else if (tab === 'projects') {
+        data = getProjectReport();
+        headers = 'Project Name,Total Duration (seconds),Total Duration,Session Count';
+        res.setHeader('Content-Disposition', 'attachment; filename=projects_report.csv');
+
+        const rows = data.map(item => {
+            const name = item.name || 'No Project';
+            const totalSec = item.total_seconds || 0;
+            const count = item.session_count || 0;
+            return `"${name.replace(/"/g, '""')}",${totalSec},${fmtTime(totalSec)},${count}`;
         });
         res.setHeader('Content-Type', 'text/csv');
         return res.send(headers + '\n' + rows.join('\n'));
     } else {
-        data = getDailyReport();
+        data = getDailyReport(start, end);
         headers = 'Date,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total';
         res.setHeader('Content-Disposition', 'attachment; filename=daily_report.csv');
     }
-
-    const fmtTime = (s) => {
-        const h = Math.floor(s / 3600);
-        const m = Math.floor((s % 3600) / 60);
-        const sec = s % 60;
-        return `${h}h ${m}m ${sec}s`;
-    };
 
     const rows = data.map(item => {
         const period = item.date || item.week || item.month;
@@ -997,6 +1022,146 @@ app.get('/cloud-settings', (req, res) => {
     });
 });
 
+// --- Daily AI Digest Helpers & Routes ---
+
+function getMondayOfCurrentWeek() {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+    const monday = new Date(d.setDate(diff));
+    monday.setHours(0,0,0,0);
+    const yyyy = monday.getFullYear();
+    const mm = String(monday.getMonth() + 1).padStart(2, '0');
+    const dd = String(monday.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function generateSmartCommentary(totalHours, apps, topProjectName, topProjectPct, isWeekly = false) {
+    if (totalHours === 0) {
+        return isWeekly 
+            ? "You haven't logged any focus time this week yet. Start tracking to build your smart weekly digest!"
+            : "You haven't logged any focus time today yet. Start a tracking session to see your daily digest!";
+    }
+
+    const greetings = isWeekly 
+        ? ["Exceptional week!", "What a productive run!", "Great job!", "Solid effort this week!", "Week in review!"]
+        : ["Excellent wrap-up!", "Great job today!", "Day complete!", "Way to go!", "Solid day of work!"];
+
+    const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+
+    let timephrase = isWeekly 
+        ? `You worked ${totalHours.toFixed(1)} hours this week.` 
+        : `You worked ${totalHours.toFixed(1)} hours today.`;
+
+    let appPhrase = "";
+    if (apps && apps.length > 0) {
+        const topApps = apps.slice(0, 3); // Get up to top 3 apps
+        const formatDuration = (sec) => {
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            if (h > 0) {
+                return `${h}h ${m}m`;
+            }
+            return `${m}m`;
+        };
+
+        if (topApps.length === 1) {
+            appPhrase = `your primary focus was on ${topApps[0].app_name} (${formatDuration(topApps[0].total_seconds)})`;
+        } else if (topApps.length === 2) {
+            appPhrase = `you spent your time mostly on ${topApps[0].app_name} (${formatDuration(topApps[0].total_seconds)}) and ${topApps[1].app_name} (${formatDuration(topApps[1].total_seconds)})`;
+        } else {
+            appPhrase = `you spent your time mostly on ${topApps[0].app_name} (${formatDuration(topApps[0].total_seconds)}), ${topApps[1].app_name} (${formatDuration(topApps[1].total_seconds)}), and ${topApps[2].app_name} (${formatDuration(topApps[2].total_seconds)})`;
+        }
+    }
+
+    let projectPhrase = "";
+    if (topProjectName && topProjectPct > 0) {
+        const projComms = [
+            `you spent ${topProjectPct}% of your time on ${topProjectName}`,
+            `you dedicated ${topProjectPct}% of your session to ${topProjectName}`,
+            `${topProjectName} occupied ${topProjectPct}% of your focus`
+        ];
+        projectPhrase = projComms[Math.floor(Math.random() * projComms.length)];
+    }
+
+    // Combine them smoothly
+    let sentence = `${greeting} ${timephrase}`;
+    if (appPhrase && projectPhrase) {
+        sentence += ` ${appPhrase.charAt(0).toUpperCase() + appPhrase.slice(1)}, and ${projectPhrase}.`;
+    } else if (appPhrase) {
+        sentence += ` ${appPhrase.charAt(0).toUpperCase() + appPhrase.slice(1)}.`;
+    } else if (projectPhrase) {
+        sentence += ` And ${projectPhrase.charAt(0).toUpperCase() + projectPhrase.slice(1)}.`;
+    } else {
+        sentence += ".";
+    }
+
+    return sentence;
+}
+
+app.get('/ai-digest', (req, res) => {
+    const { getAIDigestData } = require('./db');
+    
+    // 1. Get dates in local timezone (YYYY-MM-DD format)
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+    const mondayStr = getMondayOfCurrentWeek();
+
+    // 2. Fetch data from DB
+    const todayData = getAIDigestData(todayStr, todayStr);
+    const weeklyData = getAIDigestData(mondayStr, todayStr);
+
+    // 3. Helper to format response payload
+    const buildSummary = (data, isWeekly) => {
+        const totalSec = data.total_manual + data.total_auto;
+        const totalHours = totalSec / 3600;
+        const topApp = data.apps[0]?.app_name || null;
+        
+        let topProjectName = null;
+        let topProjectPct = 0;
+        let topProjectColor = null;
+
+        if (data.projects.length > 0) {
+            const topProj = data.projects[0];
+            topProjectName = topProj.name;
+            topProjectColor = topProj.color;
+            topProjectPct = totalSec > 0 ? Math.round((topProj.seconds / totalSec) * 100) : 0;
+        }
+
+        // Map and calculate percentage for all projects
+        const projects = data.projects.map(p => ({
+            name: p.name,
+            color: p.color,
+            seconds: p.seconds,
+            pct: totalSec > 0 ? Math.round((p.seconds / totalSec) * 100) : 0
+        }));
+
+        const commentary = generateSmartCommentary(totalHours, data.apps, topProjectName, topProjectPct, isWeekly);
+
+        return {
+            total_seconds: totalSec,
+            total_hours: parseFloat(totalHours.toFixed(1)),
+            most_used_app: topApp,
+            most_used_app_seconds: data.apps[0]?.total_seconds || 0,
+            top_project_name: topProjectName,
+            top_project_color: topProjectColor,
+            top_project_pct: topProjectPct,
+            projects,
+            apps: data.apps,
+            commentary
+        };
+    };
+
+    res.json({
+        today: buildSummary(todayData, false),
+        week: buildSummary(weeklyData, true)
+    });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
+

@@ -348,5 +348,43 @@ module.exports = {
     const projects = db.prepare("SELECT * FROM projects").all();
 
     return { sessions, appUsage, projects };
+  },
+  getAIDigestData: (startDate, endDate) => {
+    // 1. Get total seconds for manual and automatic sessions
+    const sessionSummary = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN type = 'manual' THEN total_seconds ELSE 0 END) as manual_seconds,
+        SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_seconds
+      FROM sessions
+      WHERE date(start_time, 'localtime') BETWEEN ? AND ?
+    `).get(startDate, endDate);
+
+    // 2. Get top apps used in this range
+    const appUsage = db.prepare(`
+      SELECT app_name, SUM(total_seconds) as total_seconds
+      FROM app_usage
+      WHERE date BETWEEN ? AND ?
+      GROUP BY app_name
+      ORDER BY total_seconds DESC
+      LIMIT 5
+    `).all(startDate, endDate);
+
+    // 3. Get project breakdown in this range
+    const projectBreakdown = db.prepare(`
+      SELECT p.name as name, p.color as color, SUM(s.total_seconds) as seconds
+      FROM sessions s
+      JOIN projects p ON s.project_id = p.id
+      WHERE date(s.start_time, 'localtime') BETWEEN ? AND ?
+      GROUP BY s.project_id
+      ORDER BY seconds DESC
+    `).all(startDate, endDate);
+
+    return {
+      total_manual: sessionSummary ? (sessionSummary.manual_seconds || 0) : 0,
+      total_auto: sessionSummary ? (sessionSummary.auto_seconds || 0) : 0,
+      apps: appUsage || [],
+      projects: projectBreakdown || []
+    };
   }
 };
+
