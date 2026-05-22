@@ -130,7 +130,17 @@ module.exports = {
     let query = `
       SELECT date(start_time, 'localtime') as date, 
              SUM(CASE WHEN type = 'manual' THEN total_seconds ELSE 0 END) as manual_total,
-             SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total
+             SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total,
+             SUM(CASE WHEN type = 'manual' THEN 
+                 CASE WHEN (strftime('%s', COALESCE(end_time, last_tick)) - strftime('%s', start_time) - total_seconds) > 0 
+                      THEN (strftime('%s', COALESCE(end_time, last_tick)) - strftime('%s', start_time) - total_seconds) 
+                      ELSE 0 
+                 END 
+             ELSE 0 END) as break_duration,
+             (SELECT COUNT(*) FROM lock_events le 
+              JOIN sessions s2 ON le.session_id = s2.id 
+              WHERE date(s2.start_time, 'localtime') = date(sessions.start_time, 'localtime')
+              AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
       FROM sessions 
     `;
     const params = [];
@@ -164,7 +174,17 @@ module.exports = {
     let query = `
       SELECT date(start_time, 'localtime', '-6 days', 'weekday 1') as week, 
              SUM(CASE WHEN type = 'manual' THEN total_seconds ELSE 0 END) as manual_total,
-             SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total
+             SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total,
+             SUM(CASE WHEN type = 'manual' THEN 
+                 CASE WHEN (strftime('%s', COALESCE(end_time, last_tick)) - strftime('%s', start_time) - total_seconds) > 0 
+                      THEN (strftime('%s', COALESCE(end_time, last_tick)) - strftime('%s', start_time) - total_seconds) 
+                      ELSE 0 
+                 END 
+             ELSE 0 END) as break_duration,
+             (SELECT COUNT(*) FROM lock_events le 
+              JOIN sessions s2 ON le.session_id = s2.id 
+              WHERE date(s2.start_time, 'localtime', '-6 days', 'weekday 1') = date(sessions.start_time, 'localtime', '-6 days', 'weekday 1')
+              AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
       FROM sessions 
     `;
     const params = [];
@@ -188,7 +208,17 @@ module.exports = {
     let query = `
       SELECT strftime('%Y-%m', start_time, 'localtime') as month, 
              SUM(CASE WHEN type = 'manual' THEN total_seconds ELSE 0 END) as manual_total,
-             SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total
+             SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total,
+             SUM(CASE WHEN type = 'manual' THEN 
+                 CASE WHEN (strftime('%s', COALESCE(end_time, last_tick)) - strftime('%s', start_time) - total_seconds) > 0 
+                      THEN (strftime('%s', COALESCE(end_time, last_tick)) - strftime('%s', start_time) - total_seconds) 
+                      ELSE 0 
+                 END 
+             ELSE 0 END) as break_duration,
+             (SELECT COUNT(*) FROM lock_events le 
+              JOIN sessions s2 ON le.session_id = s2.id 
+              WHERE strftime('%Y-%m', s2.start_time, 'localtime') = strftime('%Y-%m', sessions.start_time, 'localtime')
+              AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
       FROM sessions 
     `;
     const params = [];
@@ -212,9 +242,17 @@ module.exports = {
     let query = `
       SELECT date(start_time, 'localtime') as date,
              MIN(datetime(start_time, 'localtime')) as in_time,
-             MAX(datetime(end_time, 'localtime')) as out_time,
+             MAX(datetime(COALESCE(end_time, last_tick), 'localtime')) as out_time,
              SUM(total_seconds) as total_seconds,
-             (strftime('%s', MAX(end_time)) - strftime('%s', MIN(start_time))) as office_span
+             (strftime('%s', MAX(COALESCE(end_time, last_tick))) - strftime('%s', MIN(start_time))) as office_span,
+             CASE WHEN (strftime('%s', MAX(COALESCE(end_time, last_tick))) - strftime('%s', MIN(start_time)) - SUM(total_seconds)) > 0 
+                  THEN (strftime('%s', MAX(COALESCE(end_time, last_tick))) - strftime('%s', MIN(start_time)) - SUM(total_seconds)) 
+                  ELSE 0 
+             END as break_duration,
+             (SELECT COUNT(*) FROM lock_events le 
+              JOIN sessions s2 ON le.session_id = s2.id 
+              WHERE date(s2.start_time, 'localtime') = date(sessions.start_time, 'localtime')
+              AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
       FROM sessions
       WHERE type = 'manual'
     `;

@@ -243,6 +243,20 @@ class LocalhostSchemeHandler: NSObject, WKURLSchemeHandler {
                 return
             }
 
+            // Build a response with the correct MIME type
+            var headers = httpResponse.allHeaderFields as? [String: String] ?? [:]
+            // Ensure content type is set
+            if headers["Content-Type"] == nil && headers["content-type"] == nil {
+                let pathExt = realURL.pathExtension.lowercased()
+                switch pathExt {
+                case "html": headers["Content-Type"] = "text/html; charset=utf-8"
+                case "css": headers["Content-Type"] = "text/css; charset=utf-8"
+                case "js": headers["Content-Type"] = "application/javascript; charset=utf-8"
+                case "json": headers["Content-Type"] = "application/json; charset=utf-8"
+                default: headers["Content-Type"] = "application/octet-stream"
+                }
+            }
+
             // Strip out Content-Disposition for app:// requests to avoid WebKit resource load failures or download interceptions
             headers.removeValue(forKey: "Content-Disposition")
             headers.removeValue(forKey: "content-disposition")
@@ -611,6 +625,7 @@ class MenuBarUtility: NSObject {
     var lastTrackedApp: String = ""
     var idleCheckTimer: Timer?
     var isIdle: Bool = false
+    var idleStartTime: Date?
     let idleThresholdSeconds: Double = 300 // 5 minutes
     
     var appMenu: NSMenu!
@@ -941,6 +956,7 @@ class MenuBarUtility: NSObject {
         if isCallHardwareActive() {
             if isIdle {
                 isIdle = false
+                idleStartTime = nil
                 sendEvent("unlock")
                 print("[Call] Call detected — resuming sessions from idle")
             }
@@ -953,12 +969,24 @@ class MenuBarUtility: NSObject {
 
         if minIdle >= idleThresholdSeconds && !isIdle {
             isIdle = true
+            idleStartTime = Date()
             sendEvent("lock") // Pause sessions due to idle
             print("User idle for \(Int(minIdle))s — pausing sessions")
         } else if minIdle < idleThresholdSeconds && isIdle {
             isIdle = false
-            sendEvent("unlock") // Resume sessions — user is back
-            print("User returned from idle — resuming sessions")
+            var duration = 0
+            if let start = idleStartTime {
+                duration = Int(Date().timeIntervalSince(start))
+            }
+            idleStartTime = nil
+            
+            // Send unlock event with idle return metadata if duration is positive
+            if duration > 0 {
+                sendEvent("unlock", metadata: ["reason": "idle_return", "duration": duration])
+            } else {
+                sendEvent("unlock")
+            }
+            print("User returned from idle after \(duration)s — resuming sessions")
         }
     }
 

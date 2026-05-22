@@ -963,6 +963,112 @@
         </div>
     </div>
 
+    <!-- Smart Idle Assist Modal -->
+    <div id="idleResumeModal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="idleModalTitle">
+        <div class="modal-backdrop"></div>
+        <div class="glass-card modal-container idle-prompt-container">
+            <div class="idle-prompt-header">
+                <div class="idle-prompt-icon-wrapper">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="idle-icon">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </div>
+                <div>
+                    <h2 id="idleModalTitle">Smart Idle Assist</h2>
+                    <span class="idle-subtitle">Welcome back! Let's categorize your away time.</span>
+                </div>
+            </div>
+            
+            <div class="idle-prompt-body">
+                <p class="idle-description">You were away for <strong id="idleDurationText">10 minutes</strong>. How would you like to log this time?</p>
+                
+                <div class="idle-options-grid">
+                    <!-- Option 1: Coffee / Break -->
+                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('coffee')">
+                        <div class="option-emoji">☕</div>
+                        <div class="option-content">
+                            <span class="option-title">Coffee / Break</span>
+                            <span class="option-desc">Keep time paused. Discard this duration from work hours.</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Option 2: Meeting / Sync -->
+                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('meeting')">
+                        <div class="option-emoji">👥</div>
+                        <div class="option-content">
+                            <span class="option-title">Meeting / Sync</span>
+                            <span class="option-desc">Add back to session. Log as active collaboration.</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Option 3: Off-screen Work / Designing -->
+                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('designing')">
+                        <div class="option-emoji">📝</div>
+                        <div class="option-content">
+                            <span class="option-title">Off-screen Work / Designing</span>
+                            <span class="option-desc">Add back to session. Log as active designing or thinking.</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Smart Break Reminder Modal -->
+    <div id="breakReminderModal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="breakModalTitle">
+        <div class="modal-backdrop"></div>
+        <div class="glass-card modal-container break-reminder-container">
+            <div class="break-reminder-header">
+                <div class="break-reminder-cup-wrapper">
+                    <!-- Premium Animated Wellness Glowing Cup -->
+                    <div class="breathing-cup">☕</div>
+                </div>
+                <div>
+                    <h2 id="breakModalTitle">Time for a Break!</h2>
+                    <span class="break-subtitle">Wellness &amp; Focus Guard</span>
+                </div>
+            </div>
+            
+            <div class="break-reminder-body">
+                <p class="break-description">You've been working continuously for <strong id="breakElapsedText">60 minutes</strong>.</p>
+                <div class="break-message-bubble glass-card">
+                    <span class="bubble-icon">💡</span>
+                    <p id="breakMessageText">Take a moment to stretch and rest your eyes.</p>
+                </div>
+                
+                <div class="break-actions-grid">
+                    <!-- Option 1: Take a Break -->
+                    <button class="break-action-card glass-card pause-card" onclick="takeBreakNow()">
+                        <div class="action-emoji">⏸️</div>
+                        <div class="action-content">
+                            <span class="action-title">Take a Break</span>
+                            <span class="action-desc">Pause active tracking, log break event, and step away.</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Option 2: Snooze 10m -->
+                    <button class="break-action-card glass-card snooze-card" onclick="snoozeBreakReminder(10)">
+                        <div class="action-emoji">⏳</div>
+                        <div class="action-content">
+                            <span class="action-title">Snooze 10 Min</span>
+                            <span class="action-desc">Postpone this reminder by 10 minutes to finish your task.</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Option 3: Dismiss -->
+                    <button class="break-action-card glass-card dismiss-card" onclick="dismissBreakReminder()">
+                        <div class="action-emoji">✕</div>
+                        <div class="action-content">
+                            <span class="action-title">Dismiss</span>
+                            <span class="action-desc">Close this reminder, keeping active session running.</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js?v=4.0.0"></script>
 </body>
 

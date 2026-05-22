@@ -2,6 +2,11 @@ const express = require('express');
 const path = require('path');
 const notificationQueue = [];
 
+let pendingIdlePrompt = null;
+let pendingBreakReminder = null;
+let lastIdleStart = null;
+const IDLE_PROMPT_THRESHOLD_SEC = 600; // 10 minutes
+
 function sendNativeNotification(title, message) {
     notificationQueue.push({ title, message });
     console.log(`[Queueing Notification] ${title}: ${message} (Queue length: ${notificationQueue.length})`);
@@ -329,6 +334,12 @@ function runBackgroundLoop() {
                         const msg = getSmartBreakMessage('manual');
                         sendNativeNotification(msg.title, msg.body);
                         stmtSetBreakNotify.run(activeSession.total_seconds, activeSession.id);
+                        pendingBreakReminder = {
+                            sessionId: activeSession.id,
+                            type: 'manual',
+                            minutes: breakMin,
+                            message: msg.body
+                        };
                     }
                 }
             } else if (type === 'automatic') {
@@ -340,6 +351,12 @@ function runBackgroundLoop() {
                         const msg = getSmartBreakMessage('automatic');
                         sendNativeNotification(msg.title, msg.body);
                         stmtSetBreakNotify.run(activeSession.total_seconds, activeSession.id);
+                        pendingBreakReminder = {
+                            sessionId: activeSession.id,
+                            type: 'automatic',
+                            minutes: wfhBreakMin,
+                            message: msg.body
+                        };
                     }
                 }
             }
@@ -495,6 +512,31 @@ app.post('/event', asyncHandler(async (req, res) => {
 
     if (!event || !['lock', 'unlock'].includes(event)) {
         return res.status(400).json({ error: 'Invalid event. Must be "lock" or "unlock".' });
+    }
+
+    if (event === 'lock') {
+        lastIdleStart = Date.now();
+    } else if (event === 'unlock') {
+        let duration = 0;
+        if (metadata && metadata.duration) {
+            duration = parseInt(metadata.duration);
+        } else if (lastIdleStart) {
+            duration = Math.floor((Date.now() - lastIdleStart) / 1000);
+        }
+        lastIdleStart = null;
+
+        if (duration >= IDLE_PROMPT_THRESHOLD_SEC) {
+            const manualSession = getActiveSession('manual');
+            const session = manualSession || getTodayAutomaticSession();
+            if (session) {
+                pendingIdlePrompt = {
+                    sessionId: session.id,
+                    sessionType: manualSession ? 'manual' : 'automatic',
+                    duration: duration
+                };
+                console.log(`[Idle Prompt] Generated pending prompt for session #${session.id}, duration: ${duration}s`);
+            }
+        }
     }
 
     // 1. Handle Automatic Session (Completes on user action, pauses on idle)
@@ -703,9 +745,58 @@ app.get('/status', (req, res) => {
         officeLng,
         officeRadius: parseInt(officeRadius),
         pending_notification: pendingNotification,
+        pending_idle_prompt: pendingIdlePrompt,
+        pending_break_reminder: pendingBreakReminder,
         suggested_poll_ms: suggestedPollMs
     });
 });
+
+app.post('/respond-idle-prompt', asyncHandler(async (req, res) => {
+    const { choice } = req.body;
+    
+    if (!pendingIdlePrompt) {
+        return res.status(400).json({ error: 'No pending idle prompt' });
+    }
+    
+    const { sessionId, duration } = pendingIdlePrompt;
+    
+    if (choice === 'meeting' || choice === 'designing') {
+        updateSessionSeconds(sessionId, duration);
+        addEvent(sessionId, `idle_respond_keep_${choice}`);
+        console.log(`[Idle Prompt] Added ${duration}s back to session #${sessionId} (Choice: ${choice})`);
+    } else {
+        addEvent(sessionId, `idle_respond_discard_${choice}`);
+        console.log(`[Idle Prompt] Discarded idle duration ${duration}s (Choice: ${choice})`);
+    }
+    
+    pendingIdlePrompt = null;
+    res.json({ success: true });
+}));
+
+app.post('/dismiss-break-reminder', asyncHandler(async (req, res) => {
+    pendingBreakReminder = null;
+    res.json({ success: true });
+}));
+
+app.post('/snooze-break-reminder', asyncHandler(async (req, res) => {
+    let session = getActiveSession('manual');
+    let type = 'manual';
+    if (!session || session.status !== 'active') {
+        session = getTodayAutomaticSession();
+        type = 'automatic';
+    }
+    if (session && session.status === 'active') {
+        const breakMin = parseInt(type === 'manual' ? getCachedSetting('breakInterval', '60') : getCachedSetting('wfhBreakInterval', '60'));
+        const snoozeMin = parseInt(req.body.minutes || '10');
+        const breakSec = breakMin * 60;
+        const snoozeSec = snoozeMin * 60;
+        const newBreakNotify = session.total_seconds - breakSec + snoozeSec;
+        stmtSetBreakNotify.run(newBreakNotify, session.id);
+        console.log(`[Break Reminder] Snoozed session #${session.id} (${type}) for ${snoozeMin} minutes. New last_break_notify = ${newBreakNotify}`);
+    }
+    pendingBreakReminder = null;
+    res.json({ success: true });
+}));
 
 app.post('/app-heartbeat', asyncHandler(async (req, res) => {
     const { app_name, seconds } = req.body;
@@ -881,15 +972,15 @@ app.get('/export-csv', (req, res) => {
 
     if (tab === 'weekly') {
         data = getWeeklyReport(start, end);
-        headers = 'Week,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total';
+        headers = 'Week,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Break Count,Break Duration';
         res.setHeader('Content-Disposition', 'attachment; filename=weekly_report.csv');
     } else if (tab === 'monthly') {
         data = getMonthlyReport(start, end);
-        headers = 'Month,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total';
+        headers = 'Month,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Break Count,Break Duration';
         res.setHeader('Content-Disposition', 'attachment; filename=monthly_report.csv');
     } else if (tab === 'visits') {
         data = getOfficeVisitsReport(start, end);
-        headers = 'Date,In Time,Out Time,Total Duration (seconds),Total Duration';
+        headers = 'Date,In Time,Out Time,Total Duration (seconds),Total Duration,Break Count,Break Duration';
         res.setHeader('Content-Disposition', 'attachment; filename=office_visits_report.csv');
         
         const formatTimeVal = (timeStr) => {
@@ -911,7 +1002,7 @@ app.get('/export-csv', (req, res) => {
         const rows = data.map(item => {
             const inTime = item.in_time ? formatTimeVal(safeExtractTime(item.in_time)) : '—';
             const outTime = item.out_time ? formatTimeVal(safeExtractTime(item.out_time)) : '—';
-            return `${item.date},${inTime},${outTime},${item.total_seconds || 0},${fmtTime(item.total_seconds || 0)}`;
+            return `${item.date},${inTime},${outTime},${item.total_seconds || 0},${fmtTime(item.total_seconds || 0)},${item.break_count || 0},${fmtTime(item.break_duration || 0)}`;
         });
         res.setHeader('Content-Type', 'text/csv');
         return res.send(headers + '\n' + rows.join('\n'));
@@ -930,13 +1021,13 @@ app.get('/export-csv', (req, res) => {
         return res.send(headers + '\n' + rows.join('\n'));
     } else {
         data = getDailyReport(start, end);
-        headers = 'Date,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total';
+        headers = 'Date,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Break Count,Break Duration';
         res.setHeader('Content-Disposition', 'attachment; filename=daily_report.csv');
     }
 
     const rows = data.map(item => {
         const period = item.date || item.week || item.month;
-        return `${period},${item.manual_total},${fmtTime(item.manual_total)},${item.auto_total},${fmtTime(item.auto_total)}`;
+        return `${period},${item.manual_total},${fmtTime(item.manual_total)},${item.auto_total},${fmtTime(item.auto_total)},${item.break_count || 0},${fmtTime(item.break_duration || 0)}`;
     });
 
     res.setHeader('Content-Type', 'text/csv');

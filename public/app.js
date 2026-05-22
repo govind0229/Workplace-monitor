@@ -136,6 +136,12 @@ navItems.forEach(item => {
     item.onclick = () => {
         const targetView = item.dataset.view;
 
+        // Reset scroll position to top when switching views!
+        const mainContent = document.querySelector('.main-content');
+        if (mainContent) {
+            mainContent.scrollTop = 0;
+        }
+
         // Update Active Nav Style
         navItems.forEach(nav => nav.classList.remove('active'));
         item.classList.add('active');
@@ -1349,6 +1355,12 @@ async function updateStatus(forceSync = false) {
             const res = await fetch(`${API_BASE}/status`);
             const data = await res.json();
 
+            // Check for smart idle return prompt
+            checkPendingIdlePrompt(data);
+
+            // Check for smart break reminder
+            checkPendingBreakReminder(data);
+
             // Store ground truth from server
             baseManualSeconds = data.manual.total_seconds || 0;
             baseAutoSeconds = data.automatic.total_seconds || 0;
@@ -1602,6 +1614,8 @@ async function renderProjectReport() {
     const reportsList = document.getElementById('reportsList');
     if (!reportsList) return;
     
+    reportsList.classList.remove('visits-grid');
+    reportsList.classList.add('projects-grid');
     reportsList.innerHTML = '<div class="chart-loading">Loading project stats...</div>';
     
     try {
@@ -1720,6 +1734,7 @@ function renderActiveTab() {
     header.className = 'report-item report-header';
     
     if (currentTab === 'visits') {
+        reportsList.classList.remove('projects-grid');
         reportsList.classList.add('visits-grid');
         header.innerHTML = `
             <span>Date</span>
@@ -1727,13 +1742,16 @@ function renderActiveTab() {
             <span>Out Time</span>
             <span>Office Span</span>
             <span>Workplace Duration</span>
+            <span>Breaks</span>
         `;
     } else {
+        reportsList.classList.remove('projects-grid');
         reportsList.classList.remove('visits-grid');
         header.innerHTML = `
             <span>Period</span>
             <span>Workplace</span>
             <span>Day Total</span>
+            <span>Breaks</span>
         `;
     }
     fragment.appendChild(header);
@@ -1782,6 +1800,7 @@ function renderActiveTab() {
                     <span style="color:var(--accent); font-weight:500;">${escapeHTML(outTime)}</span>
                     <span style="color:var(--text-dim); font-style:italic;">${item.office_span > 0 ? formatTime(item.office_span) : '—'}</span>
                     <span class="auto-total-dim">${item.total_seconds > 0 ? formatTime(item.total_seconds) : '—'}</span>
+                    <span>${item.break_count > 0 ? `${formatTime(item.break_duration)} (${item.break_count})` : '—'}</span>
                 `;
             } else {
                 let label = item.date || item.week || item.month;
@@ -1793,6 +1812,7 @@ function renderActiveTab() {
                     <span>${escapeHTML(label)}</span>
                     <span>${item.manual_total > 0 ? formatTime(item.manual_total) : '—'}</span>
                     <span class="auto-total-dim">${item.auto_total > 0 ? formatTime(item.auto_total) : '—'}</span>
+                    <span>${item.break_count > 0 ? `${formatTime(item.break_duration)} (${item.break_count})` : '—'}</span>
                 `;
             }
             fragment.appendChild(row);
@@ -2119,12 +2139,45 @@ async function renderActivityTimeline() {
                 timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
             } catch (e) { timeStr = ts; }
 
-            const isUnlock = ev.event_type === 'unlock';
-            const label = isUnlock ? 'Screen Unlocked' : 'Screen Locked';
+            let label = 'Screen Locked';
+            let dotClass = 'lock';
+            const type = ev.event_type || '';
+
+            if (type.startsWith('unlock')) {
+                label = 'Screen Unlocked';
+                dotClass = 'unlock';
+                if (type === 'unlock_idle') {
+                    label = 'Screen Unlocked (Returned from Idle)';
+                }
+            } else if (type.startsWith('lock')) {
+                label = 'Screen Locked';
+                dotClass = 'lock';
+                if (type === 'lock_idle') {
+                    label = 'Away (System Idle)';
+                } else if (type === 'lock_take_break') {
+                    label = 'Took a Wellness Break';
+                    dotClass = 'wellness';
+                } else if (type === 'lock_user_initiated') {
+                    label = 'Screen Locked (Manual)';
+                } else if (type === 'lock_session_resign') {
+                    label = 'System Sleep';
+                }
+            } else if (type.startsWith('idle_respond')) {
+                dotClass = 'wellness';
+                if (type.includes('coffee')) {
+                    label = 'Coffee / Personal Break ☕';
+                } else if (type.includes('meeting')) {
+                    label = 'Collaboration / Meeting 👥';
+                } else if (type.includes('designing')) {
+                    label = 'Off-screen Work / Designing 📝';
+                } else {
+                    label = 'Responded to Idle Prompt';
+                }
+            }
 
             return `
                 <div class="timeline-item">
-                    <div class="timeline-dot ${ev.event_type}"></div>
+                    <div class="timeline-dot ${dotClass}"></div>
                     <span class="timeline-time">${timeStr}</span>
                     <span class="timeline-event">${label}</span>
                 </div>
@@ -3119,3 +3172,207 @@ function renderAIDigestUI() {
         }
     }
 }
+
+// --- Smart Idle Return Assist Dialog ---
+let currentIdlePrompt = null;
+
+function checkPendingIdlePrompt(data) {
+    const modal = document.getElementById('idleResumeModal');
+    if (!modal) return;
+    
+    if (data.pending_idle_prompt) {
+        // If we already have this exact prompt open, don't re-trigger
+        if (currentIdlePrompt && currentIdlePrompt.sessionId === data.pending_idle_prompt.sessionId && currentIdlePrompt.duration === data.pending_idle_prompt.duration) {
+            return;
+        }
+        
+        currentIdlePrompt = data.pending_idle_prompt;
+        
+        // Format duration into a human readable text, e.g. "12m 34s" or "10 minutes"
+        const durationSec = data.pending_idle_prompt.duration;
+        const minutes = Math.floor(durationSec / 60);
+        const seconds = durationSec % 60;
+        let durationText = "";
+        if (minutes > 0) {
+            durationText += `${minutes}m `;
+        }
+        durationText += `${seconds}s`;
+        
+        const durationEl = document.getElementById('idleDurationText');
+        if (durationEl) {
+            durationEl.textContent = durationText;
+        }
+        
+        modal.style.display = 'flex';
+        // Allow rendering display: flex before adding active class for transition
+        requestAnimationFrame(() => {
+            modal.classList.add('active');
+        });
+    } else {
+        // Only hide if the server has cleared the prompt
+        if (modal.classList.contains('active')) {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                currentIdlePrompt = null;
+            }, 300);
+        }
+    }
+}
+
+async function respondToIdlePrompt(choice) {
+    if (!currentIdlePrompt) return;
+    
+    try {
+        const res = await fetch(`${API_BASE}/respond-idle-prompt`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ choice })
+        });
+        
+        if (res.ok) {
+            const modal = document.getElementById('idleResumeModal');
+            if (modal) {
+                modal.classList.remove('active');
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                    currentIdlePrompt = null;
+                }, 300);
+            }
+            updateStatus(true);
+        } else {
+            console.error("Failed to respond to idle prompt");
+        }
+    } catch (e) {
+        console.error("Error sending response to idle prompt", e);
+    }
+}
+
+// Bind to window to ensure click events inside custom scheme HTML can invoke them
+window.respondToIdlePrompt = respondToIdlePrompt;
+window.checkPendingIdlePrompt = checkPendingIdlePrompt;
+
+// --- Smart Break Reminder Overlay & Controls ---
+let currentBreakReminder = null;
+
+function checkPendingBreakReminder(data) {
+    const modal = document.getElementById('breakReminderModal');
+    if (!modal) return;
+
+    if (data.pending_break_reminder) {
+        // If we already have this exact reminder open, don't re-trigger
+        if (currentBreakReminder && currentBreakReminder.sessionId === data.pending_break_reminder.sessionId && currentBreakReminder.minutes === data.pending_break_reminder.minutes) {
+            return;
+        }
+
+        currentBreakReminder = data.pending_break_reminder;
+
+        const elapsedTextEl = document.getElementById('breakElapsedText');
+        if (elapsedTextEl) {
+            elapsedTextEl.textContent = `${data.pending_break_reminder.minutes} minutes`;
+        }
+
+        const messageTextEl = document.getElementById('breakMessageText');
+        if (messageTextEl) {
+            messageTextEl.textContent = data.pending_break_reminder.message || 'Take a moment to stretch and rest your eyes.';
+        }
+
+        modal.style.display = 'flex';
+        // Allow rendering display: flex before adding active class for transition
+        requestAnimationFrame(() => {
+            modal.classList.add('active');
+        });
+    } else {
+        // Only hide if the server has cleared the reminder
+        if (modal.classList.contains('active')) {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                currentBreakReminder = null;
+            }, 300);
+        }
+    }
+}
+
+async function takeBreakNow() {
+    try {
+        // 1. Record the break event and pause active session
+        await fetch(`${API_BASE}/event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'lock', metadata: { reason: 'take_break' } })
+        });
+
+        // 2. Clear break reminder state on the server
+        await fetch(`${API_BASE}/dismiss-break-reminder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        // 3. Clear UI state
+        const modal = document.getElementById('breakReminderModal');
+        if (modal) {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                currentBreakReminder = null;
+            }, 300);
+        }
+
+        // 4. Force state sync
+        updateStatus(true);
+    } catch (e) {
+        console.error("Error initiating break:", e);
+    }
+}
+
+async function snoozeBreakReminder(minutes = 10) {
+    try {
+        await fetch(`${API_BASE}/snooze-break-reminder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ minutes })
+        });
+
+        const modal = document.getElementById('breakReminderModal');
+        if (modal) {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                currentBreakReminder = null;
+            }, 300);
+        }
+
+        updateStatus(true);
+    } catch (e) {
+        console.error("Error snoozing break reminder:", e);
+    }
+}
+
+async function dismissBreakReminder() {
+    try {
+        await fetch(`${API_BASE}/dismiss-break-reminder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const modal = document.getElementById('breakReminderModal');
+        if (modal) {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                currentBreakReminder = null;
+            }, 300);
+        }
+
+        updateStatus(true);
+    } catch (e) {
+        console.error("Error dismissing break reminder:", e);
+    }
+}
+
+// Bind to window to allow HTML button invocation
+window.checkPendingBreakReminder = checkPendingBreakReminder;
+window.takeBreakNow = takeBreakNow;
+window.snoozeBreakReminder = snoozeBreakReminder;
+window.dismissBreakReminder = dismissBreakReminder;
