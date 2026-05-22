@@ -15,6 +15,18 @@ function sendNativeNotification(title, message) {
 const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent, createProject, getProjects, deleteProject, getProjectReport, getLastSyncedId, updateSyncedId, getUnsyncedData } = require('./db');
 const cors = require('cors');
 
+// Self-healing: Reset break interval settings if they are set to 1 minute (from testing/demo mode)
+const currentBreakInterval = getSetting('breakInterval');
+if (currentBreakInterval === '1' || currentBreakInterval === 1 || Number(currentBreakInterval) === 1) {
+    setSetting('breakInterval', '60');
+    console.log('[Self-Healing] Reset breakInterval to production default of 60 minutes');
+}
+const currentWfhBreakInterval = getSetting('wfhBreakInterval');
+if (currentWfhBreakInterval === '1' || currentWfhBreakInterval === 1 || Number(currentWfhBreakInterval) === 1) {
+    setSetting('wfhBreakInterval', '60');
+    console.log('[Self-Healing] Reset wfhBreakInterval to production default of 60 minutes');
+}
+
 // Pre-compiled prepared statements for hot paths (avoids SQLite re-planning on every tick)
 const stmtUpdateLastTick = db.prepare("UPDATE sessions SET last_tick = CURRENT_TIMESTAMP WHERE id = ?");
 const stmtSetStatus = db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?");
@@ -286,6 +298,30 @@ function runBackgroundLoop() {
         const manualSession = getActiveSession('manual');
         const automaticSession = getTodayAutomaticSession();
 
+        // --- Robust Settings Self-Healing ---
+        // If a test script or runaway process left breakInterval or wfhBreakInterval at 1,
+        // and there is no active session of that type, self-heal back to 60 immediately.
+        try {
+            const dbBreakInterval = getSetting('breakInterval');
+            if (dbBreakInterval === '1' || dbBreakInterval === 1 || Number(dbBreakInterval) === 1) {
+                if (!manualSession || manualSession.status !== 'active') {
+                    setSetting('breakInterval', '60');
+                    invalidateSettingsCache();
+                    console.log('[Self-Healing] Reset inactive breakInterval back to 60 minutes');
+                }
+            }
+            const dbWfhBreakInterval = getSetting('wfhBreakInterval');
+            if (dbWfhBreakInterval === '1' || dbWfhBreakInterval === 1 || Number(dbWfhBreakInterval) === 1) {
+                if (!automaticSession || automaticSession.status !== 'active') {
+                    setSetting('wfhBreakInterval', '60');
+                    invalidateSettingsCache();
+                    console.log('[Self-Healing] Reset inactive wfhBreakInterval back to 60 minutes');
+                }
+            }
+        } catch (healError) {
+            console.error("Error in timing self-healing block:", healError);
+        }
+
         for (const [type, activeSession] of [['manual', manualSession], ['automatic', automaticSession]]) {
             if (!activeSession || activeSession.status !== 'active') continue;
 
@@ -340,6 +376,13 @@ function runBackgroundLoop() {
                             minutes: breakMin,
                             message: msg.body
                         };
+                        // Self-healing: If it was set to 1 (testing mode), restore to 60 immediately
+                        // so it doesn't spam every minute!
+                        if (breakMin === 1) {
+                            setSetting('breakInterval', '60');
+                            invalidateSettingsCache();
+                            console.log('[Demo Safety] Reset breakInterval back to 60 minutes after triggering demo break');
+                        }
                     }
                 }
             } else if (type === 'automatic') {
@@ -357,6 +400,12 @@ function runBackgroundLoop() {
                             minutes: wfhBreakMin,
                             message: msg.body
                         };
+                        // Self-healing: If it was set to 1 (testing mode), restore to 60 immediately
+                        if (wfhBreakMin === 1) {
+                            setSetting('wfhBreakInterval', '60');
+                            invalidateSettingsCache();
+                            console.log('[Demo Safety] Reset wfhBreakInterval back to 60 minutes after triggering demo break');
+                        }
                     }
                 }
             }
@@ -950,11 +999,11 @@ app.get('/export-csv', (req, res) => {
     let data, headers;
 
     const fmtTime = (s) => {
-        if (!s || isNaN(s)) return '0h 0m 0s';
+        if (!s || isNaN(s)) return '00:00:00';
         const h = Math.floor(s / 3600);
         const m = Math.floor((s % 3600) / 60);
         const sec = s % 60;
-        return `${h}h ${m}m ${sec}s`;
+        return [h, m, sec].map(v => v < 10 ? '0' + v : v).join(':');
     };
 
     const safeExtractTime = (datetimeStr) => {
@@ -972,15 +1021,15 @@ app.get('/export-csv', (req, res) => {
 
     if (tab === 'weekly') {
         data = getWeeklyReport(start, end);
-        headers = 'Week,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Break Count,Break Duration';
+        headers = 'Week,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Breaks';
         res.setHeader('Content-Disposition', 'attachment; filename=weekly_report.csv');
     } else if (tab === 'monthly') {
         data = getMonthlyReport(start, end);
-        headers = 'Month,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Break Count,Break Duration';
+        headers = 'Month,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Breaks';
         res.setHeader('Content-Disposition', 'attachment; filename=monthly_report.csv');
     } else if (tab === 'visits') {
         data = getOfficeVisitsReport(start, end);
-        headers = 'Date,In Time,Out Time,Total Duration (seconds),Total Duration,Break Count,Break Duration';
+        headers = 'Date,In Time,Out Time,Office Span (seconds),Office Span,Workplace Duration (seconds),Workplace Duration,Breaks';
         res.setHeader('Content-Disposition', 'attachment; filename=office_visits_report.csv');
         
         const formatTimeVal = (timeStr) => {
@@ -1002,7 +1051,10 @@ app.get('/export-csv', (req, res) => {
         const rows = data.map(item => {
             const inTime = item.in_time ? formatTimeVal(safeExtractTime(item.in_time)) : '—';
             const outTime = item.out_time ? formatTimeVal(safeExtractTime(item.out_time)) : '—';
-            return `${item.date},${inTime},${outTime},${item.total_seconds || 0},${fmtTime(item.total_seconds || 0)},${item.break_count || 0},${fmtTime(item.break_duration || 0)}`;
+            const officeSpanSec = item.office_span || 0;
+            const workplaceSec = item.total_seconds || 0;
+            const breakSec = item.break_duration || 0;
+            return `${item.date},${inTime},${outTime},${officeSpanSec},${fmtTime(officeSpanSec)},${workplaceSec},${fmtTime(workplaceSec)},${fmtTime(breakSec)}`;
         });
         res.setHeader('Content-Type', 'text/csv');
         return res.send(headers + '\n' + rows.join('\n'));
@@ -1021,13 +1073,16 @@ app.get('/export-csv', (req, res) => {
         return res.send(headers + '\n' + rows.join('\n'));
     } else {
         data = getDailyReport(start, end);
-        headers = 'Date,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Break Count,Break Duration';
+        headers = 'Date,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Breaks';
         res.setHeader('Content-Disposition', 'attachment; filename=daily_report.csv');
     }
 
     const rows = data.map(item => {
         const period = item.date || item.week || item.month;
-        return `${period},${item.manual_total},${fmtTime(item.manual_total)},${item.auto_total},${fmtTime(item.auto_total)},${item.break_count || 0},${fmtTime(item.break_duration || 0)}`;
+        const manualSec = item.manual_total || 0;
+        const autoSec = item.auto_total || 0;
+        const breakSec = item.break_duration || 0;
+        return `${period},${manualSec},${fmtTime(manualSec)},${autoSec},${fmtTime(autoSec)},${fmtTime(breakSec)}`;
     });
 
     res.setHeader('Content-Type', 'text/csv');

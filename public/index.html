@@ -1038,33 +1038,43 @@
                 </div>
                 
                 <div class="break-actions-grid">
-                    <!-- Option 1: Take a Break -->
+                    <!-- Option 1: Short Break -->
                     <button class="break-action-card glass-card pause-card" onclick="takeBreakNow()">
                         <div class="action-emoji">⏸️</div>
                         <div class="action-content">
-                            <span class="action-title">Take a Break</span>
-                            <span class="action-desc">Pause active tracking, log break event, and step away.</span>
+                            <span class="action-title">Short Break</span>
                         </div>
                     </button>
                     
-                    <!-- Option 2: Snooze 10m -->
+                    <!-- Option 2: Lunch -->
+                    <button class="break-action-card glass-card lunch-card" onclick="takeLunchBreak()">
+                        <div class="action-emoji">🍴</div>
+                        <div class="action-content">
+                            <span class="action-title">Lunch</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Option 3: Dinner -->
+                    <button class="break-action-card glass-card dinner-card" onclick="takeDinnerBreak()">
+                        <div class="action-emoji">🍽️</div>
+                        <div class="action-content">
+                            <span class="action-title">Dinner</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Option 4: Snooze 10m -->
                     <button class="break-action-card glass-card snooze-card" onclick="snoozeBreakReminder(10)">
                         <div class="action-emoji">⏳</div>
                         <div class="action-content">
-                            <span class="action-title">Snooze 10 Min</span>
-                            <span class="action-desc">Postpone this reminder by 10 minutes to finish your task.</span>
-                        </div>
-                    </button>
-                    
-                    <!-- Option 3: Dismiss -->
-                    <button class="break-action-card glass-card dismiss-card" onclick="dismissBreakReminder()">
-                        <div class="action-emoji">✕</div>
-                        <div class="action-content">
-                            <span class="action-title">Dismiss</span>
-                            <span class="action-desc">Close this reminder, keeping active session running.</span>
+                            <span class="action-title">Snooze 10m</span>
                         </div>
                     </button>
                 </div>
+                
+                <!-- Full-width Dismiss Button -->
+                <button class="break-dismiss-button" onclick="dismissBreakReminder()">
+                    <span>✕ Dismiss</span>
+                </button>
             </div>
         </div>
     </div>

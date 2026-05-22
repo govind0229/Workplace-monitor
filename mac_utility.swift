@@ -299,6 +299,9 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
 
     func showWindow() {
         if let existingWindow = window {
+            if existingWindow.isMiniaturized {
+                existingWindow.deminiaturize(nil)
+            }
             existingWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             NSApp.setActivationPolicy(.regular)
@@ -603,6 +606,133 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
     }
 }
 
+// MARK: - Standalone Floating Break Popup Controller
+class BreakPopupController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+    var window: NSWindow?
+    var webView: WKWebView?
+    let serverURL: String
+    let schemeHandler = LocalhostSchemeHandler()
+
+    init(serverURL: String) {
+        self.serverURL = serverURL
+        super.init()
+    }
+
+    func showWindow() {
+        if let existingWindow = window {
+            NSApp.setActivationPolicy(.regular)
+            existingWindow.orderFrontRegardless()
+            existingWindow.makeKey()
+            NSApp.activate(ignoringOtherApps: true)
+            if let url = URL(string: "app://localhost/break-popup.html") {
+                webView?.load(URLRequest(url: url))
+            }
+            return
+        }
+
+        let config = WKWebViewConfiguration()
+        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        config.setURLSchemeHandler(schemeHandler, forURLScheme: "app")
+        config.userContentController.add(self, name: "closeBreakPopup")
+        config.userContentController.add(self, name: "updateHeight")
+
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.setValue(false, forKey: "drawsBackground")
+        self.webView = webView
+
+        // Compact Dimensions
+        let windowWidth: CGFloat = 400
+        let windowHeight: CGFloat = 350
+
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let windowX = screenFrame.origin.x + (screenFrame.width - windowWidth) / 2
+        let windowY = screenFrame.origin.y + (screenFrame.height - windowHeight) / 2
+
+        let window = NSWindow(
+            contentRect: NSRect(x: windowX, y: windowY, width: windowWidth, height: windowHeight),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Break Reminder"
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+
+        window.contentView = webView
+        window.delegate = self
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 0.95)
+        window.appearance = NSAppearance(named: .darkAqua)
+        
+        // Float on top of all windows & allow rendering across all virtual spaces / full-screen apps
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        self.window = window
+
+        NSApp.setActivationPolicy(.regular)
+        window.orderFrontRegardless()
+        window.makeKey()
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let url = URL(string: "app://localhost/break-popup.html") {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
+    func hideWindow() {
+        DispatchQueue.main.async {
+            self.window?.orderOut(nil)
+            // Restore accessory policy if dashboard is also not open/visible
+            if let menuBar = (NSApp.delegate as? AppDelegate)?.menuBarUtility,
+               menuBar.dashboardController?.window?.isVisible == true {
+                // Keep .regular since dashboard is visible
+            } else {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        self.hideWindow()
+        return false
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "closeBreakPopup" {
+            self.hideWindow()
+        } else if message.name == "updateHeight" {
+            if let heightVal = message.body as? Double {
+                DispatchQueue.main.async {
+                    self.adjustWindowHeight(to: CGFloat(heightVal))
+                }
+            }
+        }
+    }
+
+    func adjustWindowHeight(to height: CGFloat) {
+        guard let window = self.window else { return }
+        
+        let minHeight: CGFloat = 200
+        let maxHeight: CGFloat = 800
+        let safeHeight = max(minHeight, min(maxHeight, height))
+        
+        var frame = window.frame
+        let oldHeight = frame.size.height
+        let delta = oldHeight - safeHeight
+        
+        frame.size.height = safeHeight
+        frame.origin.y += delta // Anchor the top edge of the window
+        
+        window.setFrame(frame, display: true, animate: false)
+    }
+}
+
+
 // MARK: - Menu Bar Utility
 class MenuBarUtility: NSObject {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -621,12 +751,17 @@ class MenuBarUtility: NSObject {
     var locationManager: CLLocationManager?
     
     var dashboardController: DashboardWindowController?
+    var breakPopupController: BreakPopupController?
     var isScreenLocked: Bool = false
     var lastTrackedApp: String = ""
     var idleCheckTimer: Timer?
     var isIdle: Bool = false
     var idleStartTime: Date?
     let idleThresholdSeconds: Double = 300 // 5 minutes
+    
+    // Break reminder popup tracking
+    var lastShownBreakSessionId: Int?
+    var lastShownBreakMinutes: Int?
     
     var appMenu: NSMenu!
 
@@ -643,6 +778,7 @@ class MenuBarUtility: NSObject {
     override init() {
         super.init()
         dashboardController = DashboardWindowController(serverURL: serverURL)
+        breakPopupController = BreakPopupController(serverURL: serverURL)
         setupStatusItem()
         setupNotifications()
         setupLocationManager()
@@ -874,6 +1010,24 @@ class MenuBarUtility: NSObject {
                    let title = notify["title"] as? String,
                    let message = notify["message"] as? String {
                     self.showNotification(title: title, message: message)
+                }
+
+                // Auto-popup Break Reminder window when continuous work limit reached
+                if let breakReminder = json["pending_break_reminder"] as? [String: Any],
+                   let minutes = breakReminder["minutes"] as? Int {
+                    let sessionId = breakReminder["sessionId"] as? Int ?? 0
+                    if sessionId != self.lastShownBreakSessionId || minutes != self.lastShownBreakMinutes {
+                        self.lastShownBreakSessionId = sessionId
+                        self.lastShownBreakMinutes = minutes
+                        
+                        print("[Break] New break reminder detected (\(minutes)m, session \(sessionId)). Spawning popup window.")
+                        self.breakPopupController?.showWindow()
+                    }
+                } else {
+                    // Reset when there is no pending break reminder
+                    self.lastShownBreakSessionId = nil
+                    self.lastShownBreakMinutes = nil
+                    self.breakPopupController?.hideWindow()
                 }
 
                 self.lastSyncTime = Date()

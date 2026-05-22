@@ -2,6 +2,14 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [4.0.0] - 2026-05-22
+
+### Added
+- **Standalone Break Reminder Window** — Migrated the periodic break notifications into a high-fidelity standalone macOS floating window experience. This replaces the full dashboard takeover, allowing you to dismiss or interact with break alerts without interrupting your layout or opening the main dashboard app.
+- **Dynamic Break Action Cards** — Added support for four distinct wellness break responses directly from the floating alert: **Short Break**, **Lunch**, **Dinner**, and **Snooze 10m**, logging precise geofence-friendly break events on the database immediately.
+- **Smart Wellness Break Options** — Integrated direct pause cards for **☕ Coffee Break** and **🚶‍♂️ Stretch & Walk** to encourage active wellness management without breaking daily session continuity.
+- **Dynamic Snooze Duration Selector** — Replaced the hardcoded snooze card with an interactive, custom drop-down selector built directly into the "Snooze" button. Users can now seamlessly choose to remind themselves in **5m**, **10m**, **15m**, **30m**, or **1h**.
+
 ## [3.0.0] - 2026-05-12
 
 ### Added

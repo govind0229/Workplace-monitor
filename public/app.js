@@ -1800,7 +1800,7 @@ function renderActiveTab() {
                     <span style="color:var(--accent); font-weight:500;">${escapeHTML(outTime)}</span>
                     <span style="color:var(--text-dim); font-style:italic;">${item.office_span > 0 ? formatTime(item.office_span) : '—'}</span>
                     <span class="auto-total-dim">${item.total_seconds > 0 ? formatTime(item.total_seconds) : '—'}</span>
-                    <span>${item.break_count > 0 ? `${formatTime(item.break_duration)} (${item.break_count})` : '—'}</span>
+                    <span>${item.break_count > 0 ? formatTime(item.break_duration) : '—'}</span>
                 `;
             } else {
                 let label = item.date || item.week || item.month;
@@ -1812,7 +1812,7 @@ function renderActiveTab() {
                     <span>${escapeHTML(label)}</span>
                     <span>${item.manual_total > 0 ? formatTime(item.manual_total) : '—'}</span>
                     <span class="auto-total-dim">${item.auto_total > 0 ? formatTime(item.auto_total) : '—'}</span>
-                    <span>${item.break_count > 0 ? `${formatTime(item.break_duration)} (${item.break_count})` : '—'}</span>
+                    <span>${item.break_count > 0 ? formatTime(item.break_duration) : '—'}</span>
                 `;
             }
             fragment.appendChild(row);
@@ -3269,7 +3269,8 @@ function checkPendingBreakReminder(data) {
 
         const elapsedTextEl = document.getElementById('breakElapsedText');
         if (elapsedTextEl) {
-            elapsedTextEl.textContent = `${data.pending_break_reminder.minutes} minutes`;
+            const mins = data.pending_break_reminder.minutes;
+            elapsedTextEl.textContent = `${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
         }
 
         const messageTextEl = document.getElementById('breakMessageText');
@@ -3291,6 +3292,70 @@ function checkPendingBreakReminder(data) {
                 currentBreakReminder = null;
             }, 300);
         }
+    }
+}
+
+async function takeLunchBreak() {
+    try {
+        // 1. Record the break event and pause active session
+        await fetch(`${API_BASE}/event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'lock', metadata: { reason: 'lunch' } })
+        });
+
+        // 2. Clear break reminder state on the server
+        await fetch(`${API_BASE}/dismiss-break-reminder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        // 3. Clear UI state
+        const modal = document.getElementById('breakReminderModal');
+        if (modal) {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                currentBreakReminder = null;
+            }, 300);
+        }
+
+        // 4. Force state sync
+        updateStatus(true);
+    } catch (e) {
+        console.error("Error initiating lunch break:", e);
+    }
+}
+
+async function takeDinnerBreak() {
+    try {
+        // 1. Record the break event and pause active session
+        await fetch(`${API_BASE}/event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'lock', metadata: { reason: 'dinner' } })
+        });
+
+        // 2. Clear break reminder state on the server
+        await fetch(`${API_BASE}/dismiss-break-reminder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        // 3. Clear UI state
+        const modal = document.getElementById('breakReminderModal');
+        if (modal) {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                currentBreakReminder = null;
+            }, 300);
+        }
+
+        // 4. Force state sync
+        updateStatus(true);
+    } catch (e) {
+        console.error("Error initiating dinner break:", e);
     }
 }
 
@@ -3374,5 +3439,7 @@ async function dismissBreakReminder() {
 // Bind to window to allow HTML button invocation
 window.checkPendingBreakReminder = checkPendingBreakReminder;
 window.takeBreakNow = takeBreakNow;
+window.takeLunchBreak = takeLunchBreak;
+window.takeDinnerBreak = takeDinnerBreak;
 window.snoozeBreakReminder = snoozeBreakReminder;
 window.dismissBreakReminder = dismissBreakReminder;

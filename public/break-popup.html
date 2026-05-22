@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Time for a Break!</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #8b5cf6;
+      --primary-dim: rgba(139, 92, 246, 0.15);
+      --secondary: #10b981;
+      --secondary-dim: rgba(16, 185, 129, 0.15);
+      --bg: #0c0c14;
+      --surface: rgba(255, 255, 255, 0.03);
+      --surface-hover: rgba(255, 255, 255, 0.06);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #fafafa;
+      --text-dim: #a1a1aa;
+      --accent: #f59e0b;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --blur: blur(20px);
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      margin: 0;
+      padding: 10px 12px 14px 12px; /* Bottom padding gives a nice floating aesthetic */
+      background: transparent;
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .popup-container {
+      width: 100%;
+      height: auto;
+      background: rgba(20, 20, 30, 0.93);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+      animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .break-reminder-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .break-reminder-cup-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 10px;
+      color: var(--secondary);
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
+    }
+
+    .breathing-cup {
+      font-size: 1.2rem;
+      animation: cupBreathing 2.5s infinite ease-in-out;
+    }
+
+    @keyframes cupBreathing {
+      0% { transform: scale(1); filter: drop-shadow(0 0 0px var(--secondary)); }
+      50% { transform: scale(1.15) rotate(5deg); filter: drop-shadow(0 0 8px var(--secondary)); }
+      100% { transform: scale(1); filter: drop-shadow(0 0 0px var(--secondary)); }
+    }
+
+    .header-info h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin: 0 0 1px 0;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .break-subtitle {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .break-reminder-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    .break-description {
+      font-size: 0.85rem;
+      color: var(--text);
+      line-height: 1.35;
+      margin: 0 0 6px 0;
+    }
+
+    .break-description strong {
+      color: var(--secondary);
+      font-weight: 700;
+    }
+
+    .break-message-bubble {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      margin-bottom: 8px;
+    }
+
+    .bubble-icon {
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    #breakMessageText {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      line-height: 1.3;
+      margin: 0;
+    }
+
+    .break-actions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .break-action-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 4px;
+      width: 100%;
+      padding: 8px 4px !important;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      cursor: pointer;
+      color: inherit;
+      outline: none;
+      transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    .break-action-card:hover {
+      background: rgba(255, 255, 255, 0.05) !important;
+      transform: translateY(-2px);
+    }
+
+    .break-action-card.pause-card:hover {
+      border-color: var(--secondary) !important;
+      box-shadow: 0 8px 20px -6px rgba(16, 185, 129, 0.2);
+    }
+
+    .break-action-card.coffee-card:hover {
+      border-color: #f59e0b !important;
+      box-shadow: 0 8px 20px -6px rgba(245, 158, 11, 0.2);
+    }
+
+    .break-action-card.walk-card:hover {
+      border-color: #38bdf8 !important;
+      box-shadow: 0 8px 20px -6px rgba(56, 189, 248, 0.2);
+    }
+
+    .break-action-card.snooze-card:hover {
+      border-color: #a855f7 !important;
+      box-shadow: 0 8px 20px -6px rgba(168, 85, 247, 0.2);
+    }
+
+    .break-action-card.lunch-card:hover {
+      border-color: #3b82f6 !important;
+      box-shadow: 0 8px 20px -6px rgba(59, 130, 246, 0.2);
+    }
+
+    .break-action-card.dinner-card:hover {
+      border-color: #ec4899 !important;
+      box-shadow: 0 8px 20px -6px rgba(236, 72, 153, 0.2);
+    }
+
+    .action-emoji {
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .action-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      width: 100%;
+    }
+
+    .action-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .snooze-select {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 2px 6px;
+      margin-top: 2px;
+      outline: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+    
+    .snooze-select:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--accent);
+    }
+
+    .snooze-select option {
+      background: #0c0c14;
+      color: var(--text);
+    }
+
+    .break-dismiss-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 6px 8px !important;
+      background: rgba(255, 255, 255, 0.01);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: all 0.25s ease;
+      outline: none;
+    }
+
+    .break-dismiss-button:hover {
+      background: rgba(56, 189, 248, 0.04);
+      border-color: rgba(56, 189, 248, 0.25);
+      color: #38bdf8;
+      box-shadow: 0 4px 12px rgba(56, 189, 248, 0.08);
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-container">
+    <div class="break-reminder-header">
+      <div class="break-reminder-cup-wrapper">
+        <div class="breathing-cup">☕</div>
+      </div>
+      <div class="header-info">
+        <h2>Time for a Break!</h2>
+        <span class="break-subtitle">Wellness &amp; Focus Guard</span>
+      </div>
+    </div>
+    
+    <div class="break-reminder-body">
+      <p class="break-description">You've been working continuously for <strong id="breakElapsedText">...</strong>.</p>
+      
+      <div class="break-message-bubble">
+        <span class="bubble-icon">💡</span>
+        <p id="breakMessageText">Loading your wellness status...</p>
+      </div>
+      
+      <div class="break-actions-grid">
+        <!-- Option 1: Short Break -->
+        <button class="break-action-card pause-card" id="btnTakeBreak">
+          <div class="action-emoji">⏸️</div>
+          <div class="action-content">
+            <span class="action-title">Short Break</span>
+          </div>
+        </button>
+        
+        <!-- Option 2: Coffee / Tea -->
+        <button class="break-action-card coffee-card" id="btnCoffee">
+          <div class="action-emoji">☕</div>
+          <div class="action-content">
+            <span class="action-title">Coffee Break</span>
+          </div>
+        </button>
+
+        <!-- Option 3: Stretch & Walk -->
+        <button class="break-action-card walk-card" id="btnWalk">
+          <div class="action-emoji">🚶‍♂️</div>
+          <div class="action-content">
+            <span class="action-title">Stretch &amp; Walk</span>
+          </div>
+        </button>
+        
+        <!-- Option 4: Snooze with Dropdown -->
+        <button class="break-action-card snooze-card" id="btnSnooze">
+          <div class="action-emoji">⏳</div>
+          <div class="action-content">
+            <span class="action-title">Snooze</span>
+            <select id="snoozeTimeSelect" class="snooze-select" onclick="event.stopPropagation()">
+              <option value="5">5m</option>
+              <option value="10" selected>10m</option>
+              <option value="15">15m</option>
+              <option value="30">30m</option>
+              <option value="60">1h</option>
+            </select>
+          </div>
+        </button>
+
+        <!-- Option 5: Lunch -->
+        <button class="break-action-card lunch-card" id="btnLunch">
+          <div class="action-emoji">🍴</div>
+          <div class="action-content">
+            <span class="action-title">Lunch</span>
+          </div>
+        </button>
+
+        <!-- Option 6: Dinner -->
+        <button class="break-action-card dinner-card" id="btnDinner">
+          <div class="action-emoji">🍽️</div>
+          <div class="action-content">
+            <span class="action-title">Dinner</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Full-width Dismiss Button -->
+      <button class="break-dismiss-button" id="btnDismiss">
+        <span>💼 Continue to Work</span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Safe bridge call
+    function closeWindow() {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.closeBreakPopup) {
+        window.webkit.messageHandlers.closeBreakPopup.postMessage(null);
+      } else {
+        console.log("closeBreakPopup bridge not available");
+      }
+    }
+
+    // Dynamic height reporting to native Swift window
+    function sendHeightToNative() {
+      // Calculate scroll height of body + room for margins/shadows
+      const height = document.documentElement.scrollHeight;
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.updateHeight) {
+        window.webkit.messageHandlers.updateHeight.postMessage(height);
+      } else {
+        console.log("[Bridge] updateHeight not available. Measured height:", height);
+      }
+    }
+
+    // Watch for size changes and update window dynamically
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => {
+        sendHeightToNative();
+      });
+      resizeObserver.observe(document.body);
+    } else {
+      window.addEventListener('load', sendHeightToNative);
+    }
+
+    async function loadStatus() {
+      try {
+        const response = await fetch('/status');
+        const data = await response.json();
+        if (data.pending_break_reminder) {
+          const mins = data.pending_break_reminder.minutes;
+          document.getElementById('breakElapsedText').textContent = `${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
+          document.getElementById('breakMessageText').textContent = data.pending_break_reminder.message || 'Take a moment to stretch and rest your eyes.';
+        } else {
+          // Default fallback just in case
+          document.getElementById('breakElapsedText').textContent = 'a continuous session';
+          document.getElementById('breakMessageText').textContent = 'Take a moment to stretch and rest your eyes.';
+        }
+      } catch (err) {
+        console.error("Failed to load status:", err);
+        document.getElementById('breakElapsedText').textContent = 'your continuous session';
+        document.getElementById('breakMessageText').textContent = 'Take a moment to stretch and rest your eyes.';
+      }
+    }
+
+    // Bind Button Click handlers
+    document.getElementById('btnTakeBreak').addEventListener('click', async () => {
+      try {
+        // 1. Record the break event and pause active session
+        await fetch('/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'lock', metadata: { reason: 'take_break' } })
+        });
+
+        // 2. Clear break reminder state on the server
+        await fetch('/dismiss-break-reminder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error("Error logging break:", err);
+      } finally {
+        closeWindow();
+      }
+    });
+
+    document.getElementById('btnCoffee').addEventListener('click', async () => {
+      try {
+        await fetch('/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'lock', metadata: { reason: 'coffee' } })
+        });
+        await fetch('/dismiss-break-reminder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error("Error logging coffee break:", err);
+      } finally {
+        closeWindow();
+      }
+    });
+
+    document.getElementById('btnWalk').addEventListener('click', async () => {
+      try {
+        await fetch('/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'lock', metadata: { reason: 'stretch_walk' } })
+        });
+        await fetch('/dismiss-break-reminder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error("Error logging stretch/walk break:", err);
+      } finally {
+        closeWindow();
+      }
+    });
+
+    document.getElementById('btnLunch').addEventListener('click', async () => {
+      try {
+        // 1. Record Lunch break event
+        await fetch('/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'lock', metadata: { reason: 'lunch' } })
+        });
+
+        // 2. Clear break reminder state
+        await fetch('/dismiss-break-reminder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error("Error logging lunch break:", err);
+      } finally {
+        closeWindow();
+      }
+    });
+
+    document.getElementById('btnDinner').addEventListener('click', async () => {
+      try {
+        // 1. Record Dinner break event
+        await fetch('/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'lock', metadata: { reason: 'dinner' } })
+        });
+
+        // 2. Clear break reminder state
+        await fetch('/dismiss-break-reminder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error("Error logging dinner break:", err);
+      } finally {
+        closeWindow();
+      }
+    });
+
+    document.getElementById('btnSnooze').addEventListener('click', async (e) => {
+      // Prevent button action from firing if they just select options
+      if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+
+      const mins = parseInt(document.getElementById('snoozeTimeSelect').value || '10');
+      try {
+        await fetch('/snooze-break-reminder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minutes: mins })
+        });
+      } catch (err) {
+        console.error("Error snoozing break:", err);
+      } finally {
+        closeWindow();
+      }
+    });
+
+    document.getElementById('btnDismiss').addEventListener('click', async () => {
+      try {
+        await fetch('/dismiss-break-reminder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error("Error dismissing break:", err);
+      } finally {
+        closeWindow();
+      }
+    });
+
+    // Run on load
+    loadStatus();
+  </script>
+</body>
+</html>
