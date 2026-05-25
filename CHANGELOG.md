@@ -2,6 +2,13 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [4.0.1] - 2026-05-25
+
+### Fixed
+- **Timezone-Accurate Reporting** — Fixed a critical issue where sessions started late at night (UTC) would display on the wrong calendar day for users in different time zones (e.g., IST). All daily, weekly, and monthly reports now correctly group hours based on strict local time boundaries.
+- **Stale Session Time Accumulation** — Fixed a bug where leaving the server running overnight while the computer was off would continuously accumulate "ghost hours" (e.g., 59 hours on a single day) or show leftover time upon the next morning's boot. The system now cleanly auto-completes stale sessions on startup.
+- **Premature Break Popups** — Fixed an issue where time-based break notifications (e.g., morning or lunch reminders) would trigger immediately upon booting the computer. The app now intelligently requires at least 30 minutes of active work before presenting any scheduled break alerts.
+
 ## [4.0.0] - 2026-05-22
 
 ### Added

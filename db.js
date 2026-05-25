@@ -97,7 +97,7 @@ module.exports = {
     return db.prepare("SELECT * FROM sessions WHERE status != 'completed' AND type = ? ORDER BY id DESC LIMIT 1").get(type);
   },
   getTodayAutomaticSession: () => {
-    let session = db.prepare("SELECT * FROM sessions WHERE date(start_time, 'localtime') = date('now', 'localtime') AND type = 'automatic' AND status != 'completed' LIMIT 1").get();
+    let session = db.prepare("SELECT * FROM sessions WHERE date = date('now', 'localtime') AND type = 'automatic' AND status != 'completed' LIMIT 1").get();
     const defaultProjectIdStr = module.exports.getSetting('defaultProjectId');
     const defaultProjectId = defaultProjectIdStr ? parseInt(defaultProjectIdStr) : null;
 
@@ -128,7 +128,7 @@ module.exports = {
   },
   getDailyReport: (startDate, endDate) => {
     let query = `
-      SELECT date(start_time, 'localtime') as date, 
+      SELECT date as date, 
              SUM(CASE WHEN type = 'manual' THEN total_seconds ELSE 0 END) as manual_total,
              SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total,
              SUM(CASE WHEN type = 'manual' THEN 
@@ -139,7 +139,7 @@ module.exports = {
              ELSE 0 END) as break_duration,
              (SELECT COUNT(*) FROM lock_events le 
               JOIN sessions s2 ON le.session_id = s2.id 
-              WHERE date(s2.start_time, 'localtime') = date(sessions.start_time, 'localtime')
+              WHERE s2.date = sessions.date
               AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
       FROM sessions 
     `;
@@ -147,13 +147,13 @@ module.exports = {
     if (startDate || endDate) {
       query += " WHERE ";
       if (startDate && endDate) {
-        query += "date(start_time, 'localtime') BETWEEN ? AND ?";
+        query += "date BETWEEN ? AND ?";
         params.push(startDate, endDate);
       } else if (startDate) {
-        query += "date(start_time, 'localtime') >= ?";
+        query += "date >= ?";
         params.push(startDate);
       } else {
-        query += "date(start_time, 'localtime') <= ?";
+        query += "date <= ?";
         params.push(endDate);
       }
     }
@@ -162,17 +162,17 @@ module.exports = {
   },
   getDetailedProjectHistory: () => {
     return db.prepare(`
-      SELECT date(s.start_time, 'localtime') as date, p.name as project_name, p.color as project_color, SUM(s.total_seconds) as total_seconds
+      SELECT s.date as date, p.name as project_name, p.color as project_color, SUM(s.total_seconds) as total_seconds
       FROM sessions s
       JOIN projects p ON s.project_id = p.id
-      GROUP BY date, s.project_id
-      ORDER BY date DESC, total_seconds DESC
+      GROUP BY s.date, s.project_id
+      ORDER BY s.date DESC, total_seconds DESC
       LIMIT 100
     `).all();
   },
   getWeeklyReport: (startDate, endDate) => {
     let query = `
-      SELECT date(start_time, 'localtime', '-6 days', 'weekday 1') as week, 
+      SELECT date(date, '-6 days', 'weekday 1') as week, 
              SUM(CASE WHEN type = 'manual' THEN total_seconds ELSE 0 END) as manual_total,
              SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total,
              SUM(CASE WHEN type = 'manual' THEN 
@@ -183,7 +183,7 @@ module.exports = {
              ELSE 0 END) as break_duration,
              (SELECT COUNT(*) FROM lock_events le 
               JOIN sessions s2 ON le.session_id = s2.id 
-              WHERE date(s2.start_time, 'localtime', '-6 days', 'weekday 1') = date(sessions.start_time, 'localtime', '-6 days', 'weekday 1')
+              WHERE date(s2.date, '-6 days', 'weekday 1') = date(sessions.date, '-6 days', 'weekday 1')
               AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
       FROM sessions 
     `;
@@ -191,13 +191,13 @@ module.exports = {
     if (startDate || endDate) {
       query += " WHERE ";
       if (startDate && endDate) {
-        query += "date(start_time, 'localtime') BETWEEN ? AND ?";
+        query += "date BETWEEN ? AND ?";
         params.push(startDate, endDate);
       } else if (startDate) {
-        query += "date(start_time, 'localtime') >= ?";
+        query += "date >= ?";
         params.push(startDate);
       } else {
-        query += "date(start_time, 'localtime') <= ?";
+        query += "date <= ?";
         params.push(endDate);
       }
     }
@@ -206,7 +206,7 @@ module.exports = {
   },
   getMonthlyReport: (startDate, endDate) => {
     let query = `
-      SELECT strftime('%Y-%m', start_time, 'localtime') as month, 
+      SELECT strftime('%Y-%m', date) as month, 
              SUM(CASE WHEN type = 'manual' THEN total_seconds ELSE 0 END) as manual_total,
              SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_total,
              SUM(CASE WHEN type = 'manual' THEN 
@@ -217,7 +217,7 @@ module.exports = {
              ELSE 0 END) as break_duration,
              (SELECT COUNT(*) FROM lock_events le 
               JOIN sessions s2 ON le.session_id = s2.id 
-              WHERE strftime('%Y-%m', s2.start_time, 'localtime') = strftime('%Y-%m', sessions.start_time, 'localtime')
+              WHERE strftime('%Y-%m', s2.date) = strftime('%Y-%m', sessions.date)
               AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
       FROM sessions 
     `;
@@ -225,13 +225,13 @@ module.exports = {
     if (startDate || endDate) {
       query += " WHERE ";
       if (startDate && endDate) {
-        query += "date(start_time, 'localtime') BETWEEN ? AND ?";
+        query += "date BETWEEN ? AND ?";
         params.push(startDate, endDate);
       } else if (startDate) {
-        query += "date(start_time, 'localtime') >= ?";
+        query += "date >= ?";
         params.push(startDate);
       } else {
-        query += "date(start_time, 'localtime') <= ?";
+        query += "date <= ?";
         params.push(endDate);
       }
     }
@@ -240,7 +240,7 @@ module.exports = {
   },
   getOfficeVisitsReport: (startDate, endDate) => {
     let query = `
-      SELECT date(start_time, 'localtime') as date,
+      SELECT date,
              MIN(datetime(start_time, 'localtime')) as in_time,
              MAX(datetime(COALESCE(end_time, last_tick), 'localtime')) as out_time,
              SUM(total_seconds) as total_seconds,
@@ -251,7 +251,7 @@ module.exports = {
              END as break_duration,
              (SELECT COUNT(*) FROM lock_events le 
               JOIN sessions s2 ON le.session_id = s2.id 
-              WHERE date(s2.start_time, 'localtime') = date(sessions.start_time, 'localtime')
+              WHERE s2.date = sessions.date
               AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
       FROM sessions
       WHERE type = 'manual'
@@ -259,13 +259,13 @@ module.exports = {
     const params = [];
     if (startDate || endDate) {
       if (startDate && endDate) {
-        query += " AND date(start_time, 'localtime') BETWEEN ? AND ?";
+        query += " AND date BETWEEN ? AND ?";
         params.push(startDate, endDate);
       } else if (startDate) {
-        query += " AND date(start_time, 'localtime') >= ?";
+        query += " AND date >= ?";
         params.push(startDate);
       } else {
-        query += " AND date(start_time, 'localtime') <= ?";
+        query += " AND date <= ?";
         params.push(endDate);
       }
     }
@@ -273,15 +273,15 @@ module.exports = {
     return db.prepare(query).all(...params);
   },
   getTodayManualTotal: () => {
-    const result = db.prepare("SELECT SUM(total_seconds) as sum FROM sessions WHERE date(start_time, 'localtime') = date('now', 'localtime') AND type = 'manual'").get();
+    const result = db.prepare("SELECT SUM(total_seconds) as sum FROM sessions WHERE date = date('now', 'localtime') AND type = 'manual'").get();
     return result ? (result.sum || 0) : 0;
   },
   hasNotifiedToday: () => {
-    const result = db.prepare("SELECT SUM(notified) as sum FROM sessions WHERE date(start_time, 'localtime') = date('now', 'localtime') AND type = 'manual'").get();
+    const result = db.prepare("SELECT SUM(notified) as sum FROM sessions WHERE date = date('now', 'localtime') AND type = 'manual'").get();
     return result && result.sum > 0;
   },
   getTodayTotal: () => {
-    const result = db.prepare("SELECT SUM(total_seconds) as sum FROM sessions WHERE date(start_time, 'localtime') = date('now', 'localtime') AND type = 'automatic'").get();
+    const result = db.prepare("SELECT SUM(total_seconds) as sum FROM sessions WHERE date = date('now', 'localtime') AND type = 'automatic'").get();
     return result ? (result.sum || 0) : 0;
   },
   recordAppUsage: (appName, seconds) => {
@@ -394,7 +394,7 @@ module.exports = {
         SUM(CASE WHEN type = 'manual' THEN total_seconds ELSE 0 END) as manual_seconds,
         SUM(CASE WHEN type = 'automatic' THEN total_seconds ELSE 0 END) as auto_seconds
       FROM sessions
-      WHERE date(start_time, 'localtime') BETWEEN ? AND ?
+      WHERE date BETWEEN ? AND ?
     `).get(startDate, endDate);
 
     // 2. Get top apps used in this range
@@ -412,7 +412,7 @@ module.exports = {
       SELECT p.name as name, p.color as color, SUM(s.total_seconds) as seconds
       FROM sessions s
       JOIN projects p ON s.project_id = p.id
-      WHERE date(s.start_time, 'localtime') BETWEEN ? AND ?
+      WHERE s.date BETWEEN ? AND ?
       GROUP BY s.project_id
       ORDER BY seconds DESC
     `).all(startDate, endDate);

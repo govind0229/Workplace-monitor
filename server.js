@@ -230,6 +230,28 @@ const asyncHandler = fn => (req, res, next) => {
     }
 })();
 
+// On startup: auto-complete any stale automatic (WFH) sessions from today
+// This handles the case where the PC was shut down/restarted mid-session.
+// Without this, the WFH timer would resume from where it left off before the reboot,
+// showing stale time (e.g. 59 min) even on a fresh boot.
+(function autoCompleteStaleAutomaticSession() {
+    const autoSession = db.prepare(
+        "SELECT * FROM sessions WHERE date = date('now', 'localtime') AND type = 'automatic' AND status != 'completed' LIMIT 1"
+    ).get();
+    if (!autoSession) return;
+
+    const lastTickStr = autoSession.last_tick;
+    const lastUpdate = lastTickStr ? new Date(lastTickStr.replace(' ', 'T') + 'Z').getTime() : Date.now();
+    const staleMinutes = (Date.now() - lastUpdate) / 60000;
+
+    // If last tick is more than 5 minutes ago, the session is stale (PC was shut down or crashed).
+    // Complete it so the WFH timer starts fresh on this boot.
+    if (staleMinutes > 5) {
+        completeSession(autoSession.id);
+        console.log(`[Startup] Completed stale automatic session #${autoSession.id} (inactive for ${Math.round(staleMinutes)} min). WFH timer will start fresh.`);
+    }
+})();
+
 // On startup: complete any orphaned sessions from previous dates
 // These can happen if the machine slept suddenly and missed the lock event
 (function cleanupPreviousDaySessions() {
@@ -267,6 +289,11 @@ function checkTimeBasedNotifications() {
 
     // Only remind if they are currently working (in the office or WFH)
     if (!isManualActive && !isAutoActive) return;
+
+    // Prevent immediate popups on fresh boot or when just starting work:
+    // Require at least 30 minutes of active work in the current session before sending a scheduled break.
+    const activeSession = isManualActive ? manualSession : automaticSession;
+    if (!activeSession || activeSession.total_seconds < 1800) return;
 
     const now = new Date();
     const currentHour = now.getHours();
@@ -743,7 +770,7 @@ app.get('/status', (req, res) => {
     const now = Date.now();
     const manual = getActiveSession('manual') || { status: 'idle', total_seconds: 0 };
     const automatic = getTodayAutomaticSession();
-    const firstManual = db.prepare("SELECT MIN(datetime(start_time, 'localtime')) as first FROM sessions WHERE date = date('now') AND type = 'manual'").get();
+    const firstManual = db.prepare("SELECT MIN(datetime(start_time, 'localtime')) as first FROM sessions WHERE date = date('now', 'localtime') AND type = 'manual'").get();
     const arrivalTime = firstManual ? firstManual.first : null;
 
     const officeLat = getSetting('officeLat', '');
