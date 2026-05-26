@@ -7,6 +7,15 @@ let pendingBreakReminder = null;
 let lastIdleStart = null;
 const IDLE_PROMPT_THRESHOLD_SEC = 600; // 10 minutes
 
+function clearSessionState(sessionId) {
+    if (pendingBreakReminder && pendingBreakReminder.sessionId === sessionId) {
+        pendingBreakReminder = null;
+    }
+    if (pendingIdlePrompt && pendingIdlePrompt.sessionId === sessionId) {
+        pendingIdlePrompt = null;
+    }
+}
+
 function sendNativeNotification(title, message) {
     notificationQueue.push({ title, message });
     console.log(`[Queueing Notification] ${title}: ${message} (Queue length: ${notificationQueue.length})`);
@@ -254,7 +263,7 @@ const asyncHandler = fn => (req, res, next) => {
 
 // On startup: complete any orphaned sessions from previous dates
 // These can happen if the machine slept suddenly and missed the lock event
-(function cleanupPreviousDaySessions() {
+function cleanupPreviousDaySessions() {
     const orphaned = db.prepare(`
         SELECT id, date, type, status FROM sessions
         WHERE status IN ('active', 'paused')
@@ -268,9 +277,13 @@ const asyncHandler = fn => (req, res, next) => {
             WHERE status IN ('active', 'paused')
               AND date < date('now', 'localtime')
         `).run();
-        console.log(`[Startup] Cleaned up ${orphaned.length} orphaned session(s) from previous days:`, orphaned.map(s => `#${s.id} (${s.date} ${s.type})`).join(', '));
+        orphaned.forEach(s => clearSessionState(s.id));
+        console.log(`[Cleanup] Cleaned up ${orphaned.length} orphaned session(s) from previous days:`, orphaned.map(s => `#${s.id} (${s.date} ${s.type})`).join(', '));
     }
-})();
+}
+
+// On startup: complete any orphaned sessions from previous dates
+cleanupPreviousDaySessions();
 
 const TIME_SCHEDULE = [
     { hour: 9, id: 'breakfast', slot: 'morning' },
@@ -315,9 +328,19 @@ function checkTimeBasedNotifications() {
     }
 }
 
+let lastRolloverDateStr = new Date().toLocaleDateString();
+
 // Background loop to increment time if active (recursive setTimeout prevents overlap)
 function runBackgroundLoop() {
     try {
+        const todayStr = new Date().toLocaleDateString();
+        if (todayStr !== lastRolloverDateStr) {
+            console.log(`[Rollover] Midnight crossed. Cleaning up previous day sessions.`);
+            cleanupPreviousDaySessions();
+            lastIdleStart = null; // Prevent lock state leakage across midnight
+            lastRolloverDateStr = todayStr;
+        }
+
         checkTimeBasedNotifications();
 
         const types = ['manual', 'automatic'];
@@ -574,6 +597,7 @@ app.post('/stop', asyncHandler(async (req, res) => {
     const session = getActiveSession('manual');
     if (session) {
         completeSession(session.id);
+        clearSessionState(session.id);
         console.log(`[Manual] Session stopped: ${session.id}`);
         sendNativeNotification('✅ Finish Day Session', 'Workplace session finished. Great work today!');
         res.json({ success: true });
@@ -590,16 +614,42 @@ app.post('/event', asyncHandler(async (req, res) => {
         return res.status(400).json({ error: 'Invalid event. Must be "lock" or "unlock".' });
     }
 
+    const finishReasons = ['user_initiated', 'session_resign', 'system_sleep'];
+
     if (event === 'lock') {
-        lastIdleStart = Date.now();
+        if (finishReasons.includes(reason)) {
+            lastIdleStart = null; // Do not calculate idle duration for sleep/finish
+        } else {
+            lastIdleStart = Date.now();
+        }
     } else if (event === 'unlock') {
         let duration = 0;
+        let isOvernight = false;
+        
         if (metadata && metadata.duration) {
             duration = parseInt(metadata.duration);
+            if (lastIdleStart) {
+                const idleDateStr = new Date(lastIdleStart).toLocaleDateString();
+                const todayStr = new Date().toLocaleDateString();
+                if (idleDateStr !== todayStr) {
+                    isOvernight = true;
+                }
+            }
         } else if (lastIdleStart) {
             duration = Math.floor((Date.now() - lastIdleStart) / 1000);
+            const idleDateStr = new Date(lastIdleStart).toLocaleDateString();
+            const todayStr = new Date().toLocaleDateString();
+            if (idleDateStr !== todayStr) {
+                isOvernight = true;
+            }
         }
         lastIdleStart = null;
+
+        // Discard overnight or extremely large idle durations to prevent timer leakage
+        if (duration > 14400 && (isOvernight || duration > 28800)) {
+            console.log(`[Idle] Discarding extremely large/overnight idle duration of ${duration}s (isOvernight: ${isOvernight})`);
+            duration = 0;
+        }
 
         if (duration >= IDLE_PROMPT_THRESHOLD_SEC) {
             const manualSession = getActiveSession('manual');
@@ -619,8 +669,9 @@ app.post('/event', asyncHandler(async (req, res) => {
     const autoSession = getTodayAutomaticSession();
     const wasAutoStatus = autoSession.status;
     
-    if (event === 'lock' && (reason === 'user_initiated' || reason === 'session_resign')) {
+    if (event === 'lock' && finishReasons.includes(reason)) {
         completeSession(autoSession.id);
+        clearSessionState(autoSession.id);
         addEvent(autoSession.id, `${event}_${reason}`);
         console.log(`[Auto] Session #${autoSession.id} COMPLETED due to user action (${reason}).`);
         sendNativeNotification('🏠 WFH Session Finished', 'Lid closed or manual sleep detected. WFH session finished.');
@@ -649,9 +700,10 @@ app.post('/event', asyncHandler(async (req, res) => {
     const manualSession = getActiveSession('manual');
     if (manualSession) {
         if (event === 'lock') {
-            if (reason === 'user_initiated' || reason === 'session_resign') {
+            if (finishReasons.includes(reason)) {
                 // Force complete manual session (assuming user is leaving or closing lid)
                 completeSession(manualSession.id);
+                clearSessionState(manualSession.id);
                 console.log(`[Manual] Session #${manualSession.id} COMPLETED due to user action (${reason})`);
                 sendNativeNotification('✅ Session Finished', 'Lid closed or manual sleep detected. Session finished.');
             } else {

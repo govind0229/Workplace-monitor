@@ -2,6 +2,12 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [4.0.2] - 2026-05-26
+
+### Fixed
+- **Overnight Active Time Leakage** — Implemented comprehensive dual-source validation of idle duration during unlock events. The server now checks and discards overnight sleep, lock, or idle times that span across calendar days if they are excessively large (> 4 hours), preventing fake active hours from accumulating on the next day's boot.
+- **Midnight Crossover Security** — Enhanced the background rollover loop to reset the global lock timestamp state immediately when midnight crosses, preventing yesterday's lock state from leaking into today's first login.
+
 ## [4.0.1] - 2026-05-25
 
 ### Fixed
