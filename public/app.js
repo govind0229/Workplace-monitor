@@ -258,7 +258,7 @@ async function loadAppSuggestions() {
         const data = await res.json();
         if (appSuggestions) {
             appSuggestions.innerHTML = data.apps.map(app =>
-                `<option value="${escapeHTML(app)}">`
+                html`<option value="${escapeHTML(app)}">`
             ).join('');
         }
     } catch (e) {
