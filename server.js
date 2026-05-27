@@ -3,6 +3,11 @@ const path = require('path');
 const os = require('os');
 const notificationQueue = [];
 
+function sanitizeLog(input) {
+    if (typeof input !== 'string') return input;
+    return input.replace(/[\r\n]/g, '');
+}
+
 let pendingIdlePrompt = null;
 let pendingBreakReminder = null;
 let lastIdleStart = null;
@@ -415,7 +420,9 @@ function runBackgroundLoop() {
                 }
 
                 // Break reminder
-                const breakMin = parseInt(getCachedSetting('breakInterval', '60'));
+                let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                if (breakMin === 1) breakMin = 60; // Self-healing if set to 1 for tests
+
                 if (breakMin > 0) {
                     const breakSec = breakMin * 60;
                     const lastBreak = activeSession.last_break_notify || 0;
@@ -429,17 +436,12 @@ function runBackgroundLoop() {
                             minutes: breakMin,
                             message: msg.body
                         };
-                        // Self-healing: If it was set to 1 (testing mode), restore to 60 immediately
-                        // so it doesn't spam every minute!
-                        if (breakMin === 1) {
-                            setSetting('breakInterval', '60');
-                            invalidateSettingsCache();
-                            console.log('[Demo Safety] Reset breakInterval back to 60 minutes after triggering demo break');
-                        }
                     }
                 }
             } else if (type === 'automatic') {
-                const wfhBreakMin = parseInt(getCachedSetting('wfhBreakInterval', '60'));
+                let wfhBreakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                if (wfhBreakMin === 1) wfhBreakMin = 60;
+
                 if (wfhBreakMin > 0) {
                     const breakSec = wfhBreakMin * 60;
                     const lastBreak = activeSession.last_break_notify || 0;
@@ -453,12 +455,6 @@ function runBackgroundLoop() {
                             minutes: wfhBreakMin,
                             message: msg.body
                         };
-                        // Self-healing: If it was set to 1 (testing mode), restore to 60 immediately
-                        if (wfhBreakMin === 1) {
-                            setSetting('wfhBreakInterval', '60');
-                            invalidateSettingsCache();
-                            console.log('[Demo Safety] Reset wfhBreakInterval back to 60 minutes after triggering demo break');
-                        }
                     }
                 }
             }
@@ -469,9 +465,9 @@ function runBackgroundLoop() {
         // Adaptive scaling: Poll every 5s during active sessions, 15s when idle
         const manualSession = getActiveSession('manual');
         const autoSession = getTodayAutomaticSession();
-        const isActive = (manualSession && manualSession.status === 'active') || 
-                       (autoSession && autoSession.status === 'active');
-        
+        const isActive = (manualSession && manualSession.status === 'active') ||
+            (autoSession && autoSession.status === 'active');
+
         setTimeout(runBackgroundLoop, isActive ? 5000 : 15000);
     }
 }
@@ -552,13 +548,13 @@ app.post('/start', asyncHandler(async (req, res) => {
     if (!session) {
         const id = startSession('manual', targetProjectId);
         session = { id, status: 'active', total_seconds: 0, type: 'manual', project_id: targetProjectId };
-        console.log(`[Manual] Session started: ${id}${targetProjectId ? ` (project: ${targetProjectId})` : ''}`);
+        console.log(sanitizeLog(`[Manual] Session started: ${id}${targetProjectId ? ` (project: ${targetProjectId})` : ''}`));
         sendNativeNotification('🏢 Workplace Session Started', 'Manual tracking is now active. Good luck!');
     } else {
         const providedProjectId = project_id !== undefined ? (project_id || null) : session.project_id;
 
         if (String(providedProjectId) !== String(session.project_id)) {
-            console.log(`[${sessionType}] Project changed from ${session.project_id} to ${providedProjectId}. Splitting session.`);
+            console.log(sanitizeLog(`[${sessionType}] Project changed from ${session.project_id} to ${providedProjectId}. Splitting session.`));
             completeSession(session.id);
             const newId = startSession(sessionType, providedProjectId);
             session = { id: newId, status: 'active', total_seconds: 0, type: sessionType, project_id: providedProjectId };
@@ -577,7 +573,7 @@ app.post('/start', asyncHandler(async (req, res) => {
     if (targetProjectId !== null) {
         const currentDefault = getSetting('defaultProjectId');
         if (String(targetProjectId) !== String(currentDefault)) {
-            console.log(`[Settings] Updating default project ID to ${targetProjectId}`);
+            console.log(sanitizeLog(`[Settings] Updating default project ID to ${targetProjectId}`));
             setSetting('defaultProjectId', targetProjectId);
         }
     }
@@ -628,7 +624,7 @@ app.post('/event', asyncHandler(async (req, res) => {
     } else if (event === 'unlock') {
         let duration = 0;
         let isOvernight = false;
-        
+
         if (metadata && metadata.duration) {
             duration = parseInt(metadata.duration);
             if (lastIdleStart) {
@@ -671,12 +667,12 @@ app.post('/event', asyncHandler(async (req, res) => {
     // 1. Handle Automatic Session (Completes on user action, pauses on idle)
     const autoSession = getTodayAutomaticSession();
     const wasAutoStatus = autoSession.status;
-    
+
     if (event === 'lock' && finishReasons.includes(reason)) {
         completeSession(autoSession.id);
         clearSessionState(autoSession.id);
         addEvent(autoSession.id, `${event}_${reason}`);
-        console.log(`[Auto] Session #${autoSession.id} COMPLETED due to user action (${reason}).`);
+        console.log(sanitizeLog(`[Auto] Session #${autoSession.id} COMPLETED due to user action (${reason}).`));
         sendNativeNotification('🏠 WFH Session Finished', 'Lid closed or manual sleep detected. WFH session finished.');
     } else {
         const autoStatus = event === 'lock' ? 'paused' : 'active';
@@ -686,15 +682,15 @@ app.post('/event', asyncHandler(async (req, res) => {
         // Send notification for automatic session state changes
         if (event === 'unlock' && wasAutoStatus !== 'active') {
             if (!autoSession.notified) {
-                console.log(`[Auto] Screen unlocked — automatic session started (Reason: ${reason}).`);
+                console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session started (Reason: ${reason}).`));
                 sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
                 db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
             } else {
-                console.log(`[Auto] Screen unlocked — automatic session resumed (Reason: ${reason}).`);
+                console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session resumed (Reason: ${reason}).`));
                 sendNativeNotification('🏠 WFH Session Resumed', 'Screen unlocked. Timer resumed.');
             }
         } else if (event === 'lock' && wasAutoStatus === 'active') {
-            console.log(`[Auto] Screen locked — automatic session paused (Reason: ${reason}).`);
+            console.log(sanitizeLog(`[Auto] Screen locked — automatic session paused (Reason: ${reason}).`));
             sendNativeNotification('🏠 WFH Session Paused', 'Screen locked. Timer paused.');
         }
     }
@@ -707,11 +703,11 @@ app.post('/event', asyncHandler(async (req, res) => {
                 // Force complete manual session (assuming user is leaving or closing lid)
                 completeSession(manualSession.id);
                 clearSessionState(manualSession.id);
-                console.log(`[Manual] Session #${manualSession.id} COMPLETED due to user action (${reason})`);
+                console.log(sanitizeLog(`[Manual] Session #${manualSession.id} COMPLETED due to user action (${reason})`));
                 sendNativeNotification('✅ Session Finished', 'Lid closed or manual sleep detected. Session finished.');
             } else {
                 db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
-                console.log(`[Manual] Session #${manualSession.id} PAUSED due to idle (${reason})`);
+                console.log(sanitizeLog(`[Manual] Session #${manualSession.id} PAUSED due to idle (${reason})`));
             }
             addEvent(manualSession.id, `lock_${reason}`);
         } else if (event === 'unlock') {
@@ -724,7 +720,7 @@ app.post('/event', asyncHandler(async (req, res) => {
         }
     }
 
-    console.log(`Received event: ${event} (Reason: ${reason}).`);
+    console.log(sanitizeLog(`Received event: ${event} (Reason: ${reason}).`));
     res.json({ success: true });
 }));
 
@@ -768,7 +764,7 @@ app.post('/location', asyncHandler(async (req, res) => {
             let targetProjectId = null;
             const defaultProjectId = getSetting('defaultProjectId');
             if (defaultProjectId) targetProjectId = parseInt(defaultProjectId);
-            
+
             const id = startSession('manual', targetProjectId);
             manualSession = { id, status: 'active', total_seconds: 0, type: 'manual', project_id: targetProjectId };
             console.log(`[Location] Arrived at office (Distance: ${Math.round(distance)}m). Starting Office Timer.`);
@@ -884,22 +880,22 @@ app.get('/status', (req, res) => {
 
 app.post('/respond-idle-prompt', asyncHandler(async (req, res) => {
     const { choice } = req.body;
-    
+
     if (!pendingIdlePrompt) {
         return res.status(400).json({ error: 'No pending idle prompt' });
     }
-    
+
     const { sessionId, duration } = pendingIdlePrompt;
-    
+
     if (choice === 'meeting' || choice === 'designing' || choice === 'work_call') {
         updateSessionSeconds(sessionId, duration);
         addEvent(sessionId, `idle_respond_keep_${choice}`);
-        console.log(`[Idle Prompt] Added ${duration}s back to session #${sessionId} (Choice: ${choice})`);
+        console.log(sanitizeLog(`[Idle Prompt] Added ${duration}s back to session #${sessionId} (Choice: ${choice})`));
     } else {
         addEvent(sessionId, `idle_respond_discard_${choice}`);
         console.log(`[Idle Prompt] Discarded idle duration ${duration}s (Choice: ${choice})`);
     }
-    
+
     pendingIdlePrompt = null;
     res.json({ success: true });
 }));
@@ -1113,14 +1109,14 @@ app.get('/export-csv', (req, res) => {
         data = getOfficeVisitsReport(start, end);
         headers = 'Date,In Time,Out Time,Office Span (seconds),Office Span,Workplace Duration (seconds),Workplace Duration,Breaks';
         res.setHeader('Content-Disposition', 'attachment; filename=office_visits_report.csv');
-        
+
         const formatTimeVal = (timeStr) => {
             if (!timeStr || timeStr === '—') return timeStr;
             const parts = timeStr.split(':');
             const h_24 = parseInt(parts[0]);
             const m = parts[1];
             const s = parts[2] || '00';
-            
+
             if (timeFormat === 'ampm') {
                 const ampm = h_24 >= 12 ? 'PM' : 'AM';
                 let h = h_24 % 12;
@@ -1257,7 +1253,7 @@ function getMondayOfCurrentWeek() {
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
     const monday = new Date(d.setDate(diff));
-    monday.setHours(0,0,0,0);
+    monday.setHours(0, 0, 0, 0);
     const yyyy = monday.getFullYear();
     const mm = String(monday.getMonth() + 1).padStart(2, '0');
     const dd = String(monday.getDate()).padStart(2, '0');
@@ -1266,19 +1262,19 @@ function getMondayOfCurrentWeek() {
 
 function generateSmartCommentary(totalHours, apps, topProjectName, topProjectPct, isWeekly = false) {
     if (totalHours === 0) {
-        return isWeekly 
+        return isWeekly
             ? "You haven't logged any focus time this week yet. Start tracking to build your smart weekly digest!"
             : "You haven't logged any focus time today yet. Start a tracking session to see your daily digest!";
     }
 
-    const greetings = isWeekly 
+    const greetings = isWeekly
         ? ["Exceptional week!", "What a productive run!", "Great job!", "Solid effort this week!", "Week in review!"]
         : ["Excellent wrap-up!", "Great job today!", "Day complete!", "Way to go!", "Solid day of work!"];
 
     const greeting = greetings.at(Math.floor(Math.random() * greetings.length));
 
-    let timephrase = isWeekly 
-        ? `You worked ${totalHours.toFixed(1)} hours this week.` 
+    let timephrase = isWeekly
+        ? `You worked ${totalHours.toFixed(1)} hours this week.`
         : `You worked ${totalHours.toFixed(1)} hours today.`;
 
     let appPhrase = "";
@@ -1329,7 +1325,7 @@ function generateSmartCommentary(totalHours, apps, topProjectName, topProjectPct
 
 app.get('/ai-digest', (req, res) => {
     const { getAIDigestData } = require('./db');
-    
+
     // 1. Get dates in local timezone (YYYY-MM-DD format)
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -1347,7 +1343,7 @@ app.get('/ai-digest', (req, res) => {
         const totalSec = data.total_manual + data.total_auto;
         const totalHours = totalSec / 3600;
         const topApp = data.apps[0]?.app_name || null;
-        
+
         let topProjectName = null;
         let topProjectPct = 0;
         let topProjectColor = null;
@@ -1388,8 +1384,24 @@ app.get('/ai-digest', (req, res) => {
         week: buildSummary(weeklyData, true)
     });
 });
+// Dynamic Break Interval Scheduler
+function updateDynamicBreak() {
+    console.log("[Dynamic Breaks] Recalculating dynamic break interval based on past 14 days of work behavior...");
+    const { calculateDynamicBreakInterval } = require('./db');
+    const newInterval = calculateDynamicBreakInterval();
+    invalidateSettingsCache();
+    console.log(`[Dynamic Breaks] New dynamic break interval set to ${newInterval} minutes.`);
+}
+
+// Run immediately on boot, and then every 24 hours
+updateDynamicBreak();
+setInterval(updateDynamicBreak, 24 * 60 * 60 * 1000);
+
+app.get('/dynamic-break-stats', (req, res) => {
+    const interval = getCachedSetting('dynamicBreakInterval', '60');
+    res.json({ interval: parseInt(interval) });
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
-

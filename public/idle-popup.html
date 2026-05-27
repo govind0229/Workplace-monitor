@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Break Completed</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #8b5cf6;
+      --secondary: #10b981;
+      --bg: #0c0c14;
+      --text: #fafafa;
+      --text-dim: #a1a1aa;
+      --radius: 16px;
+      --blur: blur(20px);
+    }
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      margin: 0;
+      padding: 10px 12px 14px 12px;
+      background: transparent;
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .popup-container {
+      width: 100%;
+      height: auto;
+      background: rgba(20, 20, 30, 0.93);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+      animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .icon-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 12px;
+      color: var(--primary);
+    }
+    .header-info h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin: 0 0 2px 0;
+      color: var(--text);
+    }
+    .subtitle {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+    .description {
+      font-size: 0.85rem;
+      color: var(--text);
+      line-height: 1.35;
+      margin: 0 0 12px 0;
+    }
+    .description strong {
+      color: var(--primary);
+      font-weight: 700;
+    }
+    .category-header {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin: 12px 0 8px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .option-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      cursor: pointer;
+      color: inherit;
+      outline: none;
+      transition: all 0.2s;
+      text-align: left;
+    }
+    .option-card:hover {
+      background: rgba(255, 255, 255, 0.06);
+      transform: translateY(-2px);
+    }
+    .option-card:active {
+      transform: translateY(0);
+    }
+    .option-card.work-option:hover {
+      border-color: rgba(139, 92, 246, 0.5);
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+    }
+    .option-card:not(.work-option):hover {
+      border-color: rgba(16, 185, 129, 0.5);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+    }
+    .option-emoji {
+      font-size: 1.4rem;
+    }
+    .option-content {
+      display: flex;
+      flex-direction: column;
+    }
+    .option-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .option-desc {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-container">
+    <div class="header">
+      <div class="icon-wrapper">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+      </div>
+      <div class="header-info">
+        <h2>Break Completed</h2>
+        <span class="subtitle">Welcome back! Let's log your time.</span>
+      </div>
+    </div>
+    
+    <p class="description">You were away for <strong id="idleDurationText">...</strong>. How would you like to log this time?</p>
+    
+    <div class="category-header">Log as Break (Discard Time)</div>
+    <div class="options-grid">
+      <button class="option-card" onclick="respond('coffee')">
+        <div class="option-emoji">☕</div>
+        <div class="option-content">
+          <span class="option-title">Coffee / Snack</span>
+          <span class="option-desc">Short break</span>
+        </div>
+      </button>
+      
+      <button class="option-card" onclick="respond('driving')">
+        <div class="option-emoji">🚗</div>
+        <div class="option-content">
+          <span class="option-title">Driving</span>
+          <span class="option-desc">In transit</span>
+        </div>
+      </button>
+
+      <button class="option-card" onclick="respond('lunch')">
+        <div class="option-emoji">🍽️</div>
+        <div class="option-content">
+          <span class="option-title">Lunch / Meal</span>
+          <span class="option-desc">Meal break</span>
+        </div>
+      </button>
+
+      <button class="option-card" onclick="respond('exercise')">
+        <div class="option-emoji">🚶</div>
+        <div class="option-content">
+          <span class="option-title">Exercise</span>
+          <span class="option-desc">Physical activity</span>
+        </div>
+      </button>
+
+      <button class="option-card" onclick="respond('personal')">
+        <div class="option-emoji">📵</div>
+        <div class="option-content">
+          <span class="option-title">Personal</span>
+          <span class="option-desc">Off work</span>
+        </div>
+      </button>
+    </div>
+
+    <div class="category-header">Log as Work (Add to Session)</div>
+    <div class="options-grid">
+      <button class="option-card work-option" onclick="respond('meeting')">
+        <div class="option-emoji">👥</div>
+        <div class="option-content">
+          <span class="option-title">Meeting</span>
+          <span class="option-desc">Collaboration</span>
+        </div>
+      </button>
+      
+      <button class="option-card work-option" onclick="respond('designing')">
+        <div class="option-emoji">📝</div>
+        <div class="option-content">
+          <span class="option-title">Designing</span>
+          <span class="option-desc">Off-screen work</span>
+        </div>
+      </button>
+
+      <button class="option-card work-option" onclick="respond('work_call')">
+        <div class="option-emoji">📞</div>
+        <div class="option-content">
+          <span class="option-title">Work Call</span>
+          <span class="option-desc">Phone / Audio</span>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    function closeWindow() {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.closeIdlePopup) {
+        window.webkit.messageHandlers.closeIdlePopup.postMessage(null);
+      }
+    }
+
+    function sendHeightToNative() {
+      const height = document.documentElement.scrollHeight;
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.updateHeight) {
+        window.webkit.messageHandlers.updateHeight.postMessage(height);
+      }
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => sendHeightToNative());
+      resizeObserver.observe(document.body);
+    } else {
+      window.addEventListener('load', sendHeightToNative);
+    }
+
+    async function loadStatus() {
+      try {
+        const response = await fetch('/status');
+        const data = await response.json();
+        if (data.pending_idle_prompt) {
+          const durationSec = data.pending_idle_prompt.duration;
+          const minutes = Math.floor(durationSec / 60);
+          const seconds = durationSec % 60;
+          let text = "";
+          if (minutes > 0) text += `${minutes}m `;
+          text += `${seconds}s`;
+          document.getElementById('idleDurationText').textContent = text;
+        } else {
+          document.getElementById('idleDurationText').textContent = 'a while';
+        }
+      } catch (err) {
+        document.getElementById('idleDurationText').textContent = 'a while';
+      }
+    }
+
+    async function respond(choice) {
+      try {
+        await fetch('/respond-idle-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ choice })
+        });
+      } catch (e) {
+        console.error("Error sending response", e);
+      } finally {
+        closeWindow();
+      }
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>

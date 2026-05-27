@@ -151,12 +151,12 @@ navItems.forEach(item => {
             const isTarget = view.id === targetView + 'View';
             view.classList.toggle('active', isTarget);
             view.setAttribute('aria-hidden', !isTarget);
-            
+
             if (isTarget) {
                 // Modern Focus Management for accessibility
                 view.setAttribute('tabindex', '-1');
                 view.focus({ preventScroll: true });
-                
+
                 // Trigger staggered animations for active elements
                 requestAnimationFrame(() => {
                     const animatedElements = view.querySelectorAll('.glass-card, .view-title, .status-card');
@@ -164,7 +164,7 @@ navItems.forEach(item => {
                         el.classList.remove('animate-in');
                         void el.offsetWidth; // Force Reflow
                         el.classList.add('animate-in');
-                        
+
                         // Apply precise micro-animation delay dynamically
                         el.style.animationDelay = `${index * 0.05}s`;
                     });
@@ -200,10 +200,16 @@ async function loadSettings() {
         const data = await res.json();
         goalHoursInput.value = data.goalHours;
         goalMinutesInput.value = data.goalMinutes;
-        const breakInput = document.getElementById('breakInterval');
-        if (breakInput) breakInput.value = data.breakInterval || 60;
-        const wfhBreakInput = document.getElementById('wfhBreakInterval');
-        if (wfhBreakInput) wfhBreakInput.value = data.wfhBreakInterval || 60;
+        try {
+            const dynRes = await fetch(`${API_BASE}/dynamic-break-stats`);
+            const dynData = await dynRes.json();
+            const dynText = document.getElementById('dynamicBreakText');
+            if (dynText) {
+                dynText.textContent = `AI scheduled your next break for ${dynData.interval} minutes from now based on your behavior.`;
+            }
+        } catch (err) {
+            console.error('Failed to load dynamic break stats', err);
+        }
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
         defaultProjectId = data.defaultProjectId || null;
 
@@ -325,7 +331,7 @@ function addCategoryMapping() {
 
     // Remove app from all categories first
     for (const cat in customAppCategories) {
-        if(Object.hasOwn(customAppCategories, cat)) { const arr = Reflect.get(customAppCategories, cat); Reflect.set(customAppCategories, cat, arr.filter(a => a !== appName)); }
+        if (Object.hasOwn(customAppCategories, cat)) { const arr = Reflect.get(customAppCategories, cat); Reflect.set(customAppCategories, cat, arr.filter(a => a !== appName)); }
         if (Reflect.get(customAppCategories, cat).length === 0) {
             Reflect.deleteProperty(customAppCategories, cat);
         }
@@ -370,10 +376,7 @@ if (appNameInput) {
 saveSettingsBtn.onclick = async () => {
     const h = parseInt(goalHoursInput.value);
     const m = parseInt(goalMinutesInput.value);
-    const breakInput = document.getElementById('breakInterval');
-    const wfhBreakInput = document.getElementById('wfhBreakInterval');
-    const breakMin = breakInput ? parseInt(breakInput.value) || 0 : 60;
-    const wfhBreakMin = wfhBreakInput ? parseInt(wfhBreakInput.value) || 0 : 60;
+
     const linePct = goalLinePercentInput ? parseInt(goalLinePercentInput.value) || 44 : 44;
     const radius = officeRadiusInput ? parseInt(officeRadiusInput.value) || 200 : 200;
 
@@ -402,8 +405,7 @@ saveSettingsBtn.onclick = async () => {
             body: JSON.stringify({
                 goalHours: h,
                 goalMinutes: m,
-                breakInterval: breakMin,
-                wfhBreakInterval: wfhBreakMin,
+
                 goalLinePercent: linePct,
                 officeRadius: radius,
                 customAppCategories: JSON.stringify(customAppCategories)
@@ -438,7 +440,7 @@ if (setOfficeLocationBtn) {
             console.log('[Location] Requesting office location via Native Bridge...');
             _isSettingOfficeLocation = true;
             window.webkit.messageHandlers.requestLocation.postMessage({});
-            
+
             // Auto-reset if native doesn't respond in 15s to prevent UI hang
             setTimeout(() => {
                 if (_isSettingOfficeLocation) {
@@ -457,7 +459,7 @@ if (setOfficeLocationBtn) {
         }
 
         const geoOptions = { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 };
-        
+
         const successCallback = async (position) => {
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
@@ -564,7 +566,7 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
     const dLat = toRad(lat2 - lat1);
     const dLng = toRad(lng2 - lng1);
     const a = Math.sin(dLat / 2) ** 2 +
-              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -610,7 +612,7 @@ function updateDistanceCard(userLat, userLng, accuracy) {
         const distValEl = document.getElementById('routeDistValue');
         const distUnitEl = document.getElementById('routeDistUnit');
         const etaEl = document.getElementById('routeEta');
-        
+
         if (distValEl && distUnitEl) {
             if (straightDist >= 1000) {
                 distValEl.textContent = (straightDist / 1000).toFixed(2);
@@ -620,7 +622,7 @@ function updateDistanceCard(userLat, userLng, accuracy) {
                 distUnitEl.textContent = 'm';
             }
         }
-        
+
         if (etaEl) etaEl.textContent = 'Calculating route…';
         const slEl = document.getElementById('routeStraightLine');
         if (slEl) slEl.textContent = '';
@@ -676,7 +678,7 @@ async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'dr
             console.warn('[Route] Primary server failed, trying backup...', e.message);
             res = await fetch(secondaryUrl, { signal: controller.signal });
         }
-        
+
         clearTimeout(timeoutId);
         if (!res.ok) throw new Error(`OSRM HTTP ${res.status}`);
         const data = await res.json();
@@ -727,8 +729,8 @@ async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'dr
             }).addTo(locationMap);
 
             // Add distance label directly on the map line
-            const distLabel = distMetres >= 1000 ? (distMetres/1000).toFixed(1) + ' km' : Math.round(distMetres) + ' m';
-            _routePolyline.bindTooltip(`${distLabel} ${mode==='cycling'?'bike':'drive'}`, {
+            const distLabel = distMetres >= 1000 ? (distMetres / 1000).toFixed(1) + ' km' : Math.round(distMetres) + ' m';
+            _routePolyline.bindTooltip(`${distLabel} ${mode === 'cycling' ? 'bike' : 'drive'}`, {
                 permanent: true,
                 direction: 'center',
                 className: 'route-label-tooltip',
@@ -739,8 +741,8 @@ async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'dr
             const slEl = document.getElementById('routeStraightLine');
             if (slEl) {
                 const straightDist = haversineDistance(userLat, userLng, officeLat, officeLng);
-                const slText = straightDist >= 1000 
-                    ? `${(straightDist/1000).toFixed(1)}km straight` 
+                const slText = straightDist >= 1000
+                    ? `${(straightDist / 1000).toFixed(1)}km straight`
                     : `${Math.round(straightDist)}m straight`;
                 slEl.textContent = `(via road) · ${slText}`;
             }
@@ -753,14 +755,14 @@ async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'dr
     } catch (err) {
         clearTimeout(timeoutId);
         console.error('[Route] OSRM error:', err.name, err.message);
-        
+
         // Optimization: Instead of showing "Road route unavailable", we just hide the ETA row 
         // and keep the main distance display which already shows the straight-line fallback.
         const etaRow = document.querySelector('.route-eta-row');
         if (etaRow) {
             etaRow.style.display = 'none';
         }
-        
+
         if (etaEl) {
             etaEl.textContent = '';
         }
@@ -894,7 +896,7 @@ function centerOnUser() {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
         console.log('[Location] Requesting location via Native Bridge...');
         window.webkit.messageHandlers.requestLocation.postMessage({});
-        
+
         // Auto-reset if native doesn't respond in 10s
         setTimeout(resetBtn, 10000);
         return;
@@ -921,7 +923,7 @@ function centerOnUser() {
                     iconAnchor: [10, 10]
                 })
             }).addTo(locationMap).bindPopup(`📍 You are here<br><small style="color:#999">${lat.toFixed(5)}, ${lng.toFixed(5)}</small>`);
-            
+
             locationMap.setView([lat, lng], 16);
         }
 
@@ -931,7 +933,7 @@ function centerOnUser() {
 
     const errorCallback = (err) => {
         console.warn(`[Location] Locate-Me Error (Code ${err.code}): ${err.message}`);
-        
+
         if (err.code === err.PERMISSION_DENIED) {
             alert('Location access was denied. Please go to System Settings → Privacy & Security → Location Services and toggle ON for Workplace Monitor.');
             resetBtn();
@@ -961,7 +963,7 @@ function centerOnUser() {
 window.onNativeLocation = (lat, lng, acc) => {
     window._lastUserPos = { lat, lng, acc };
     console.log(`[Location] Received Native Coordinates: ${lat}, ${lng} ±${Math.round(acc)}m (SetOffice: ${_isSettingOfficeLocation})`);
-    
+
     // Check if this location update was specifically for setting the office
     if (_isSettingOfficeLocation) {
         // Construct a position object similar to the Geolocation API
@@ -972,7 +974,7 @@ window.onNativeLocation = (lat, lng, acc) => {
                 accuracy: acc
             }
         };
-        
+
         // Find the success callback logic from the setOfficeLocationBtn scope
         // Since we refactored, we need to handle the saving logic here or reuse the same logic
         saveOfficeLocation(pos);
@@ -988,10 +990,10 @@ window.onNativeLocation = (lat, lng, acc) => {
                 iconAnchor: [10, 10]
             })
         }).addTo(locationMap).bindPopup(`📍 You are here (Native GPS)<br><small style="color:#999">${lat.toFixed(5)}, ${lng.toFixed(5)}</small>`);
-        
+
         locationMap.setView([lat, lng], 16);
     }
-    
+
     updateDistanceCard(lat, lng, acc);
 
     // Reset the "Locate Me" button if it's currently in "Locating..." state
@@ -1040,7 +1042,7 @@ function initLocationView() {
             zoomControl: false,
             attributionControl: false
         }).setView([28.6, 77.2], 12);
-        
+
         switchMapType('street');
 
         L.control.zoom({
@@ -1212,25 +1214,25 @@ function switchMapType(type) {
 
 function updateRadiusUI(radius) {
     if (!radiusValDisplay || !officeRadiusSlider) return;
-    
+
     radius = Math.max(100, Math.min(1000, parseInt(radius)));
-    
+
     radiusValDisplay.textContent = radius;
     officeRadiusSlider.value = radius;
     if (officeRadiusInput) officeRadiusInput.value = radius;
-    
+
     const displayLabel = document.getElementById('officeRadiusDisplay');
     if (displayLabel) displayLabel.textContent = radius + 'm';
-    
+
     if (gaugeProgress) {
         const percent = (radius - 100) / 900;
         const dashOffset = 251.3 * (1 - percent);
         gaugeProgress.style.strokeDashoffset = dashOffset;
     }
-    
+
     if (officeCircle) officeCircle.setRadius(radius);
     if (officeOuterCircle) officeOuterCircle.setRadius(radius);
-    
+
     // Auto-save to server
     saveRadiusToServer(radius);
 }
@@ -1299,21 +1301,21 @@ function formatWeekLabel(dateStr) {
     // Robust manual parsing of YYYY-MM-DD to avoid "Invalid Date" in some environments
     const parts = dateStr.split('-');
     if (parts.length !== 3) return dateStr;
-    
+
     try {
         const year = parseInt(parts[0]);
         const month = parseInt(parts[1]) - 1;
         const day = parseInt(parts[2]);
-        
+
         const date = new Date(year, month, day);
         if (isNaN(date.getTime())) return dateStr;
 
         const options = { month: 'short', day: 'numeric' };
         const start = date.toLocaleDateString(undefined, options);
-        
+
         const end = new Date(year, month, day + 6);
         const endStr = end.toLocaleDateString(undefined, options);
-        
+
         return `${start} - ${endStr}`;
     } catch (e) {
         return dateStr;
@@ -1355,8 +1357,6 @@ async function updateStatus(forceSync = false) {
             const res = await fetch(`${API_BASE}/status`);
             const data = await res.json();
 
-            // Check for smart idle return prompt
-            checkPendingIdlePrompt(data);
 
             // Check for smart break reminder
             checkPendingBreakReminder(data);
@@ -1404,7 +1404,7 @@ async function updateStatus(forceSync = false) {
                         const parts = timeOnly.split(':');
                         return `${parts[0].padStart(2, '0')}:${parts[1]}:${parts[2] || '00'}`;
                     };
-                    
+
                     arrivalTimeVal.textContent = formatTimeVal(data.arrivalTime);
                     arrivalTimeDisplay.style.display = 'block';
                 } else if (arrivalTimeDisplay) {
@@ -1503,7 +1503,7 @@ async function updateStatus(forceSync = false) {
         }
 
         if (heroLabelIcon) {
-            heroLabelIcon.innerHTML = isWorkplace 
+            heroLabelIcon.innerHTML = isWorkplace
                 ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>'
                 : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>';
         }
@@ -1542,18 +1542,18 @@ startBtn.onclick = async () => {
 // Add listener to project selector for real-time splitting when changed mid-session
 document.getElementById('projectSelect').onchange = async (e) => {
     const projectId = e.target.value || null;
-    
+
     // NEW: If any session is active/paused, split and update it
-    if (manualStatus === 'active' || manualStatus === 'paused' || 
+    if (manualStatus === 'active' || manualStatus === 'paused' ||
         autoStatus === 'active' || autoStatus === 'paused') {
-        
+
         await fetch(`${API_BASE}/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 project_id: projectId ? parseInt(projectId) : null,
                 // Tell server to check automatic too if no manual found
-                include_automatic: true 
+                include_automatic: true
             })
         });
         updateStatus(true);
@@ -1593,7 +1593,7 @@ async function fetchReports() {
             await renderProjectReport();
             return;
         }
-        
+
         let url = `${API_BASE}/reports`;
         if (filterStartDate || filterEndDate) {
             const params = new URLSearchParams();
@@ -1613,19 +1613,19 @@ async function fetchReports() {
 async function renderProjectReport() {
     const reportsList = document.getElementById('reportsList');
     if (!reportsList) return;
-    
+
     reportsList.classList.remove('visits-grid');
     reportsList.classList.add('projects-grid');
     reportsList.innerHTML = DOMPurify.sanitize('<div class="chart-loading">Loading project stats...</div>');
-    
+
     try {
         const res = await fetch(`${API_BASE}/project-reports`);
         const data = await res.json();
         const summary = data.summary || [];
         const history = data.history || [];
-        
+
         const fragment = document.createDocumentFragment();
-        
+
         // --- SUMMARY SECTION ---
         const summaryHeader = document.createElement('div');
         summaryHeader.className = 'report-item report-header';
@@ -1636,7 +1636,7 @@ async function renderProjectReport() {
             <span>Sessions</span>
         `);
         fragment.appendChild(summaryHeader);
-        
+
         if (summary.length > 0) {
             summary.forEach(item => {
                 const row = document.createElement('div');
@@ -1680,7 +1680,7 @@ async function renderProjectReport() {
                 fragment.appendChild(row);
             });
         }
-        
+
         // --- HISTORY SECTION ---
         const historyTitle = document.createElement('div');
         historyTitle.className = 'report-item report-header';
@@ -1691,7 +1691,7 @@ async function renderProjectReport() {
             <span>Date</span>
         `);
         fragment.appendChild(historyTitle);
-        
+
         if (history.length > 0) {
             history.forEach(item => {
                 const row = document.createElement('div');
@@ -1712,7 +1712,7 @@ async function renderProjectReport() {
             empty.textContent = 'No project history recorded yet';
             fragment.appendChild(empty);
         }
-        
+
         requestAnimationFrame(() => {
             reportsList.innerHTML = DOMPurify.sanitize('');
             reportsList.appendChild(fragment);
@@ -1732,7 +1732,7 @@ function renderActiveTab() {
     // Add header
     const header = document.createElement('div');
     header.className = 'report-item report-header';
-    
+
     if (currentTab === 'visits') {
         reportsList.classList.remove('projects-grid');
         reportsList.classList.add('visits-grid');
@@ -1761,7 +1761,7 @@ function renderActiveTab() {
             const row = document.createElement('div');
             row.className = 'report-item';
             row.style.animation = 'fadeIn 0.3s ease-out';
-            
+
             if (currentTab === 'visits') {
                 const formatTimeVal = (timeStr) => {
                     if (!timeStr || timeStr === '—') return timeStr;
@@ -1769,7 +1769,7 @@ function renderActiveTab() {
                     const h_24 = parseInt(parts[0]);
                     const m = parts[1];
                     const s = parts[2] || '00';
-                    
+
                     if (timeFormat === 'ampm') {
                         const ampm = h_24 >= 12 ? 'PM' : 'AM';
                         let h = h_24 % 12;
@@ -1807,7 +1807,7 @@ function renderActiveTab() {
                 if (currentTab === 'weekly' && item.week) {
                     label = formatWeekLabel(item.week);
                 }
-                
+
                 row.innerHTML = DOMPurify.sanitize(`
                     <span>${escapeHTML(label)}</span>
                     <span>${item.manual_total > 0 ? formatTime(item.manual_total) : '—'}</span>
@@ -1836,12 +1836,12 @@ tabButtons.forEach(btn => {
         tabButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentTab = btn.dataset.tab;
-        
+
         // Show/hide time format toggle
         if (timeFormatToggle) {
             timeFormatToggle.style.display = currentTab === 'visits' ? 'block' : 'none';
         }
-        
+
         fetchReports();
     };
 });
@@ -1864,14 +1864,14 @@ document.getElementById('exportCsvBtn').onclick = async () => {
         let url = `${API_BASE}/export-csv?tab=${currentTab}&timeFormat=${timeFormat}`;
         if (filterStartDate) url += `&start=${filterStartDate}`;
         if (filterEndDate) url += `&end=${filterEndDate}`;
-        
+
         console.log("CSV Export: Fetching from url:", url);
         const res = await fetch(url);
         console.log("CSV Export: Fetch status:", res.status);
         if (!res.ok) throw new Error("Failed to export report. Status: " + res.status);
         const text = await res.text();
         console.log("CSV Export: Fetched text length:", text.length);
-        
+
         // Check if running inside our macOS native WebView shell with download bridge
         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.downloadFile) {
             console.log("CSV Export: Detected native bridge 'downloadFile'. Posting message.");
@@ -1884,7 +1884,7 @@ document.getElementById('exportCsvBtn').onclick = async () => {
             // Standard web browser download fallback
             const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
             const blobUrl = URL.createObjectURL(blob);
-            
+
             const a = document.createElement('a');
             a.href = blobUrl;
             a.download = `${currentTab}_report.csv`;
@@ -2346,12 +2346,12 @@ window.addEventListener('offline', () => {
         if (goalLabel) {
             goalLabel.textContent = `Goal: ${data.goalHours}h ${data.goalMinutes}m`;
         }
-        
+
         // Sync default project
         if (data.defaultProjectId) {
             defaultProjectId = String(data.defaultProjectId);
         }
-        
+
         // Refresh project list to reflect default
         loadProjects();
     } catch (e) {
@@ -2372,7 +2372,7 @@ let _mainUpdateInterval = null;
 // Throttled update loop (1s resolution is plenty for a dashboard timer)
 function startMainLoop() {
     if (_mainUpdateInterval) return;
-    
+
     console.log('[App] Starting main update loop (1s interval)');
     _mainUpdateInterval = setInterval(() => {
         updateStatus(false);
@@ -2432,12 +2432,12 @@ async function renderStatsChart(rangeDays) {
             chartDataCache = data;
             chartDataCacheTime = now;
         }
-        
+
         const daily = data.daily || [];
         const days = [];
         const today = new Date();
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        
+
         // Build the days array for the selected range
         for (let i = rangeDays - 1; i >= 0; i--) {
             const d = new Date(today);
@@ -2459,11 +2459,11 @@ async function renderStatsChart(rangeDays) {
         if (scroller) {
             scroller.innerHTML = days.map(d => `
                 <div class="date-capsule ${d.isToday ? 'active' : ''}">
-                    <span class="date-num">${d.num < 10 ? '0'+d.num : d.num}</span>
+                    <span class="date-num">${d.num < 10 ? '0' + d.num : d.num}</span>
                     <span class="date-day">${d.label}</span>
                 </div>
             `).join('');
-            
+
             setTimeout(() => {
                 scroller.scrollLeft = scroller.scrollWidth;
             }, 10);
@@ -2474,32 +2474,32 @@ async function renderStatsChart(rangeDays) {
         const svgH = 250;
         const padX = 40;
         const padYTop = 20;
-        const padYBot = 40; 
-        
+        const padYBot = 40;
+
         // Find max seconds to dynamically scale Y-Axis
         let maxSecsInWindow = Math.max(...days.map(d => Math.max(d.manual, d.auto)), 4 * 3600);
         let maxHrs = Math.ceil(maxSecsInWindow / 3600);
         if (maxHrs < 4) maxHrs = 4;
         const maxSecs = maxHrs * 3600;
-        
+
         const drawH = svgH - padYTop - padYBot;
         const drawW = svgW - padX * 2;
-        
+
         const stepX = days.length > 1 ? drawW / (days.length - 1) : 0;
-        
+
         let manualPoints = [];
         let autoPoints = [];
-        
+
         days.forEach((d, i) => {
             const x = padX + i * stepX;
             const mSecs = Math.min(d.manual, maxSecs);
             const aSecs = Math.min(d.auto, maxSecs);
-            
+
             const mY = (padYTop + drawH) - ((mSecs / maxSecs) * drawH);
             const aY = (padYTop + drawH) - ((aSecs / maxSecs) * drawH);
-            
-            manualPoints.push({x, y: mY});
-            autoPoints.push({x, y: aY});
+
+            manualPoints.push({ x, y: mY });
+            autoPoints.push({ x, y: aY });
         });
 
         // Catmull-Rom to Cubic Bezier spline algorithm
@@ -2513,12 +2513,12 @@ async function renderStatsChart(rangeDays) {
                 const p1 = pts.at(i);
                 const p2 = pts.at(i + 1);
                 const p3 = i + 2 < pts.length ? pts.at(i + 2) : p2;
-                
+
                 const cp1x = p1.x + (p2.x - p0.x) * tension;
                 const cp1y = p1.y + (p2.y - p0.y) * tension;
                 const cp2x = p2.x - (p3.x - p1.x) * tension;
                 const cp2y = p2.y - (p3.y - p1.y) * tension;
-                
+
                 d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
             }
             return d;
@@ -2526,26 +2526,26 @@ async function renderStatsChart(rangeDays) {
 
         const solidPath = document.getElementById('splineSolidPath');
         if (solidPath) solidPath.setAttribute('d', getPathData(manualPoints));
-        
+
         const dashedPath = document.getElementById('splineDashedPath');
         if (dashedPath) dashedPath.setAttribute('d', getPathData(autoPoints));
-        
+
         const gradPath = document.getElementById('splineGradientPath');
         if (gradPath && manualPoints.length > 0) {
             const pathD = getPathData(manualPoints);
             const gradD = pathD + ` L ${manualPoints.at(-1).x},${padYTop + drawH} L ${manualPoints.at(0).x},${padYTop + drawH} Z`;
             gradPath.setAttribute('d', gradD);
         }
-        
+
         const xAxisGrp = document.getElementById('splineXAxis');
         if (xAxisGrp) {
             xAxisGrp.innerHTML = days.map((d, i) => {
                 const x = padX + i * stepX;
-                const showLabel = days.length <= 7 || (i % Math.ceil(days.length/7) === 0) || i === days.length - 1;
+                const showLabel = days.length <= 7 || (i % Math.ceil(days.length / 7) === 0) || i === days.length - 1;
                 if (!showLabel) return '';
                 return `
                     <circle cx="${x}" cy="${padYTop + drawH}" r="3" fill="var(--border)" />
-                    <text x="${x}" y="${padYTop + drawH + 20}" class="chart-label p-center">${d.num} ${d.label.substring(0,1)}</text>
+                    <text x="${x}" y="${padYTop + drawH + 20}" class="chart-label p-center">${d.num} ${d.label.substring(0, 1)}</text>
                 `;
             }).join('');
         }
@@ -2554,7 +2554,7 @@ async function renderStatsChart(rangeDays) {
         if (yAxisGrp) {
             let yLabelsHtml = '';
             // Generate dynamic labels based on maxHrs
-            for (let i = maxHrs; i > 0; i -= Math.max(1, Math.floor(maxHrs/4))) {
+            for (let i = maxHrs; i > 0; i -= Math.max(1, Math.floor(maxHrs / 4))) {
                 const yPos = (padYTop + drawH) - ((i / maxHrs) * drawH);
                 yLabelsHtml += `
                     <line x1="${padX}" y1="${yPos}" x2="${svgW}" y2="${yPos}" class="chart-grid-line" />
@@ -2586,7 +2586,7 @@ async function loadProjects() {
                 opt.style.color = p.color;
                 projectSelect.appendChild(opt);
             });
-            
+
             // If manual session is active, it will be set by updateStatus
             // If idle, set to default
             if (manualStatus === 'idle' && autoStatus === 'idle') {
@@ -2640,25 +2640,25 @@ function renderProjectsList(projects) {
                     body: JSON.stringify({ defaultProjectId: parseInt(id) })
                 });
                 defaultProjectId = id;
-                
+
                 // 2. If any session is active, split/update it to the new project immediately
-                if (manualStatus === 'active' || manualStatus === 'paused' || 
+                if (manualStatus === 'active' || manualStatus === 'paused' ||
                     autoStatus === 'active' || autoStatus === 'paused') {
                     await fetch(`${API_BASE}/start`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
+                        body: JSON.stringify({
                             project_id: parseInt(id),
-                            include_automatic: true 
+                            include_automatic: true
                         })
                     });
                 }
-                
+
                 loadProjects(); // Refresh UI
                 updateStatus(true); // Sync dashboard
-            } catch (e) { 
+            } catch (e) {
                 console.error('Failed to set default project:', e);
-                alert('Failed to set default project.'); 
+                alert('Failed to set default project.');
             }
         };
     });
@@ -2718,7 +2718,7 @@ function initReportFilters() {
     const closeBtn = document.getElementById('closeFilterBtn');
     const popup = document.getElementById('filterPopup');
     const activeDot = document.getElementById('filterActiveDot');
-    
+
     const applyBtn = document.getElementById('applyFiltersBtn');
     const resetBtn = document.getElementById('resetFiltersBtn');
     const startInp = document.getElementById('filterStartDate');
@@ -2797,7 +2797,7 @@ function initReportFilters() {
             filterEndDate = end.toISOString().split('T')[0];
             if (startInp) startInp.value = filterStartDate;
             if (endInp) endInp.value = filterEndDate;
-            
+
             if (activeDot) activeDot.style.display = 'block';
             popup.style.display = 'none';
             fetchReports();
@@ -2890,7 +2890,7 @@ if (triggerSyncBtn) {
 
 // Load cloud settings when settings page loads
 const _origLoadSettings = loadSettings;
-loadSettings = async function() {
+loadSettings = async function () {
     await _origLoadSettings();
     loadCloudSettings();
 };
@@ -2956,7 +2956,7 @@ async function showAIDigestModal(defaultTab = 'today') {
     currentDigestTab = defaultTab;
     const toggleToday = document.getElementById('digestToggleToday');
     const toggleWeek = document.getElementById('digestToggleWeek');
-    
+
     if (toggleToday && toggleWeek) {
         if (defaultTab === 'today') {
             toggleToday.classList.add('active');
@@ -3000,7 +3000,7 @@ async function showAIDigestModal(defaultTab = 'today') {
 function hideAIDigestModal() {
     const modal = document.getElementById('aiDigestModal');
     if (!modal) return;
-    
+
     modal.classList.remove('active');
     setTimeout(() => {
         modal.style.display = 'none';
@@ -3037,7 +3037,7 @@ function renderAIDigestUI() {
     }
 
     document.getElementById('digestGoalHint').textContent = goalLabel;
-    
+
     // Animate progress fill
     setTimeout(() => {
         document.getElementById('digestTimeProgress').style.width = `${goalPercent}%`;
@@ -3046,12 +3046,12 @@ function renderAIDigestUI() {
     // 3. Set top app info
     const appValEl = document.getElementById('digestAppValue');
     const appTimeEl = document.getElementById('digestAppTime');
-    
+
     if (data.most_used_app) {
         appValEl.textContent = data.most_used_app;
         appValEl.title = data.most_used_app;
         appValEl.classList.add('truncate');
-        
+
         const appHrs = Math.floor(data.most_used_app_seconds / 3600);
         const appMins = Math.floor((data.most_used_app_seconds % 3600) / 60);
         appTimeEl.textContent = `${appHrs}h ${appMins}m focus`;
@@ -3069,7 +3069,7 @@ function renderAIDigestUI() {
         projValEl.textContent = data.top_project_name;
         projValEl.title = data.top_project_name;
         projValEl.classList.add('truncate');
-        
+
         projPctEl.textContent = `${data.top_project_pct}%`;
         projPctEl.style.display = 'inline-block';
         if (data.top_project_color) {
@@ -3096,7 +3096,7 @@ function renderAIDigestUI() {
         listContainer.innerHTML = data.projects.map(proj => {
             const h = Math.floor(proj.seconds / 3600);
             const m = Math.floor((proj.seconds % 3600) / 60);
-            
+
             return `
                 <div class="digest-proj-row">
                     <div class="digest-proj-info">
@@ -3137,13 +3137,13 @@ function renderAIDigestUI() {
                 '#f59e0b', // Amber
                 '#8b5cf6', // Purple
             ];
-            
+
             appsListContainer.innerHTML = data.apps.map((app, index) => {
                 const h = Math.floor(app.total_seconds / 3600);
                 const m = Math.floor((app.total_seconds % 3600) / 60);
                 const pct = data.total_seconds > 0 ? Math.min(Math.round((app.total_seconds / data.total_seconds) * 100), 100) : 0;
                 const color = appColors.at(index % appColors.length);
-                
+
                 return `
                     <div class="digest-proj-row">
                         <div class="digest-proj-info">
@@ -3173,84 +3173,6 @@ function renderAIDigestUI() {
     }
 }
 
-// --- Smart Idle Return Assist Dialog ---
-let currentIdlePrompt = null;
-
-function checkPendingIdlePrompt(data) {
-    const modal = document.getElementById('idleResumeModal');
-    if (!modal) return;
-    
-    if (data.pending_idle_prompt) {
-        // If we already have this exact prompt open, don't re-trigger
-        if (currentIdlePrompt && currentIdlePrompt.sessionId === data.pending_idle_prompt.sessionId && currentIdlePrompt.duration === data.pending_idle_prompt.duration) {
-            return;
-        }
-        
-        currentIdlePrompt = data.pending_idle_prompt;
-        
-        // Format duration into a human readable text, e.g. "12m 34s" or "10 minutes"
-        const durationSec = data.pending_idle_prompt.duration;
-        const minutes = Math.floor(durationSec / 60);
-        const seconds = durationSec % 60;
-        let durationText = "";
-        if (minutes > 0) {
-            durationText += `${minutes}m `;
-        }
-        durationText += `${seconds}s`;
-        
-        const durationEl = document.getElementById('idleDurationText');
-        if (durationEl) {
-            durationEl.textContent = durationText;
-        }
-        
-        modal.style.display = 'flex';
-        // Allow rendering display: flex before adding active class for transition
-        requestAnimationFrame(() => {
-            modal.classList.add('active');
-        });
-    } else {
-        // Only hide if the server has cleared the prompt
-        if (modal.classList.contains('active')) {
-            modal.classList.remove('active');
-            setTimeout(() => {
-                modal.style.display = 'none';
-                currentIdlePrompt = null;
-            }, 300);
-        }
-    }
-}
-
-async function respondToIdlePrompt(choice) {
-    if (!currentIdlePrompt) return;
-    
-    try {
-        const res = await fetch(`${API_BASE}/respond-idle-prompt`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ choice })
-        });
-        
-        if (res.ok) {
-            const modal = document.getElementById('idleResumeModal');
-            if (modal) {
-                modal.classList.remove('active');
-                setTimeout(() => {
-                    modal.style.display = 'none';
-                    currentIdlePrompt = null;
-                }, 300);
-            }
-            updateStatus(true);
-        } else {
-            console.error("Failed to respond to idle prompt");
-        }
-    } catch (e) {
-        console.error("Error sending response to idle prompt", e);
-    }
-}
-
-// Bind to window to ensure click events inside custom scheme HTML can invoke them
-window.respondToIdlePrompt = respondToIdlePrompt;
-window.checkPendingIdlePrompt = checkPendingIdlePrompt;
 
 // --- Smart Break Reminder Overlay & Controls ---
 let currentBreakReminder = null;

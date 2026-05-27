@@ -733,6 +733,127 @@ class BreakPopupController: NSObject, NSWindowDelegate, WKNavigationDelegate, WK
 }
 
 
+// MARK: - Standalone Floating Idle Popup Controller
+class IdlePopupController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+    var window: NSWindow?
+    var webView: WKWebView?
+    let serverURL: String
+    let schemeHandler = LocalhostSchemeHandler()
+
+    init(serverURL: String) {
+        self.serverURL = serverURL
+        super.init()
+    }
+
+    func showWindow() {
+        if let existingWindow = window {
+            NSApp.setActivationPolicy(.regular)
+            existingWindow.orderFrontRegardless()
+            existingWindow.makeKey()
+            NSApp.activate(ignoringOtherApps: true)
+            if let url = URL(string: "app://localhost/idle-popup.html") {
+                webView?.load(URLRequest(url: url))
+            }
+            return
+        }
+
+        let config = WKWebViewConfiguration()
+        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        config.setURLSchemeHandler(schemeHandler, forURLScheme: "app")
+        config.userContentController.add(self, name: "closeIdlePopup")
+        config.userContentController.add(self, name: "updateHeight")
+
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.setValue(false, forKey: "drawsBackground")
+        self.webView = webView
+
+        let windowWidth: CGFloat = 400
+        let windowHeight: CGFloat = 460
+
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let windowX = screenFrame.origin.x + (screenFrame.width - windowWidth) / 2
+        let windowY = screenFrame.origin.y + (screenFrame.height - windowHeight) / 2
+
+        let window = NSWindow(
+            contentRect: NSRect(x: windowX, y: windowY, width: windowWidth, height: windowHeight),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Idle Prompt"
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+
+        window.contentView = webView
+        window.delegate = self
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 0.95)
+        window.appearance = NSAppearance(named: .darkAqua)
+        
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        self.window = window
+
+        NSApp.setActivationPolicy(.regular)
+        window.orderFrontRegardless()
+        window.makeKey()
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let url = URL(string: "app://localhost/idle-popup.html") {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
+    func hideWindow() {
+        DispatchQueue.main.async {
+            self.window?.orderOut(nil)
+            if let menuBar = (NSApp.delegate as? AppDelegate)?.menuBarUtility,
+               menuBar.dashboardController?.window?.isVisible == true {
+            } else {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        self.hideWindow()
+        return false
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "closeIdlePopup" {
+            self.hideWindow()
+        } else if message.name == "updateHeight" {
+            if let heightVal = message.body as? Double {
+                DispatchQueue.main.async {
+                    self.adjustWindowHeight(to: CGFloat(heightVal))
+                }
+            }
+        }
+    }
+
+    func adjustWindowHeight(to height: CGFloat) {
+        guard let window = self.window else { return }
+        let minHeight: CGFloat = 300
+        let maxHeight: CGFloat = 800
+        let safeHeight = max(minHeight, min(maxHeight, height))
+        
+        var frame = window.frame
+        let oldHeight = frame.size.height
+        let delta = oldHeight - safeHeight
+        
+        frame.size.height = safeHeight
+        frame.origin.y += delta
+        window.setFrame(frame, display: true, animate: false)
+    }
+}
+
+
 // MARK: - Menu Bar Utility
 class MenuBarUtility: NSObject {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -752,6 +873,7 @@ class MenuBarUtility: NSObject {
     
     var dashboardController: DashboardWindowController?
     var breakPopupController: BreakPopupController?
+    var idlePopupController: IdlePopupController?
     var isScreenLocked: Bool = false
     var lastTrackedApp: String = ""
     var idleCheckTimer: Timer?
@@ -762,6 +884,8 @@ class MenuBarUtility: NSObject {
     // Break reminder popup tracking
     var lastShownBreakSessionId: Int?
     var lastShownBreakMinutes: Int?
+    var lastShownIdleSessionId: String?
+    var lastShownIdleDuration: Int?
     
     var appMenu: NSMenu!
 
@@ -779,6 +903,7 @@ class MenuBarUtility: NSObject {
         super.init()
         dashboardController = DashboardWindowController(serverURL: serverURL)
         breakPopupController = BreakPopupController(serverURL: serverURL)
+        idlePopupController = IdlePopupController(serverURL: serverURL)
         setupStatusItem()
         setupNotifications()
         setupLocationManager()
@@ -1028,6 +1153,22 @@ class MenuBarUtility: NSObject {
                     self.lastShownBreakSessionId = nil
                     self.lastShownBreakMinutes = nil
                     self.breakPopupController?.hideWindow()
+                }
+
+                // Auto-popup Idle Prompt window
+                if let idlePrompt = json["pending_idle_prompt"] as? [String: Any],
+                   let sessionId = idlePrompt["sessionId"] as? String,
+                   let duration = idlePrompt["duration"] as? Int {
+                    if sessionId != self.lastShownIdleSessionId || duration != self.lastShownIdleDuration {
+                        self.lastShownIdleSessionId = sessionId
+                        self.lastShownIdleDuration = duration
+                        print("[Idle] New idle prompt detected (\(duration)s). Spawning popup window.")
+                        self.idlePopupController?.showWindow()
+                    }
+                } else {
+                    self.lastShownIdleSessionId = nil
+                    self.lastShownIdleDuration = nil
+                    self.idlePopupController?.hideWindow()
                 }
 
                 self.lastSyncTime = Date()
