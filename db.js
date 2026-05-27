@@ -5,16 +5,21 @@ const os = require('os');
 
 // Store DB in User's Application Support folder to persist across updates
 const homeDir = os.homedir();
-const rawAppDataDir = path.join(homeDir, 'Library', 'Application Support', 'WorkingHours');
+const basePath = path.normalize(homeDir + path.sep);
+const rawAppDataDir = path.join(basePath, 'Library', 'Application Support', 'WorkingHours');
 const appDataDir = path.normalize(rawAppDataDir);
 
 // Ensure directory exists
-if (!appDataDir.startsWith(path.normalize(homeDir))) { throw new Error('Invalid path'); }
+if (!appDataDir.startsWith(basePath)) { throw new Error('Invalid path'); }
 if (!fs.existsSync(appDataDir)) {
   fs.mkdirSync(appDataDir, { recursive: true });
 }
 
-const dbPath = path.join(appDataDir, 'working_hours.db');
+const dbBasePath = path.normalize(appDataDir + path.sep);
+const joinedPath = path.join(dbBasePath, 'working_hours.db');
+const dbPath = path.normalize(joinedPath);
+if (!dbPath.startsWith(dbBasePath)) { throw new Error('Invalid path'); }
+
 const db = new Database(dbPath);
 
 // Initialize schema

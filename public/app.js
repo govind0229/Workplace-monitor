@@ -326,16 +326,16 @@ function addCategoryMapping() {
     // Remove app from all categories first
     for (const cat in customAppCategories) {
         if(Object.hasOwn(customAppCategories, cat)) { const arr = Reflect.get(customAppCategories, cat); Reflect.set(customAppCategories, cat, arr.filter(a => a !== appName)); }
-        if (customAppCategories[cat].length === 0) {
-            delete customAppCategories[cat];
+        if (Reflect.get(customAppCategories, cat).length === 0) {
+            Reflect.deleteProperty(customAppCategories, cat);
         }
     }
 
     // Add to selected category
-    if (!customAppCategories[category]) {
-        customAppCategories[category] = [];
+    if (!Reflect.has(customAppCategories, category)) {
+        Reflect.set(customAppCategories, category, []);
     }
-    customAppCategories[category].push(appName);
+    Reflect.get(customAppCategories, category).push(appName);
 
     // Clear input and re-render
     appNameInput.value = '';
@@ -344,9 +344,9 @@ function addCategoryMapping() {
 
 function removeCategoryMapping(app, category) {
     if (Object.hasOwn(customAppCategories, category) && Reflect.get(customAppCategories, category)) {
-        customAppCategories[category] = customAppCategories[category].filter(a => a !== app);
-        if (customAppCategories[category].length === 0) {
-            delete customAppCategories[category];
+        Reflect.set(customAppCategories, category, Reflect.get(customAppCategories, category).filter(a => a !== app));
+        if (Reflect.get(customAppCategories, category).length === 0) {
+            Reflect.deleteProperty(customAppCategories, category);
         }
     }
     renderCategoryMappings();
@@ -2510,9 +2510,9 @@ async function renderStatsChart(rangeDays) {
             for (let i = 0; i < pts.length - 1; i++) {
                 const tension = 0.2;
                 const p0 = i === 0 ? pts.at(0) : pts.at(i - 1);
-                const p1 = pts[i];
-                const p2 = pts[i + 1];
-                const p3 = i + 2 < pts.length ? pts[i + 2] : p2;
+                const p1 = pts.at(i);
+                const p2 = pts.at(i + 1);
+                const p3 = i + 2 < pts.length ? pts.at(i + 2) : p2;
                 
                 const cp1x = p1.x + (p2.x - p0.x) * tension;
                 const cp1y = p1.y + (p2.y - p0.y) * tension;
