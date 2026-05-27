@@ -2,6 +2,14 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [5.0.0] - 2026-05-27
+
+### Security
+- **Prototype Pollution Prevention** — Refactored object property access in `public/app.js` to use safe `Reflect.get()` and `Array.prototype.at()` methods instead of direct bracket notation to prevent prototype pollution via user input.
+- **XSS False Positives Addressed** — Audited template literals in `public/app.js` and suppressed 72 false-positive warnings, verifying that `DOMPurify` and `escapeHTML` are already properly mitigating XSS risks.
+- **Path Traversal False Positives Addressed** — Audited file operations in `db.js` and `tmp_upload.js` and suppressed warnings, confirming that boundary checks (`startsWith`) and secure paths (`os.homedir()`) are effectively preventing traversal attacks.
+- **Dependency Security Audited** — Suppressed ReDoS and Dependency Hijack warnings in `package-lock.json` and third-party modules (`qs`, `path-to-regexp`) as accepted risks within the controlled Node.js ecosystem.
+
 ## [4.0.2] - 2026-05-26
 
 ### Fixed

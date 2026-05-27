@@ -13,8 +13,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: x64
-            runner: self-hosted
+          # - arch: x64
+          #   runner: self-hosted
           - arch: arm64
             runner: macos-latest
     
