@@ -2,6 +2,12 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [6.0.0] - 2026-05-27
+
+### Added
+- **Dynamic Break Scheduling** — Replaced the static 60-minute break reminder with an intelligent algorithm that analyzes the last 14 days of your work behavior. The AI dynamically schedules your next break based on your natural rhythm, clamped between 30 and 120 minutes.
+- **Configurable Server Port** — Added a setting in the UI to change the Node.js backend port (defaults to 3000), preventing conflicts with other local development servers.
+
 ## [5.0.0] - 2026-05-27
 
 ### Security

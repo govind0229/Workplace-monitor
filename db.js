@@ -430,6 +430,45 @@ module.exports = {
       apps: appUsage || [],
       projects: projectBreakdown || []
     };
+  },
+
+  calculateDynamicBreakInterval: () => {
+    // 1. Get the past 14 days of history
+    const query = `
+      SELECT date,
+             SUM(total_seconds) as total_work,
+             (SELECT COUNT(*) FROM lock_events le 
+              JOIN sessions s2 ON le.session_id = s2.id 
+              WHERE s2.date = sessions.date
+              AND (le.event_type LIKE 'lock%' OR le.event_type LIKE '%discard%' OR le.event_type LIKE '%take_break%')) as break_count
+      FROM sessions
+      WHERE date >= date('now', '-14 days', 'localtime')
+      GROUP BY date
+    `;
+    const rows = db.prepare(query).all();
+    
+    let totalWorkSecs = 0;
+    let totalBlocks = 0; // Each day starts with 1 block, plus 1 block for every break
+
+    for (const row of rows) {
+      if (row.total_work > 0) {
+        totalWorkSecs += row.total_work;
+        totalBlocks += (row.break_count + 1);
+      }
+    }
+
+    let intervalMins = 60; // Fallback
+    if (totalBlocks > 0 && totalWorkSecs > 14400) { // Require at least 4 hours of historical data
+      const averageWorkBlockSecs = totalWorkSecs / totalBlocks;
+      intervalMins = Math.round(averageWorkBlockSecs / 60);
+      
+      // Clamp between 30 and 120 minutes
+      if (intervalMins < 30) intervalMins = 30;
+      if (intervalMins > 120) intervalMins = 120;
+    }
+
+    module.exports.setSetting('dynamicBreakInterval', intervalMins.toString());
+    return intervalMins;
   }
 };
 
