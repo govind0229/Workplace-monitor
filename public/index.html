@@ -5,9 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Office Hours Monitor</title>
-    <link rel="stylesheet" href="style.css?v=4.0.2">
+    <link rel="stylesheet" href="style.css?v=5.0.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
 </head>
 
 <body>
@@ -75,7 +76,7 @@
             </button>
         </nav>
         <div class="sidebar-footer">
-            <span class="version-badge">v4.0.2</span>
+            <span class="version-badge">v5.0.0</span>
         </div>
     </div>
 
@@ -963,7 +964,7 @@
         </div>
     </div>
 
-    <!-- Smart Idle Assist Modal -->
+    <!-- Break Popup Modal -->
     <div id="idleResumeModal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="idleModalTitle">
         <div class="modal-backdrop"></div>
         <div class="glass-card modal-container idle-prompt-container">
@@ -975,7 +976,7 @@
                     </svg>
                 </div>
                 <div>
-                    <h2 id="idleModalTitle">Smart Idle Assist</h2>
+                    <h2 id="idleModalTitle">Break Completed</h2>
                     <span class="idle-subtitle">Welcome back! Let's categorize your away time.</span>
                 </div>
             </div>
@@ -983,31 +984,72 @@
             <div class="idle-prompt-body">
                 <p class="idle-description">You were away for <strong id="idleDurationText">10 minutes</strong>. How would you like to log this time?</p>
                 
+                <h3 class="idle-category-header" style="margin-top: 24px; margin-bottom: 12px; font-size: 14px; color: var(--text-secondary);">Log as Break (Discard Time)</h3>
                 <div class="idle-options-grid">
-                    <!-- Option 1: Coffee / Break -->
                     <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('coffee')">
                         <div class="option-emoji">☕</div>
                         <div class="option-content">
-                            <span class="option-title">Coffee / Break</span>
-                            <span class="option-desc">Keep time paused. Discard this duration from work hours.</span>
+                            <span class="option-title">Coffee / Snack</span>
+                            <span class="option-desc">Short break</span>
                         </div>
                     </button>
                     
-                    <!-- Option 2: Meeting / Sync -->
-                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('meeting')">
+                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('driving')">
+                        <div class="option-emoji">🚗</div>
+                        <div class="option-content">
+                            <span class="option-title">Driving / Commute</span>
+                            <span class="option-desc">In transit</span>
+                        </div>
+                    </button>
+
+                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('lunch')">
+                        <div class="option-emoji">🍽️</div>
+                        <div class="option-content">
+                            <span class="option-title">Lunch / Meal</span>
+                            <span class="option-desc">Meal break</span>
+                        </div>
+                    </button>
+
+                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('exercise')">
+                        <div class="option-emoji">🚶</div>
+                        <div class="option-content">
+                            <span class="option-title">Exercise / Walk</span>
+                            <span class="option-desc">Physical activity</span>
+                        </div>
+                    </button>
+
+                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('personal')">
+                        <div class="option-emoji">📵</div>
+                        <div class="option-content">
+                            <span class="option-title">Personal Time</span>
+                            <span class="option-desc">Off work</span>
+                        </div>
+                    </button>
+                </div>
+
+                <h3 class="idle-category-header" style="margin-top: 24px; margin-bottom: 12px; font-size: 14px; color: var(--text-secondary);">Log as Work (Add to Session)</h3>
+                <div class="idle-options-grid">
+                    <button class="idle-option-card glass-card work-option" onclick="respondToIdlePrompt('meeting')">
                         <div class="option-emoji">👥</div>
                         <div class="option-content">
                             <span class="option-title">Meeting / Sync</span>
-                            <span class="option-desc">Add back to session. Log as active collaboration.</span>
+                            <span class="option-desc">Collaboration</span>
                         </div>
                     </button>
                     
-                    <!-- Option 3: Off-screen Work / Designing -->
-                    <button class="idle-option-card glass-card" onclick="respondToIdlePrompt('designing')">
+                    <button class="idle-option-card glass-card work-option" onclick="respondToIdlePrompt('designing')">
                         <div class="option-emoji">📝</div>
                         <div class="option-content">
-                            <span class="option-title">Off-screen Work / Designing</span>
-                            <span class="option-desc">Add back to session. Log as active designing or thinking.</span>
+                            <span class="option-title">Designing / Planning</span>
+                            <span class="option-desc">Off-screen work</span>
+                        </div>
+                    </button>
+
+                    <button class="idle-option-card glass-card work-option" onclick="respondToIdlePrompt('work_call')">
+                        <div class="option-emoji">📞</div>
+                        <div class="option-content">
+                            <span class="option-title">Work Call</span>
+                            <span class="option-desc">Phone / Audio</span>
                         </div>
                     </button>
                 </div>
@@ -1079,7 +1121,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=4.0.2"></script>
+    <script src="app.js?v=5.0.0"></script>
 </body>
 
 </html>

@@ -101,7 +101,7 @@ const themeColors = {
 };
 
 function applyAccentColor(colorKey) {
-    const config = themeColors[colorKey] || themeColors.purple;
+    const config = Reflect.get(themeColors, colorKey) || themeColors.purple;
     const isLight = document.body.getAttribute('data-theme') === 'light';
 
     document.documentElement.style.setProperty('--primary', config.primary);
@@ -215,12 +215,12 @@ async function loadSettings() {
             if (data.officeLat && data.officeLng) {
                 locationStatusBadge.textContent = 'Office Location Configured ✓';
                 locationStatusBadge.className = 'status-badge status-active';
-                setOfficeLocationBtn.innerHTML = `
+                setOfficeLocationBtn.innerHTML = DOMPurify.sanitize(`
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
                     </svg>
                     Update to Current Location
-                `;
+                `);
             } else {
                 locationStatusBadge.textContent = 'Not Configured';
                 locationStatusBadge.className = 'status-badge status-offline';
@@ -277,7 +277,7 @@ function renderCategoryMappings() {
     }
 
     if (allMappings.length === 0) {
-        categoryMappingsList.innerHTML = '<div class="category-mappings-empty">No custom mappings yet. Add apps above to categorize them.</div>';
+        categoryMappingsList.innerHTML = DOMPurify.sanitize('<div class="category-mappings-empty">No custom mappings yet. Add apps above to categorize them.</div>');
         return;
     }
 
@@ -287,7 +287,7 @@ function renderCategoryMappings() {
     allMappings.forEach(({ app, category }) => {
         const item = document.createElement('div');
         item.className = 'category-mapping-item';
-        item.innerHTML = `
+        item.innerHTML = DOMPurify.sanitize(`
             <div class="category-mapping-info">
                 <span class="category-mapping-app">${escapeHTML(app)}</span>
                 <span class="category-mapping-badge">${escapeHTML(category)}</span>
@@ -295,12 +295,12 @@ function renderCategoryMappings() {
             <button class="category-mapping-remove" data-app="${escapeHTML(app)}" data-category="${escapeHTML(category)}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
-        `;
+        `);
         fragment.appendChild(item);
     });
 
     requestAnimationFrame(() => {
-        categoryMappingsList.innerHTML = '';
+        categoryMappingsList.innerHTML = DOMPurify.sanitize('');
         categoryMappingsList.appendChild(fragment);
 
         // Add remove handlers
@@ -325,7 +325,7 @@ function addCategoryMapping() {
 
     // Remove app from all categories first
     for (const cat in customAppCategories) {
-        customAppCategories[cat] = customAppCategories[cat].filter(a => a !== appName);
+        if(Object.hasOwn(customAppCategories, cat)) { const arr = Reflect.get(customAppCategories, cat); Reflect.set(customAppCategories, cat, arr.filter(a => a !== appName)); }
         if (customAppCategories[cat].length === 0) {
             delete customAppCategories[cat];
         }
@@ -343,7 +343,7 @@ function addCategoryMapping() {
 }
 
 function removeCategoryMapping(app, category) {
-    if (customAppCategories[category]) {
+    if (Object.hasOwn(customAppCategories, category) && Reflect.get(customAppCategories, category)) {
         customAppCategories[category] = customAppCategories[category].filter(a => a !== app);
         if (customAppCategories[category].length === 0) {
             delete customAppCategories[category];
@@ -427,12 +427,12 @@ let _isSettingOfficeLocation = false;
 if (setOfficeLocationBtn) {
     setOfficeLocationBtn.onclick = async () => {
         setOfficeLocationBtn.disabled = true;
-        setOfficeLocationBtn.innerHTML = `
+        setOfficeLocationBtn.innerHTML = DOMPurify.sanitize(`
             <svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
             </svg>
             Locating...
-        `;
+        `);
 
         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.requestLocation) {
             console.log('[Location] Requesting office location via Native Bridge...');
@@ -534,13 +534,13 @@ if (clearOfficeLocationBtn) {
 function resetLocationBtn() {
     if (!setOfficeLocationBtn) return;
     setOfficeLocationBtn.disabled = false;
-    setOfficeLocationBtn.innerHTML = `
+    setOfficeLocationBtn.innerHTML = DOMPurify.sanitize(`
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
             <circle cx="12" cy="12" r="3"/>
         </svg>
         Set Current Location as Office
-    `;
+    `);
 }
 
 // ===== LOCATION MAP VIEW =====
@@ -880,13 +880,13 @@ function centerOnUser() {
     const resetBtn = () => {
         if (locateMeBtn) {
             locateMeBtn.disabled = false;
-            locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> My Current Location`;
+            locateMeBtn.innerHTML = DOMPurify.sanitize(`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> My Current Location`);
         }
     };
 
     if (locateMeBtn) {
         locateMeBtn.disabled = true;
-        locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Locating…`;
+        locateMeBtn.innerHTML = DOMPurify.sanitize(`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Locating…`);
     }
 
     // --- NATIVE BRIDGE CHECK ---
@@ -997,7 +997,7 @@ window.onNativeLocation = (lat, lng, acc) => {
     // Reset the "Locate Me" button if it's currently in "Locating..." state
     if (locateMeBtn && locateMeBtn.innerText.includes('Locating')) {
         locateMeBtn.disabled = false;
-        locateMeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> My Current Location`;
+        locateMeBtn.innerHTML = DOMPurify.sanitize(`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg> My Current Location`);
     }
 };
 
@@ -1189,13 +1189,13 @@ function renderOfficeOnMap(lat, lng, radius) {
 }
 
 function switchMapType(type) {
-    if (!locationMap || !mapTiles[type]) return;
+    if (!locationMap || !Object.hasOwn(mapTiles, type)) return;
 
     if (currentBaseLayer) {
         locationMap.removeLayer(currentBaseLayer);
     }
 
-    currentBaseLayer = L.tileLayer(mapTiles[type], {
+    currentBaseLayer = L.tileLayer((Object.hasOwn(mapTiles, type) ? Reflect.get(mapTiles, type) : Reflect.get(mapTiles, 'osm')), {
         maxZoom: type === 'satellite' ? 18 : 20,
         attribution: type === 'street' ? '&copy; OpenStreetMap' : ''
     }).addTo(locationMap);
@@ -1616,7 +1616,7 @@ async function renderProjectReport() {
     
     reportsList.classList.remove('visits-grid');
     reportsList.classList.add('projects-grid');
-    reportsList.innerHTML = '<div class="chart-loading">Loading project stats...</div>';
+    reportsList.innerHTML = DOMPurify.sanitize('<div class="chart-loading">Loading project stats...</div>');
     
     try {
         const res = await fetch(`${API_BASE}/project-reports`);
@@ -1630,25 +1630,25 @@ async function renderProjectReport() {
         const summaryHeader = document.createElement('div');
         summaryHeader.className = 'report-item report-header';
         summaryHeader.style.marginTop = '0';
-        summaryHeader.innerHTML = `
+        summaryHeader.innerHTML = DOMPurify.sanitize(`
             <span>Project (Total)</span>
             <span>Total Time</span>
             <span>Sessions</span>
-        `;
+        `);
         fragment.appendChild(summaryHeader);
         
         if (summary.length > 0) {
             summary.forEach(item => {
                 const row = document.createElement('div');
                 row.className = 'report-item';
-                row.innerHTML = `
+                row.innerHTML = DOMPurify.sanitize(`
                     <span style="display:flex; align-items:center; gap:8px;">
                         <span style="width:10px; height:10px; border-radius:50%; background:${item.color || 'var(--primary)'}"></span>
                         ${escapeHTML(item.name || 'No Project')}
                     </span>
                     <span style="font-weight:600; color:var(--primary)">${formatTime(item.total_seconds)}</span>
                     <span class="auto-total-dim">${item.session_count} total</span>
-                `;
+                `);
                 fragment.appendChild(row);
             });
         }
@@ -1659,24 +1659,24 @@ async function renderProjectReport() {
             const monthlyHeader = document.createElement('div');
             monthlyHeader.className = 'report-item report-header';
             monthlyHeader.style.marginTop = '24px';
-            monthlyHeader.innerHTML = `
+            monthlyHeader.innerHTML = DOMPurify.sanitize(`
                 <span>Monthly Breakdown</span>
                 <span>Time</span>
                 <span>Month</span>
-            `;
+            `);
             fragment.appendChild(monthlyHeader);
 
             monthly.forEach(item => {
                 const row = document.createElement('div');
                 row.className = 'report-item';
-                row.innerHTML = `
+                row.innerHTML = DOMPurify.sanitize(`
                     <span style="display:flex; align-items:center; gap:8px;">
                         <span style="width:10px; height:10px; border-radius:50%; background:${item.color || 'var(--primary)'}"></span>
                         ${escapeHTML(item.name || 'No Project')}
                     </span>
                     <span style="font-weight:600">${formatTime(item.total_seconds)}</span>
                     <span class="auto-total-dim">${escapeHTML(item.month)}</span>
-                `;
+                `);
                 fragment.appendChild(row);
             });
         }
@@ -1685,25 +1685,25 @@ async function renderProjectReport() {
         const historyTitle = document.createElement('div');
         historyTitle.className = 'report-item report-header';
         historyTitle.style.marginTop = '24px';
-        historyTitle.innerHTML = `
+        historyTitle.innerHTML = DOMPurify.sanitize(`
             <span>History (By Project)</span>
             <span>Duration</span>
             <span>Date</span>
-        `;
+        `);
         fragment.appendChild(historyTitle);
         
         if (history.length > 0) {
             history.forEach(item => {
                 const row = document.createElement('div');
                 row.className = 'report-item';
-                row.innerHTML = `
+                row.innerHTML = DOMPurify.sanitize(`
                     <span style="display:flex; align-items:center; gap:8px;">
                         <span style="width:10px; height:10px; border-radius:50%; background:${item.project_color || '#555'}"></span>
                         ${escapeHTML(item.project_name || 'No Project')}
                     </span>
                     <span style="font-weight:600">${formatTime(item.total_seconds)}</span>
                     <span class="auto-total-dim">${escapeHTML(item.date)}</span>
-                `;
+                `);
                 fragment.appendChild(row);
             });
         } else {
@@ -1714,11 +1714,11 @@ async function renderProjectReport() {
         }
         
         requestAnimationFrame(() => {
-            reportsList.innerHTML = '';
+            reportsList.innerHTML = DOMPurify.sanitize('');
             reportsList.appendChild(fragment);
         });
     } catch (e) {
-        reportsList.innerHTML = '<div class="chart-loading">Error loading project report</div>';
+        reportsList.innerHTML = DOMPurify.sanitize('<div class="chart-loading">Error loading project report</div>');
     }
 }
 
@@ -1736,23 +1736,23 @@ function renderActiveTab() {
     if (currentTab === 'visits') {
         reportsList.classList.remove('projects-grid');
         reportsList.classList.add('visits-grid');
-        header.innerHTML = `
+        header.innerHTML = DOMPurify.sanitize(`
             <span>Date</span>
             <span>In Time</span>
             <span>Out Time</span>
             <span>Office Span</span>
             <span>Workplace Duration</span>
             <span>Breaks</span>
-        `;
+        `);
     } else {
         reportsList.classList.remove('projects-grid');
         reportsList.classList.remove('visits-grid');
-        header.innerHTML = `
+        header.innerHTML = DOMPurify.sanitize(`
             <span>Period</span>
             <span>Workplace</span>
             <span>Day Total</span>
             <span>Breaks</span>
-        `;
+        `);
     }
     fragment.appendChild(header);
 
@@ -1794,26 +1794,26 @@ function renderActiveTab() {
 
                 const inTime = item.in_time ? formatTimeVal(safeExtractTime(item.in_time)) : '—';
                 const outTime = item.out_time ? formatTimeVal(safeExtractTime(item.out_time)) : '—';
-                row.innerHTML = `
+                row.innerHTML = DOMPurify.sanitize(`
                     <span>${escapeHTML(item.date)}</span>
                     <span style="color:var(--primary); font-weight:500;">${escapeHTML(inTime)}</span>
                     <span style="color:var(--accent); font-weight:500;">${escapeHTML(outTime)}</span>
                     <span style="color:var(--text-dim); font-style:italic;">${item.office_span > 0 ? formatTime(item.office_span) : '—'}</span>
                     <span class="auto-total-dim">${item.total_seconds > 0 ? formatTime(item.total_seconds) : '—'}</span>
                     <span>${item.break_count > 0 ? formatTime(item.break_duration) : '—'}</span>
-                `;
+                `);
             } else {
                 let label = item.date || item.week || item.month;
                 if (currentTab === 'weekly' && item.week) {
                     label = formatWeekLabel(item.week);
                 }
                 
-                row.innerHTML = `
+                row.innerHTML = DOMPurify.sanitize(`
                     <span>${escapeHTML(label)}</span>
                     <span>${item.manual_total > 0 ? formatTime(item.manual_total) : '—'}</span>
                     <span class="auto-total-dim">${item.auto_total > 0 ? formatTime(item.auto_total) : '—'}</span>
                     <span>${item.break_count > 0 ? formatTime(item.break_duration) : '—'}</span>
-                `;
+                `);
             }
             fragment.appendChild(row);
         });
@@ -1826,7 +1826,7 @@ function renderActiveTab() {
 
     // Single DOM update
     requestAnimationFrame(() => {
-        reportsList.innerHTML = '';
+        reportsList.innerHTML = DOMPurify.sanitize('');
         reportsList.appendChild(fragment);
     });
 }
@@ -1943,7 +1943,7 @@ async function renderWeeklyChart() {
             const dateStr = d.toISOString().split('T')[0];
             const found = daily.find(r => r.date === dateStr);
             days.push({
-                label: dayNames[d.getDay()],
+                label: dayNames.at(d.getDay()),
                 date: dateStr,
                 manual: found ? found.manual_total : 0,
                 auto: found ? found.auto_total : 0,
@@ -2000,15 +2000,15 @@ async function renderWeeklyChart() {
             return `<div class="chart-day-cell"><span class="${cls}">${d.label}</span></div>`;
         }).join('');
 
-        container.innerHTML = `
+        container.innerHTML = DOMPurify.sanitize(`
             <div class="chart-bars-area">
                 <div class="chart-goal-line" style="bottom: ${goalPct}%"></div>
                 <div class="chart-cols-row">${colsHTML}</div>
             </div>
             <div class="chart-day-labels-row">${labelsHTML}</div>
-        `;
+        `);
     } catch (e) {
-        container.innerHTML = '<div class="chart-loading">Unable to load</div>';
+        container.innerHTML = DOMPurify.sanitize('<div class="chart-loading">Unable to load</div>');
     }
 }
 
@@ -2028,7 +2028,7 @@ function showColTooltip(e, el, label) {
     const manual = parseInt(el.getAttribute('data-manual') || '0');
     const auto = parseInt(el.getAttribute('data-auto') || '0');
 
-    globalTooltip.innerHTML = `
+    globalTooltip.innerHTML = DOMPurify.sanitize(`
         <div class="tooltip-title">${label}</div>
         <div style="display:flex; justify-content:space-between; gap:16px;">
             <span style="color:var(--text-dim)">Workplace</span>
@@ -2038,7 +2038,7 @@ function showColTooltip(e, el, label) {
             <span style="color:var(--text-dim)">Day Hours</span>
             <span class="tooltip-value">${formatHM(auto)}</span>
         </div>
-    `;
+    `);
 
     positionTooltip(e);
 }
@@ -2080,13 +2080,13 @@ function positionTooltip(e) {
 function showAppTooltip(e, appName, seconds) {
     createGlobalTooltip();
 
-    globalTooltip.innerHTML = `
+    globalTooltip.innerHTML = DOMPurify.sanitize(`
         <div class="tooltip-title">${appName}</div>
         <div style="display:flex; justify-content:space-between; gap:16px;">
             <span style="color:var(--text-dim)">Time Spent</span>
             <span class="tooltip-value" style="color:#3b82f6">${formatHM(seconds)}</span>
         </div>
-    `;
+    `);
 
     positionTooltip(e);
 }
@@ -2127,7 +2127,7 @@ async function renderActivityTimeline() {
         if (countEl) countEl.textContent = events.length + ' events';
 
         if (events.length === 0) {
-            container.innerHTML = '<div class="timeline-empty">No activity recorded today</div>';
+            container.innerHTML = DOMPurify.sanitize('<div class="timeline-empty">No activity recorded today</div>');
             return;
         }
 
@@ -2184,7 +2184,7 @@ async function renderActivityTimeline() {
             `;
         }).join('');
     } catch (e) {
-        container.innerHTML = '<div class="timeline-empty">Unable to load events</div>';
+        container.innerHTML = DOMPurify.sanitize('<div class="timeline-empty">Unable to load events</div>');
     }
 }
 
@@ -2200,7 +2200,7 @@ async function renderAppUsage() {
         if (countEl) countEl.textContent = usage.length + ' apps';
 
         if (usage.length === 0) {
-            container.innerHTML = '<div class="app-usage-empty">No app usage recorded today</div>';
+            container.innerHTML = DOMPurify.sanitize('<div class="app-usage-empty">No app usage recorded today</div>');
             return;
         }
 
@@ -2211,11 +2211,11 @@ async function renderAppUsage() {
         const fragment = document.createDocumentFragment();
         usage.slice(0, 10).forEach((app, i) => {
             const pct = Math.max((app.total_seconds / maxSeconds) * 100, 3);
-            const color = i < colorClasses.length ? colorClasses[i] : 'app-bar-default';
+            const color = i < colorClasses.length ? colorClasses.at(i) : 'app-bar-default';
 
             const row = document.createElement('div');
             row.className = 'app-row';
-            row.innerHTML = `
+            row.innerHTML = DOMPurify.sanitize(`
                 <div style="display:flex; width:100%; align-items:center;"
                      onmouseenter="showAppTooltip(event, '${escapeHTML(app.app_name)}', parseInt('${app.total_seconds}'))"
                      onmouseleave="hideColTooltip()">
@@ -2230,16 +2230,16 @@ async function renderAppUsage() {
                         </div>
                     </div>
                 </div>
-            `;
+            `);
             fragment.appendChild(row);
         });
 
         requestAnimationFrame(() => {
-            container.innerHTML = '';
+            container.innerHTML = DOMPurify.sanitize('');
             container.appendChild(fragment);
         });
     } catch (e) {
-        container.innerHTML = '<div class="app-usage-empty">Unable to load app usage</div>';
+        container.innerHTML = DOMPurify.sanitize('<div class="app-usage-empty">Unable to load app usage</div>');
     }
 }
 
@@ -2252,7 +2252,7 @@ async function renderCategoryChart() {
         const cats = data.categories || [];
 
         if (cats.length === 0) {
-            container.innerHTML = '<div class="category-empty">No app usage recorded today</div>';
+            container.innerHTML = DOMPurify.sanitize('<div class="category-empty">No app usage recorded today</div>');
             return;
         }
 
@@ -2266,7 +2266,7 @@ async function renderCategoryChart() {
         const slices = cats.map((cat, i) => {
             const pct = cat.seconds / total;
             const dashLen = pct * circumference;
-            const color = colors[i % colors.length];
+            const color = colors.at(i % colors.length);
             const slice = `<circle cx="70" cy="70" r="${radius}" fill="none" stroke="${color}" stroke-width="30"
                 stroke-dasharray="${dashLen} ${circumference - dashLen}" stroke-dashoffset="${-offset}"
                 style="transition: stroke-dashoffset 0.5s ease"/>`;
@@ -2278,7 +2278,7 @@ async function renderCategoryChart() {
 
         const legend = cats.map((cat, i) => {
             const pct = Math.round((cat.seconds / total) * 100);
-            const color = colors[i % colors.length];
+            const color = colors.at(i % colors.length);
             return `
                 <div class="category-item">
                     <div class="category-dot" style="background:${color}"></div>
@@ -2291,7 +2291,7 @@ async function renderCategoryChart() {
 
         container.innerHTML = pieSvg + `<div class="category-legend">${legend}</div>`;
     } catch (e) {
-        container.innerHTML = '<div class="category-empty">Unable to load categories</div>';
+        container.innerHTML = DOMPurify.sanitize('<div class="category-empty">Unable to load categories</div>');
     }
 }
 
@@ -2446,7 +2446,7 @@ async function renderStatsChart(rangeDays) {
             const found = daily.find(r => r.date === dateStr);
             days.push({
                 dateObj: d,
-                label: dayNames[d.getDay()],
+                label: dayNames.at(d.getDay()),
                 num: d.getDate(),
                 manual: found ? found.manual_total : 0,
                 auto: found ? found.auto_total : 0,
@@ -2509,7 +2509,7 @@ async function renderStatsChart(rangeDays) {
             let d = `M ${pts[0].x},${pts[0].y}`;
             for (let i = 0; i < pts.length - 1; i++) {
                 const tension = 0.2;
-                const p0 = i === 0 ? pts[0] : pts[i - 1];
+                const p0 = i === 0 ? pts.at(0) : pts.at(i - 1);
                 const p1 = pts[i];
                 const p2 = pts[i + 1];
                 const p3 = i + 2 < pts.length ? pts[i + 2] : p2;
@@ -2533,7 +2533,7 @@ async function renderStatsChart(rangeDays) {
         const gradPath = document.getElementById('splineGradientPath');
         if (gradPath && manualPoints.length > 0) {
             const pathD = getPathData(manualPoints);
-            const gradD = pathD + ` L ${manualPoints[manualPoints.length-1].x},${padYTop + drawH} L ${manualPoints[0].x},${padYTop + drawH} Z`;
+            const gradD = pathD + ` L ${manualPoints.at(-1).x},${padYTop + drawH} L ${manualPoints.at(0).x},${padYTop + drawH} Z`;
             gradPath.setAttribute('d', gradD);
         }
         
@@ -2578,7 +2578,7 @@ async function loadProjects() {
         const projectSelect = document.getElementById('projectSelect');
         if (projectSelect) {
             const currentVal = projectSelect.value;
-            projectSelect.innerHTML = '<option value="">— No Project —</option>';
+            projectSelect.innerHTML = DOMPurify.sanitize('<option value="">— No Project —</option>');
             (data.projects || []).forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
@@ -2606,7 +2606,7 @@ function renderProjectsList(projects) {
     const list = document.getElementById('projectsList');
     if (!list) return;
     if (projects.length === 0) {
-        list.innerHTML = '<div class="category-mappings-empty">No projects yet. Add one above to start tracking by project.</div>';
+        list.innerHTML = DOMPurify.sanitize('<div class="category-mappings-empty">No projects yet. Add one above to start tracking by project.</div>');
         return;
     }
     list.innerHTML = projects.map(p => {
@@ -2908,10 +2908,10 @@ async function initAIDigest() {
             const triggerBtn = document.createElement('div');
             triggerBtn.id = 'aiDigestTriggerBtn';
             triggerBtn.className = 'ai-digest-trigger-capsule';
-            triggerBtn.innerHTML = `
+            triggerBtn.innerHTML = DOMPurify.sanitize(`
                 <div class="ai-pulse-dot"></div>
                 <span>AI Digest</span>
-            `;
+            `);
             triggerBtn.onclick = () => showAIDigestModal();
             titleRow.appendChild(triggerBtn);
         }
@@ -2975,7 +2975,7 @@ async function showAIDigestModal(defaultTab = 'today') {
     document.getElementById('digestProjectValue').textContent = "Loading...";
     document.getElementById('digestProjectsList').innerHTML = "";
     const digestAppsList = document.getElementById('digestAppsList');
-    if (digestAppsList) digestAppsList.innerHTML = "";
+    if (digestAppsList) digestAppsList.innerHTML = DOMPurify.sanitize("");
 
     // Show modal container (initial opacity/transform transition starts)
     modal.style.display = 'flex';
@@ -3091,7 +3091,7 @@ function renderAIDigestUI() {
     // 5. Draw project allocation list
     const listContainer = document.getElementById('digestProjectsList');
     if (data.projects.length === 0) {
-        listContainer.innerHTML = '<div class="digest-projects-empty">No projects tracked during this period</div>';
+        listContainer.innerHTML = DOMPurify.sanitize('<div class="digest-projects-empty">No projects tracked during this period</div>');
     } else {
         listContainer.innerHTML = data.projects.map(proj => {
             const h = Math.floor(proj.seconds / 3600);
@@ -3128,7 +3128,7 @@ function renderAIDigestUI() {
     const appsListContainer = document.getElementById('digestAppsList');
     if (appsListContainer) {
         if (!data.apps || data.apps.length === 0) {
-            appsListContainer.innerHTML = '<div class="digest-projects-empty">No applications tracked during this period</div>';
+            appsListContainer.innerHTML = DOMPurify.sanitize('<div class="digest-projects-empty">No applications tracked during this period</div>');
         } else {
             const appColors = [
                 '#3b82f6', // Ocean Blue
@@ -3142,7 +3142,7 @@ function renderAIDigestUI() {
                 const h = Math.floor(app.total_seconds / 3600);
                 const m = Math.floor((app.total_seconds % 3600) / 60);
                 const pct = data.total_seconds > 0 ? Math.min(Math.round((app.total_seconds / data.total_seconds) * 100), 100) : 0;
-                const color = appColors[index % appColors.length];
+                const color = appColors.at(index % appColors.length);
                 
                 return `
                     <div class="digest-proj-row">

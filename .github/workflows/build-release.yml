@@ -21,13 +21,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
 
       - name: Read Version from File
         run: echo "VERSION=$(cat .version)" >> $GITHUB_ENV
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: '20'
 
@@ -46,7 +46,7 @@ jobs:
           bash pkg_installer/build_distribution_pkg.sh
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@50769540e7f4fa5bdcc2699f0c229d3ebeb54a2a
         with:
           name: WorkplaceMonitor-${{ matrix.arch }}
           path: WorkplaceMonitor-${{ matrix.arch }}.pkg
@@ -60,10 +60,10 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
 
       - name: Download All Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
         with:
           path: ./artifacts
           merge-multiple: true
@@ -155,7 +155,7 @@ jobs:
           sed -n "/^## \[${{ env.VERSION }}\]/,/^## /p" CHANGELOG.md | sed '$d' > release_notes.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191
         with:
           tag_name: v${{ env.VERSION }}
           name: WorkplaceMonitor v${{ env.VERSION }}

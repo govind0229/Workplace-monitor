@@ -1,6 +1,6 @@
 {
   "name": "working-hours-calculate",
-  "version": "4.0.2",
+  "version": "5.0.0",
   "description": "",
   "main": "server.js",
   "scripts": {
@@ -12,9 +12,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "tracery-grammar": "^2.8.4"
+    "better-sqlite3": "12.6.2",
+    "cors": "2.8.6",
+    "express": "5.2.1",
+    "tracery-grammar": "2.8.4"
   }
 }

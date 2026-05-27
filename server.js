@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const os = require('os');
 const notificationQueue = [];
 
 let pendingIdlePrompt = null;
@@ -43,21 +44,21 @@ const stmtSetNotified = db.prepare("UPDATE sessions SET notified = 1 WHERE id = 
 const stmtSetBreakNotify = db.prepare("UPDATE sessions SET last_break_notify = ? WHERE id = ?");
 
 // Settings cache — settings rarely change mid-session, so we cache them for 30 seconds
-let _settingsCache = {};
+let _settingsCache = new Map();
 let _settingsCacheTime = 0;
 const SETTINGS_CACHE_TTL = 30000; // 30 seconds
 function getCachedSetting(key, defaultValue = null) {
     const now = Date.now();
     if (now - _settingsCacheTime > SETTINGS_CACHE_TTL) {
-        _settingsCache = {}; // invalidate
+        _settingsCache.clear(); // invalidate
         _settingsCacheTime = now;
     }
-    if (!(key in _settingsCache)) {
-        _settingsCache[key] = getSetting(key, defaultValue);
+    if (!_settingsCache.has(key)) {
+        _settingsCache.set(key, getSetting(key, defaultValue));
     }
-    return _settingsCache[key];
+    return _settingsCache.get(key);
 }
-function invalidateSettingsCache() { _settingsCache = {}; _settingsCacheTime = 0; }
+function invalidateSettingsCache() { _settingsCache.clear(); _settingsCacheTime = 0; }
 
 
 // --- Tracery-Powered Dynamic Break Messages ---
@@ -139,9 +140,10 @@ const SLOT_RULES = {
     },
 };
 
+const SLOT_BODY_KEYS = new Map([['morning', 'tip'], ['lunch', 'meal_tip'], ['afternoon', 'slump_tip'], ['late_afternoon', 'wind_tip'], ['evening', 'eve_tip']]);
 function buildGrammar(slot) {
-    const rules = SLOT_RULES[slot] || SLOT_RULES.afternoon;
-    const bodyKey = { morning: 'tip', lunch: 'meal_tip', afternoon: 'slump_tip', late_afternoon: 'wind_tip', evening: 'eve_tip' }[slot];
+    const rules = Object.hasOwn(SLOT_RULES, slot) ? Reflect.get(SLOT_RULES, slot) : Reflect.get(SLOT_RULES, 'afternoon');
+    const bodyKey = SLOT_BODY_KEYS.get(slot) || 'slump_tip';
     return tracery.createGrammar({
         ...rules,
         origin: [`#${bodyKey}#`],
@@ -176,7 +178,8 @@ function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
         body = grammar.flatten('#origin#');
         // Use longer body string as key for reliable dedup
         key = `${slot}_${body.trim().toLowerCase().replace(/\W+/g, '_').substring(0, 100)}`;
-        title = SLOT_RULES[slot].slot_title[Math.floor(Math.random() * SLOT_RULES[slot].slot_title.length)];
+        const slotData = Object.hasOwn(SLOT_RULES, slot) ? Reflect.get(SLOT_RULES, slot) : Reflect.get(SLOT_RULES, 'afternoon');
+        title = slotData.slot_title.at(Math.floor(Math.random() * slotData.slot_title.length));
         attempts++;
     } while (recentKeys.has(key) && attempts < MAX_ATTEMPTS);
 
@@ -493,7 +496,7 @@ async function runCloudSync() {
         }
 
         const payload = {
-            device_id: getCachedSetting('deviceId', require('os').hostname()),
+            device_id: getCachedSetting('deviceId', os.hostname()),
             timestamp: new Date().toISOString(),
             sessions: unsyncedData.sessions,
             app_usage: unsyncedData.appUsage,
@@ -888,7 +891,7 @@ app.post('/respond-idle-prompt', asyncHandler(async (req, res) => {
     
     const { sessionId, duration } = pendingIdlePrompt;
     
-    if (choice === 'meeting' || choice === 'designing') {
+    if (choice === 'meeting' || choice === 'designing' || choice === 'work_call') {
         updateSessionSeconds(sessionId, duration);
         addEvent(sessionId, `idle_respond_keep_${choice}`);
         console.log(`[Idle Prompt] Added ${duration}s back to session #${sessionId} (Choice: ${choice})`);
@@ -970,10 +973,10 @@ function getCategoryMap() {
     // Merge custom mappings with defaults (custom takes precedence)
     const mergedMap = { ...defaultCategoryMap };
     for (const [category, apps] of Object.entries(customMappings)) {
-        if (!mergedMap[category]) {
-            mergedMap[category] = [];
+        if (!Object.hasOwn(mergedMap, category)) {
+            Reflect.set(mergedMap, category, []);
         }
-        mergedMap[category] = [...new Set([...mergedMap[category], ...apps])];
+        Reflect.set(mergedMap, category, [...new Set([...Reflect.get(mergedMap, category), ...apps])]);
     }
 
     return mergedMap;
@@ -1272,7 +1275,7 @@ function generateSmartCommentary(totalHours, apps, topProjectName, topProjectPct
         ? ["Exceptional week!", "What a productive run!", "Great job!", "Solid effort this week!", "Week in review!"]
         : ["Excellent wrap-up!", "Great job today!", "Day complete!", "Way to go!", "Solid day of work!"];
 
-    const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+    const greeting = greetings.at(Math.floor(Math.random() * greetings.length));
 
     let timephrase = isWeekly 
         ? `You worked ${totalHours.toFixed(1)} hours this week.` 
@@ -1306,7 +1309,7 @@ function generateSmartCommentary(totalHours, apps, topProjectName, topProjectPct
             `you dedicated ${topProjectPct}% of your session to ${topProjectName}`,
             `${topProjectName} occupied ${topProjectPct}% of your focus`
         ];
-        projectPhrase = projComms[Math.floor(Math.random() * projComms.length)];
+        projectPhrase = projComms.at(Math.floor(Math.random() * projComms.length));
     }
 
     // Combine them smoothly

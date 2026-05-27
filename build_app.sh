@@ -40,7 +40,7 @@ echo "  Bundling Node.js..."
 if [ -f "bundled_node/node" ]; then
     echo "    Using cached bundled_node/node"
 else
-    bash download_node.sh ./bundled_node
+    bash "$PWD/download_node.sh" "$PWD/bundled_node"
 fi
 
 # 5. Copy files to the bundle

@@ -3812,6 +3812,11 @@ body[data-theme="light"] .idle-option-card {
   box-shadow: 0 8px 20px -6px rgba(139, 92, 246, 0.15);
 }
 
+.idle-option-card.work-option:hover {
+  border-color: var(--secondary) !important;
+  box-shadow: 0 8px 20px -6px rgba(16, 185, 129, 0.2);
+}
+
 .option-emoji {
   font-size: 1.5rem;
   flex-shrink: 0;

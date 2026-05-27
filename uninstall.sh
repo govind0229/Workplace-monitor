@@ -9,7 +9,7 @@ echo "Uninstalling Working Hours..."
 
 # 1. Detect the logged-in user
 LOGGED_IN_USER=$(stat -f "%Su" /dev/console)
-USER_HOME=$(eval echo ~$LOGGED_IN_USER)
+USER_HOME=$(dscl . -read /Users/"$LOGGED_IN_USER" NFSHomeDirectory | awk '{print $2}')
 AGENT_DIR="$USER_HOME/Library/LaunchAgents"
 
 # 2. Unload and remove LaunchAgent
