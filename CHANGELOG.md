@@ -2,6 +2,11 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [6.1.0] - 2026-05-28
+
+### Changed
+- **Dynamic Break Settings Copy** — Updated the description of the dynamic break scheduling feature in the settings UI to clarify that the AI analyzes behavior for 14 days to calculate the next break interval.
+
 ## [6.0.0] - 2026-05-27
 
 ### Added
