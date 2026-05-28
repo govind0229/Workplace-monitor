@@ -884,7 +884,7 @@ class MenuBarUtility: NSObject {
     // Break reminder popup tracking
     var lastShownBreakSessionId: Int?
     var lastShownBreakMinutes: Int?
-    var lastShownIdleSessionId: String?
+    var lastShownIdleSessionId: Int?
     var lastShownIdleDuration: Int?
     
     var appMenu: NSMenu!
@@ -1157,7 +1157,7 @@ class MenuBarUtility: NSObject {
 
                 // Auto-popup Idle Prompt window
                 if let idlePrompt = json["pending_idle_prompt"] as? [String: Any],
-                   let sessionId = idlePrompt["sessionId"] as? String,
+                   let sessionId = idlePrompt["sessionId"] as? Int,
                    let duration = idlePrompt["duration"] as? Int {
                     if sessionId != self.lastShownIdleSessionId || duration != self.lastShownIdleDuration {
                         self.lastShownIdleSessionId = sessionId
@@ -1276,12 +1276,13 @@ class MenuBarUtility: NSObject {
             idleStartTime = nil
             
             // Send unlock event with idle return metadata if duration is positive
-            if duration > 0 {
-                sendEvent("unlock", metadata: ["reason": "idle_return", "duration": duration])
+            let totalIdleDuration = duration > 0 ? duration + Int(idleThresholdSeconds) : 0
+            if totalIdleDuration > 0 {
+                sendEvent("unlock", metadata: ["reason": "idle_return", "duration": totalIdleDuration])
             } else {
                 sendEvent("unlock")
             }
-            print("User returned from idle after \(duration)s — resuming sessions")
+            print("User returned from idle after \(totalIdleDuration)s — resuming sessions")
         }
     }
 

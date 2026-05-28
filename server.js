@@ -618,6 +618,25 @@ app.post('/event', asyncHandler(async (req, res) => {
     if (event === 'lock') {
         if (finishReasons.includes(reason)) {
             lastIdleStart = null; // Do not calculate idle duration for sleep/finish
+
+            const manualSession = getActiveSession('manual');
+            const locationSession = getActiveSession('location');
+
+            if (manualSession) {
+                completeSession(manualSession.id);
+                clearSessionState(manualSession.id);
+                console.log(`[Auto-Stop] Manual session stopped due to Mac sleep: ${manualSession.id}`);
+            }
+
+            if (locationSession) {
+                completeSession(locationSession.id);
+                clearSessionState(locationSession.id);
+                console.log(`[Auto-Stop] Location session stopped due to Mac sleep: ${locationSession.id}`);
+            }
+
+            if (manualSession || locationSession) {
+                sendNativeNotification('💤 Session Auto-Stopped', 'Mac went to sleep. Your session has been safely closed.');
+            }
         } else {
             lastIdleStart = Date.now();
         }

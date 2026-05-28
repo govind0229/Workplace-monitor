@@ -213,6 +213,7 @@ async function loadSettings() {
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
         defaultProjectId = data.defaultProjectId || null;
 
+
         if (officeRadiusInput && data.officeRadius) {
             officeRadiusInput.value = data.officeRadius;
         }
@@ -379,6 +380,7 @@ saveSettingsBtn.onclick = async () => {
 
     const linePct = goalLinePercentInput ? parseInt(goalLinePercentInput.value) || 44 : 44;
     const radius = officeRadiusInput ? parseInt(officeRadiusInput.value) || 200 : 200;
+
 
     // Disable button to prevent double-clicks
     saveSettingsBtn.disabled = true;
