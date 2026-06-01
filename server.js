@@ -696,6 +696,12 @@ app.post('/event', asyncHandler(async (req, res) => {
     } else {
         const autoStatus = event === 'lock' ? 'paused' : 'active';
         db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
+        
+        if (event === 'unlock' && autoSession.total_seconds === 0) {
+            db.prepare("UPDATE sessions SET start_time = CURRENT_TIMESTAMP WHERE id = ?").run(autoSession.id);
+            console.log(`[Auto] Session #${autoSession.id} first unlock. Erasing PowerNap time by resetting start_time.`);
+        }
+
         addEvent(autoSession.id, `${event}_${reason}`);
 
         // Send notification for automatic session state changes
@@ -1088,7 +1094,7 @@ app.get('/today-events', (req, res) => {
 });
 
 app.get('/export-csv', (req, res) => {
-    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getProjectReport } = require('./db');
+    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getProjectReport, getTimelineReport } = require('./db');
     const tab = req.query.tab || 'daily';
     const timeFormat = req.query.timeFormat || '24h';
     const start = req.query.start;
@@ -1168,6 +1174,68 @@ app.get('/export-csv', (req, res) => {
         });
         res.setHeader('Content-Type', 'text/csv');
         return res.send(headers + '\n' + rows.join('\n'));
+    } else if (tab === 'timeline') {
+        data = getTimelineReport(start, end);
+        headers = 'Date,Block Start,Block End,Duration (seconds),Duration,Type,Details';
+        res.setHeader('Content-Disposition', 'attachment; filename=timeline_report.csv');
+
+        const formatReason = (reason) => {
+            if (!reason) return '';
+            const map = {
+                'take_break': 'Took Break (UI)',
+                'lock_take_break': 'Took Break (UI)',
+                'lock_idle': 'System Idle',
+                'lock_system_idle': 'System Idle',
+                'lock_sleep': 'Computer Sleep',
+                'lock_screen_saver': 'Screen Saver',
+                'unlock_idle_return': 'Returned from Idle',
+                'unlock_unknown': 'System Unlock',
+                'lock_unknown': 'System Lock',
+                'lock_user_initiated': 'User Locked',
+            };
+            return map[reason] || reason.replace(/_/g, ' ');
+        };
+
+        const formatLocalTime = (datetimeStr) => {
+            if (!datetimeStr) return '—';
+            const d = new Date(datetimeStr.replace(' ', 'T') + 'Z');
+            if (isNaN(d.getTime())) return '—';
+            const h = d.getHours();
+            const m = d.getMinutes().toString().padStart(2, '0');
+            const s = d.getSeconds().toString().padStart(2, '0');
+            if (timeFormat === 'ampm') {
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                let h12 = h % 12;
+                h12 = h12 ? h12 : 12;
+                return `${h12}:${m}:${s} ${ampm}`;
+            }
+            return `${h.toString().padStart(2, '0')}:${m}:${s}`;
+        };
+
+        const rows = [];
+        data.forEach(item => {
+            item.blocks.forEach(b => {
+                const t1 = b.start ? new Date(b.start.replace(' ', 'T') + 'Z').getTime() : 0;
+                const t2 = b.end ? new Date(b.end.replace(' ', 'T') + 'Z').getTime() : 0;
+                const durationSec = Math.floor((t2 - t1) / 1000);
+                const durFormat = durationSec > 0 ? fmtTime(durationSec) : '00:00:00';
+                
+                const typeLabel = b.type === 'working' ? 'Working' : 'Break';
+                
+                let details = b.session_type + ' session #' + b.session_id;
+                if (b.type === 'break') {
+                    const r1 = formatReason(b.reason);
+                    const r2 = formatReason(b.end_reason);
+                    if (r1 && r2) details += ` (${r1} -> ${r2})`;
+                    else if (r1 || r2) details += ` (${r1 || r2})`;
+                    else if (b.reason) details += ` (${b.reason})`;
+                }
+                
+                rows.push(`${item.date},${formatLocalTime(b.start)},${formatLocalTime(b.end)},${durationSec},${durFormat},${typeLabel},"${details}"`);
+            });
+        });
+        res.setHeader('Content-Type', 'text/csv');
+        return res.send(headers + '\n' + rows.join('\n'));
     } else {
         data = getDailyReport(start, end);
         headers = 'Date,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Breaks';
@@ -1188,12 +1256,13 @@ app.get('/export-csv', (req, res) => {
 
 app.get('/reports', (req, res) => {
     const { start, end } = req.query;
-    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport } = require('./db');
+    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getTimelineReport } = require('./db');
     res.json({
         daily: getDailyReport(start, end),
         weekly: getWeeklyReport(start, end),
         monthly: getMonthlyReport(start, end),
-        visits: getOfficeVisitsReport(start, end)
+        visits: getOfficeVisitsReport(start, end),
+        timeline: getTimelineReport(start, end)
     });
 });
 

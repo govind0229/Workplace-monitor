@@ -121,7 +121,7 @@ function applyAccentColor(colorKey) {
 function applyTheme(theme) {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
-    document.querySelectorAll('.theme-btn').forEach(btn => {
+    document.querySelectorAll('.theme-btn[data-theme]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === theme);
     });
     // Refresh accent color alphas based on new theme
@@ -185,7 +185,7 @@ navItems.forEach(item => {
 });
 
 // Theme toggle buttons
-document.querySelectorAll('.theme-btn').forEach(btn => {
+document.querySelectorAll('.theme-btn[data-theme]').forEach(btn => {
     btn.onclick = () => applyTheme(btn.dataset.theme);
 });
 
@@ -1726,7 +1726,16 @@ async function renderProjectReport() {
 
 function renderActiveTab() {
     if (!reportsData) return;
-    const data = reportsData[currentTab] || [];
+    let data = reportsData[currentTab] || [];
+    if (currentTab === 'activities') {
+        data = reportsData['timeline'] || [];
+    }
+
+    // Destroy existing charts if any
+    if (window.activitiesCharts) {
+        window.activitiesCharts.forEach(c => c.destroy());
+        window.activitiesCharts = [];
+    }
 
     // Use DocumentFragment for better performance
     const fragment = document.createDocumentFragment();
@@ -1746,6 +1755,19 @@ function renderActiveTab() {
             <span>Workplace Duration</span>
             <span>Breaks</span>
         `);
+    } else if (currentTab === 'timeline') {
+        reportsList.classList.remove('projects-grid');
+        reportsList.classList.remove('visits-grid');
+        header.innerHTML = DOMPurify.sanitize(`
+            <span>Date / Block</span>
+            <span>Duration</span>
+            <span>Type</span>
+            <span>Details</span>
+        `);
+    } else if (currentTab === 'activities') {
+        reportsList.classList.remove('projects-grid');
+        reportsList.classList.remove('visits-grid');
+        header.style.display = 'none'; // No header for dashboard
     } else {
         reportsList.classList.remove('projects-grid');
         reportsList.classList.remove('visits-grid');
@@ -1757,6 +1779,13 @@ function renderActiveTab() {
         `);
     }
     fragment.appendChild(header);
+
+    if (currentTab === 'activities') {
+        renderActivitiesDashboard(fragment, data);
+        reportsList.innerHTML = DOMPurify.sanitize('');
+        reportsList.appendChild(fragment);
+        return;
+    }
 
     if (data.length) {
         data.forEach(item => {
@@ -1804,6 +1833,76 @@ function renderActiveTab() {
                     <span class="auto-total-dim">${item.total_seconds > 0 ? formatTime(item.total_seconds) : '—'}</span>
                     <span>${item.break_count > 0 ? formatTime(item.break_duration) : '—'}</span>
                 `);
+            } else if (currentTab === 'timeline') {
+                const dateHeader = document.createElement('div');
+                dateHeader.className = 'report-item report-header';
+                dateHeader.style.marginTop = '16px';
+                dateHeader.style.background = 'rgba(255,255,255,0.05)';
+                dateHeader.innerHTML = DOMPurify.sanitize(`<span style="grid-column: 1 / -1; text-align: center;">${escapeHTML(item.date)}</span>`);
+                fragment.appendChild(dateHeader);
+
+                item.blocks.forEach(b => {
+                    const blockRow = document.createElement('div');
+                    blockRow.className = 'report-item';
+                    
+                    const safeExtractTime = (datetimeStr) => {
+                        if (!datetimeStr) return '—';
+                        const d = new Date(datetimeStr.replace(' ', 'T') + 'Z');
+                        if (isNaN(d.getTime())) return '—';
+                        return d.toLocaleTimeString([], { 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            second: '2-digit',
+                            hour12: timeFormat === 'ampm' 
+                        });
+                    };
+                    
+                    const formatReason = (reason) => {
+                        if (!reason) return '';
+                        const map = {
+                            'take_break': 'Took Break (UI)',
+                            'lock_take_break': 'Took Break (UI)',
+                            'lock_idle': 'System Idle',
+                            'lock_system_idle': 'System Idle',
+                            'lock_sleep': 'Computer Sleep',
+                            'lock_screen_saver': 'Screen Saver',
+                            'unlock_idle_return': 'Returned from Idle',
+                            'unlock_unknown': 'System Unlock',
+                            'lock_unknown': 'System Lock',
+                            'lock_user_initiated': 'User Locked',
+                        };
+                        return map[reason] || reason.replace(/_/g, ' ');
+                    };
+                    
+                    const startStr = safeExtractTime(b.start);
+                    const endStr = safeExtractTime(b.end);
+                    
+                    const t1 = b.start ? new Date(b.start.replace(' ', 'T') + 'Z').getTime() : 0;
+                    const t2 = b.end ? new Date(b.end.replace(' ', 'T') + 'Z').getTime() : 0;
+                    const durationSec = Math.floor((t2 - t1) / 1000);
+                    const durFormat = durationSec > 0 ? formatTime(durationSec) : '00:00:00';
+                    
+                    const typeColor = b.type === 'working' ? 'var(--primary)' : 'var(--accent)';
+                    const typeLabel = b.type === 'working' ? '🟢 Working' : '☕ Break';
+                    
+                    let details = b.session_type + ' session #' + b.session_id;
+                    if (b.type === 'break') {
+                        const r1 = formatReason(b.reason);
+                        const r2 = formatReason(b.end_reason);
+                        if (r1 && r2) details += ` (${r1} → ${r2})`;
+                        else if (r1 || r2) details += ` (${r1 || r2})`;
+                        else if (b.reason) details += ` (${b.reason})`;
+                    }
+                    
+                    blockRow.innerHTML = DOMPurify.sanitize(`
+                        <span>${startStr} - ${endStr}</span>
+                        <span>${durFormat}</span>
+                        <span style="color:${typeColor}; font-weight:500;">${typeLabel}</span>
+                        <span class="auto-total-dim">${escapeHTML(details)}</span>
+                    `);
+                    fragment.appendChild(blockRow);
+                });
+                return;
             } else {
                 let label = item.date || item.week || item.month;
                 if (currentTab === 'weekly' && item.week) {
@@ -2259,7 +2358,13 @@ async function renderCategoryChart() {
         }
 
         const total = cats.reduce((sum, c) => sum + c.seconds, 0) || 1;
-        const colors = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#f97316', '#84cc16', '#d946ef'];
+        const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#f97316', '#84cc16', '#d946ef'];
+
+        // Find the top category for the center display
+        const topCat = cats.reduce((max, cat) => cat.seconds > max.seconds ? cat : max, cats[0]);
+        const topPct = (topCat.seconds / total * 100).toFixed(1);
+        const topIndex = cats.indexOf(topCat);
+        const topColor = colors.at(topIndex % colors.length);
 
         // Build SVG pie chart using conic segments via circle stroke-dasharray
         const radius = 50;
@@ -2269,24 +2374,30 @@ async function renderCategoryChart() {
             const pct = cat.seconds / total;
             const dashLen = pct * circumference;
             const color = colors.at(i % colors.length);
-            const slice = `<circle cx="70" cy="70" r="${radius}" fill="none" stroke="${color}" stroke-width="30"
+            const slice = `<circle cx="70" cy="70" r="${radius}" fill="none" stroke="${color}" stroke-width="25"
                 stroke-dasharray="${dashLen} ${circumference - dashLen}" stroke-dashoffset="${-offset}"
                 style="transition: stroke-dashoffset 0.5s ease"/>`;
             offset += dashLen;
             return slice;
         });
 
-        const pieSvg = `<svg class="pie-svg" viewBox="0 0 140 140">${slices.join('')}</svg>`;
+        const pieSvg = `
+            <div class="donut-chart-container">
+                <svg class="pie-svg" viewBox="0 0 140 140">${slices.join('')}</svg>
+                <div class="donut-center-content">
+                    <div class="donut-center-pct">${topPct}%</div>
+                    <div class="donut-center-label" style="color: ${topColor}">${escapeHTML(topCat.name).toUpperCase()}</div>
+                </div>
+            </div>
+        `;
 
         const legend = cats.map((cat, i) => {
-            const pct = Math.round((cat.seconds / total) * 100);
             const color = colors.at(i % colors.length);
             return `
                 <div class="category-item">
-                    <div class="category-dot" style="background:${color}"></div>
+                    <div class="category-pill" style="background:${color}"></div>
                     <span class="category-name">${escapeHTML(cat.name)}</span>
                     <span class="category-time">${formatHM(cat.seconds)}</span>
-                    <span class="category-pct">${pct}%</span>
                 </div>
             `;
         }).join('');
@@ -3367,3 +3478,126 @@ window.takeLunchBreak = takeLunchBreak;
 window.takeDinnerBreak = takeDinnerBreak;
 window.snoozeBreakReminder = snoozeBreakReminder;
 window.dismissBreakReminder = dismissBreakReminder;
+
+function renderActivitiesDashboard(fragment, timelineData) {
+    let totalWorkingSec = 0;
+    let totalBreakSec = 0;
+    let maxBreakSec = 0;
+    let breakReasons = {};
+
+    const formatReason = (reason) => {
+        if (!reason) return 'Unknown';
+        const map = {
+            'take_break': 'Took Break (UI)',
+            'lock_take_break': 'Took Break (UI)',
+            'lock_idle': 'System Idle',
+            'lock_system_idle': 'System Idle',
+            'lock_sleep': 'Computer Sleep',
+            'lock_screen_saver': 'Screen Saver',
+            'unlock_idle_return': 'Returned from Idle',
+            'unlock_unknown': 'System Unlock',
+            'lock_unknown': 'System Lock',
+            'lock_user_initiated': 'User Locked',
+            'Session Started Paused': 'Session Started Paused'
+        };
+        return map[reason] || reason.replace(/_/g, ' ');
+    };
+
+    timelineData.forEach(day => {
+        day.blocks.forEach(b => {
+            const t1 = b.start ? new Date(b.start.replace(' ', 'T') + 'Z').getTime() : 0;
+            const t2 = b.end ? new Date(b.end.replace(' ', 'T') + 'Z').getTime() : 0;
+            const sec = Math.floor((t2 - t1) / 1000);
+            if (sec <= 0) return;
+
+            if (b.type === 'working') {
+                totalWorkingSec += sec;
+            } else if (b.type === 'break') {
+                totalBreakSec += sec;
+                if (sec > maxBreakSec) maxBreakSec = sec;
+                const r = formatReason(b.reason);
+                if (!breakReasons[r]) breakReasons[r] = 0;
+                breakReasons[r] += sec;
+            }
+        });
+    });
+
+    const container = document.createElement('div');
+    container.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;';
+
+    const cardStyles = 'background: rgba(255, 255, 255, 0.05); padding: 24px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);';
+
+    // Work vs Break Chart
+    const card1 = document.createElement('div');
+    card1.style.cssText = cardStyles;
+    card1.innerHTML = '<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 16px; color: var(--text);">Time Breakdown</h3><div style="position: relative; height: 250px; width: 100%;"><canvas id="chart-work-break"></canvas></div>';
+    container.appendChild(card1);
+
+    // Break Reasons Chart
+    const card2 = document.createElement('div');
+    card2.style.cssText = cardStyles;
+    card2.innerHTML = '<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 16px; color: var(--text);">Break Reasons</h3><div style="position: relative; height: 250px; width: 100%;"><canvas id="chart-break-reasons"></canvas></div>';
+    container.appendChild(card2);
+
+    // Summary Stats
+    const card3 = document.createElement('div');
+    card3.style.cssText = cardStyles;
+    card3.innerHTML = DOMPurify.sanitize(`
+        <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 16px; color: var(--text);">Activity Summary</h3>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+                <div style="font-size: 13px; color: var(--text-dim);">Total Working Time</div>
+                <div style="font-size: 24px; font-weight: 600; color: var(--primary);">${formatTime(totalWorkingSec)}</div>
+            </div>
+            <div>
+                <div style="font-size: 13px; color: var(--text-dim);">Total Break Time</div>
+                <div style="font-size: 24px; font-weight: 600; color: var(--accent);">${formatTime(totalBreakSec)}</div>
+            </div>
+            <div>
+                <div style="font-size: 13px; color: var(--text-dim);">Longest Break</div>
+                <div style="font-size: 20px; font-weight: 500; color: var(--text);">${formatTime(maxBreakSec)}</div>
+            </div>
+        </div>
+    `);
+    container.appendChild(card3);
+
+    fragment.appendChild(container);
+
+    setTimeout(() => {
+        window.activitiesCharts = window.activitiesCharts || [];
+        
+        const ctx1 = document.getElementById('chart-work-break');
+        if (ctx1) {
+            window.activitiesCharts.push(new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Working', 'Break'],
+                    datasets: [{
+                        data: [totalWorkingSec, totalBreakSec],
+                        backgroundColor: ['#10b981', '#f43f5e'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#ccc' } } } }
+            }));
+        }
+
+        const ctx2 = document.getElementById('chart-break-reasons');
+        if (ctx2) {
+            const labels = Object.keys(breakReasons);
+            const data = Object.values(breakReasons);
+            window.activitiesCharts.push(new Chart(ctx2, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#64748b', '#14b8a6'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#ccc' } } } }
+            }));
+        }
+    }, 100);
+}

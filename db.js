@@ -432,6 +432,122 @@ module.exports = {
     };
   },
 
+  getTimelineReport: (startDate, endDate) => {
+    let sessionQuery = "SELECT * FROM sessions";
+    let params = [];
+    if (startDate || endDate) {
+      sessionQuery += " WHERE ";
+      if (startDate && endDate) {
+        sessionQuery += "date BETWEEN ? AND ?";
+        params.push(startDate, endDate);
+      } else if (startDate) {
+        sessionQuery += "date >= ?";
+        params.push(startDate);
+      } else {
+        sessionQuery += "date <= ?";
+        params.push(endDate);
+      }
+    }
+    sessionQuery += " ORDER BY start_time ASC";
+    
+    const sessions = db.prepare(sessionQuery).all(...params);
+    const sessionIds = sessions.map(s => s.id);
+    
+    let lockEvents = [];
+    if (sessionIds.length > 0) {
+      const placeholders = sessionIds.map(() => '?').join(',');
+      lockEvents = db.prepare("SELECT * FROM lock_events WHERE session_id IN (" + placeholders + ") ORDER BY timestamp ASC").all(...sessionIds);
+    }
+    
+    const eventsBySession = {};
+    lockEvents.forEach(e => {
+      if (!eventsBySession[e.session_id]) eventsBySession[e.session_id] = [];
+      eventsBySession[e.session_id].push(e);
+    });
+
+    const timelineByDate = {};
+
+    sessions.forEach(session => {
+      const date = session.date;
+      if (!timelineByDate[date]) timelineByDate[date] = [];
+      
+      let currentState = session.type === 'automatic' ? 'break' : 'working';
+      let currentTime = session.start_time;
+      let currentReason = session.type === 'automatic' ? 'Session Started Paused' : null;
+      const events = eventsBySession[session.id] || [];
+      
+      events.forEach(event => {
+        const isLock = event.event_type.startsWith('lock');
+        const isUnlock = event.event_type.startsWith('unlock');
+        
+        if (isLock) {
+          if (currentState === 'working') {
+            timelineByDate[date].push({
+              type: 'working',
+              start: currentTime,
+              end: event.timestamp,
+              session_id: session.id,
+              session_type: session.type
+            });
+          } else {
+            timelineByDate[date].push({
+              type: 'break',
+              start: currentTime,
+              end: event.timestamp,
+              session_id: session.id,
+              session_type: session.type,
+              reason: currentReason,
+              end_reason: event.event_type
+            });
+          }
+          currentState = 'break';
+          currentTime = event.timestamp;
+          currentReason = event.event_type;
+        } else if (isUnlock) {
+          if (currentState === 'break') {
+            timelineByDate[date].push({
+              type: 'break',
+              start: currentTime,
+              end: event.timestamp,
+              session_id: session.id,
+              session_type: session.type,
+              reason: currentReason,
+              end_reason: event.event_type
+            });
+          } else {
+            timelineByDate[date].push({
+              type: 'working',
+              start: currentTime,
+              end: event.timestamp,
+              session_id: session.id,
+              session_type: session.type
+            });
+          }
+          currentState = 'working';
+          currentTime = event.timestamp;
+          currentReason = null;
+        }
+      });
+      
+      const finalEnd = session.end_time || session.last_tick;
+      if (currentTime !== finalEnd) {
+         timelineByDate[date].push({
+          type: currentState,
+          start: currentTime,
+          end: finalEnd,
+          session_id: session.id,
+          session_type: session.type,
+          reason: currentState === 'break' ? currentReason : undefined
+        });
+      }
+    });
+
+    return Object.keys(timelineByDate).sort((a, b) => b.localeCompare(a)).map(date => ({
+      date: date,
+      blocks: timelineByDate[date]
+    }));
+  },
+
   calculateDynamicBreakInterval: () => {
     // 1. Get the past 14 days of history
     const query = `

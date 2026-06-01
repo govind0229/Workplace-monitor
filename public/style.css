@@ -1434,16 +1434,52 @@ body[data-theme="light"] .theme-btn.active {
   min-height: 160px;
 }
 
+.donut-chart-container {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .pie-svg {
   width: 140px;
   height: 140px;
-  flex-shrink: 0;
+  transform: rotate(-90deg);
+  overflow: visible;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2));
+}
+
+.donut-center-content {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.donut-center-pct {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.donut-center-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .category-legend {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   flex: 1;
   min-width: 0;
 }
@@ -1451,20 +1487,20 @@ body[data-theme="light"] .theme-btn.active {
 .category-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 0.8rem;
+  gap: 12px;
+  font-size: 0.85rem;
 }
 
-.category-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
+.category-pill {
+  width: 6px;
+  height: 18px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
 .category-name {
   flex: 1;
-  color: var(--text);
+  color: var(--text-dim);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -1472,18 +1508,10 @@ body[data-theme="light"] .theme-btn.active {
 }
 
 .category-time {
-  color: var(--text-dim);
-  font-weight: 600;
+  color: var(--text);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  font-size: 0.75rem;
-  flex-shrink: 0;
-}
-
-.category-pct {
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  min-width: 32px;
-  text-align: right;
+  font-size: 0.85rem;
   flex-shrink: 0;
 }
 
@@ -3643,6 +3671,43 @@ input[type="password"]:hover {
   margin-top: 24px;
 }
 
+/* Light Mode Overrides for AI Digest Modal */
+body[data-theme="light"] .ai-digest-container {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15) !important;
+}
+body[data-theme="light"] .digest-title-row h2 {
+  background: linear-gradient(90deg, #111, var(--primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+body[data-theme="light"] .digest-toggle-switch {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+body[data-theme="light"] .digest-commentary-bubble {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: none;
+}
+body[data-theme="light"] #digestCommentaryText {
+  color: var(--text);
+}
+body[data-theme="light"] .digest-pillar {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+body[data-theme="light"] .digest-projects-section {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+body[data-theme="light"] .digest-proj-name {
+  color: var(--text);
+}
+body[data-theme="light"] .digest-proj-bar-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
 /* Floating AI Button on Dashboard */
 .ai-digest-trigger-capsule {
   position: absolute;
@@ -3685,7 +3750,7 @@ input[type="password"]:hover {
 .ai-digest-trigger-capsule span {
   font-size: 0.68rem;
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--text);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }

@@ -5,10 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Office Hours Monitor</title>
-    <link rel="stylesheet" href="style.css?v=6.1.0">
+    <link rel="stylesheet" href="style.css?v=6.2.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
@@ -76,7 +77,7 @@
             </button>
         </nav>
         <div class="sidebar-footer">
-            <span class="version-badge">v6.1.0</span>
+            <span class="version-badge">v6.2.0</span>
         </div>
     </div>
 
@@ -326,6 +327,8 @@
                             <button class="tab-btn" data-tab="weekly">Weekly</button>
                             <button class="tab-btn" data-tab="monthly">Monthly</button>
                             <button class="tab-btn" data-tab="projects">Projects</button>
+                            <button class="tab-btn" data-tab="timeline">Timeline</button>
+                            <button class="tab-btn" data-tab="activities">Activities</button>
                         </div>
                         <div class="filter-container">
                             <button id="toggleFilterBtn" class="btn btn-sm secondary">
@@ -1053,7 +1056,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=6.1.0"></script>
+    <script src="app.js?v=6.2.0"></script>
 </body>
 
 </html>
