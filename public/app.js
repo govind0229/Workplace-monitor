@@ -1727,15 +1727,6 @@ async function renderProjectReport() {
 function renderActiveTab() {
     if (!reportsData) return;
     let data = reportsData[currentTab] || [];
-    if (currentTab === 'activities') {
-        data = reportsData['timeline'] || [];
-    }
-
-    // Destroy existing charts if any
-    if (window.activitiesCharts) {
-        window.activitiesCharts.forEach(c => c.destroy());
-        window.activitiesCharts = [];
-    }
 
     // Use DocumentFragment for better performance
     const fragment = document.createDocumentFragment();
@@ -1764,10 +1755,6 @@ function renderActiveTab() {
             <span>Type</span>
             <span>Details</span>
         `);
-    } else if (currentTab === 'activities') {
-        reportsList.classList.remove('projects-grid');
-        reportsList.classList.remove('visits-grid');
-        header.style.display = 'none'; // No header for dashboard
     } else {
         reportsList.classList.remove('projects-grid');
         reportsList.classList.remove('visits-grid');
@@ -1779,13 +1766,6 @@ function renderActiveTab() {
         `);
     }
     fragment.appendChild(header);
-
-    if (currentTab === 'activities') {
-        renderActivitiesDashboard(fragment, data);
-        reportsList.innerHTML = DOMPurify.sanitize('');
-        reportsList.appendChild(fragment);
-        return;
-    }
 
     if (data.length) {
         data.forEach(item => {
@@ -3478,126 +3458,3 @@ window.takeLunchBreak = takeLunchBreak;
 window.takeDinnerBreak = takeDinnerBreak;
 window.snoozeBreakReminder = snoozeBreakReminder;
 window.dismissBreakReminder = dismissBreakReminder;
-
-function renderActivitiesDashboard(fragment, timelineData) {
-    let totalWorkingSec = 0;
-    let totalBreakSec = 0;
-    let maxBreakSec = 0;
-    let breakReasons = {};
-
-    const formatReason = (reason) => {
-        if (!reason) return 'Unknown';
-        const map = {
-            'take_break': 'Took Break (UI)',
-            'lock_take_break': 'Took Break (UI)',
-            'lock_idle': 'System Idle',
-            'lock_system_idle': 'System Idle',
-            'lock_sleep': 'Computer Sleep',
-            'lock_screen_saver': 'Screen Saver',
-            'unlock_idle_return': 'Returned from Idle',
-            'unlock_unknown': 'System Unlock',
-            'lock_unknown': 'System Lock',
-            'lock_user_initiated': 'User Locked',
-            'Session Started Paused': 'Session Started Paused'
-        };
-        return map[reason] || reason.replace(/_/g, ' ');
-    };
-
-    timelineData.forEach(day => {
-        day.blocks.forEach(b => {
-            const t1 = b.start ? new Date(b.start.replace(' ', 'T') + 'Z').getTime() : 0;
-            const t2 = b.end ? new Date(b.end.replace(' ', 'T') + 'Z').getTime() : 0;
-            const sec = Math.floor((t2 - t1) / 1000);
-            if (sec <= 0) return;
-
-            if (b.type === 'working') {
-                totalWorkingSec += sec;
-            } else if (b.type === 'break') {
-                totalBreakSec += sec;
-                if (sec > maxBreakSec) maxBreakSec = sec;
-                const r = formatReason(b.reason);
-                if (!breakReasons[r]) breakReasons[r] = 0;
-                breakReasons[r] += sec;
-            }
-        });
-    });
-
-    const container = document.createElement('div');
-    container.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;';
-
-    const cardStyles = 'background: rgba(255, 255, 255, 0.05); padding: 24px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);';
-
-    // Work vs Break Chart
-    const card1 = document.createElement('div');
-    card1.style.cssText = cardStyles;
-    card1.innerHTML = '<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 16px; color: var(--text);">Time Breakdown</h3><div style="position: relative; height: 250px; width: 100%;"><canvas id="chart-work-break"></canvas></div>';
-    container.appendChild(card1);
-
-    // Break Reasons Chart
-    const card2 = document.createElement('div');
-    card2.style.cssText = cardStyles;
-    card2.innerHTML = '<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 16px; color: var(--text);">Break Reasons</h3><div style="position: relative; height: 250px; width: 100%;"><canvas id="chart-break-reasons"></canvas></div>';
-    container.appendChild(card2);
-
-    // Summary Stats
-    const card3 = document.createElement('div');
-    card3.style.cssText = cardStyles;
-    card3.innerHTML = DOMPurify.sanitize(`
-        <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 16px; color: var(--text);">Activity Summary</h3>
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-            <div>
-                <div style="font-size: 13px; color: var(--text-dim);">Total Working Time</div>
-                <div style="font-size: 24px; font-weight: 600; color: var(--primary);">${formatTime(totalWorkingSec)}</div>
-            </div>
-            <div>
-                <div style="font-size: 13px; color: var(--text-dim);">Total Break Time</div>
-                <div style="font-size: 24px; font-weight: 600; color: var(--accent);">${formatTime(totalBreakSec)}</div>
-            </div>
-            <div>
-                <div style="font-size: 13px; color: var(--text-dim);">Longest Break</div>
-                <div style="font-size: 20px; font-weight: 500; color: var(--text);">${formatTime(maxBreakSec)}</div>
-            </div>
-        </div>
-    `);
-    container.appendChild(card3);
-
-    fragment.appendChild(container);
-
-    setTimeout(() => {
-        window.activitiesCharts = window.activitiesCharts || [];
-        
-        const ctx1 = document.getElementById('chart-work-break');
-        if (ctx1) {
-            window.activitiesCharts.push(new Chart(ctx1, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Working', 'Break'],
-                    datasets: [{
-                        data: [totalWorkingSec, totalBreakSec],
-                        backgroundColor: ['#10b981', '#f43f5e'],
-                        borderWidth: 0
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#ccc' } } } }
-            }));
-        }
-
-        const ctx2 = document.getElementById('chart-break-reasons');
-        if (ctx2) {
-            const labels = Object.keys(breakReasons);
-            const data = Object.values(breakReasons);
-            window.activitiesCharts.push(new Chart(ctx2, {
-                type: 'pie',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        data: data,
-                        backgroundColor: ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#64748b', '#14b8a6'],
-                        borderWidth: 0
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#ccc' } } } }
-            }));
-        }
-    }, 100);
-}
