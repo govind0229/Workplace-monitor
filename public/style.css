@@ -180,10 +180,86 @@ body::before {
   padding: 28px 0;
   flex-shrink: 0;
   z-index: 10;
+  position: relative;
+  /* overflow: hidden; Removed to allow toggle to straddle the border */
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Minimized sidebar — icons only, labels fade out */
+.sidebar.minimized {
+  width: 64px;
+}
+.sidebar.minimized .nav-label {
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.sidebar.minimized .logo {
+  padding: 0;
+  justify-content: center;
+}
+.sidebar.minimized nav {
+  padding: 0 8px;
+}
+.sidebar.minimized .nav-item {
+  justify-content: center;
+  padding: 11px 0;
+}
+.sidebar.minimized .sidebar-footer {
+  padding: 0;
+  display: flex;
+  justify-content: center;
+}
+/* Flip the arrow when minimized */
+.sidebar.minimized .sidebar-toggle svg {
+  transform: rotate(180deg);
+}
+
+/* nav-label — smooth transition */
+.nav-label {
+  opacity: 1;
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+  transition: opacity 0.2s ease, max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sidebar toggle — straddles the sidebar right edge for clean alignment in both states */
+.sidebar-toggle {
+  position: absolute;
+  top: 29px; /* Vertically centered with the logo icon */
+  right: -11px; /* Straddle the border (22px width) */
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-dim);
+  z-index: 20;
+  flex-shrink: 0;
+  transition: background 0.2s, color 0.2s;
+}
+.sidebar-toggle:hover {
+  background: var(--primary-dim);
+  color: var(--text);
+}
+.sidebar-toggle svg {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+
 
 .logo {
   padding: 0 28px;
+  padding-right: 40px; /* space for the absolute toggle btn */
   font-size: 1.1rem;
   font-weight: 700;
   margin-bottom: 40px;
@@ -260,8 +336,9 @@ nav {
 /* ─── Main Content ─── */
 .main-content {
   flex: 1;
-  padding: 40px;
+  padding: 30px;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   background: transparent;
   z-index: 1;
@@ -290,14 +367,16 @@ nav {
   content-visibility: hidden;
   position: absolute;
   width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
   opacity: 0;
   pointer-events: none;
   transform: translateY(16px);
   transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
               transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   will-change: opacity, transform;
+}
+
+.view:focus {
+  outline: none;
 }
 
 .view.active {
@@ -910,11 +989,29 @@ body[data-theme="light"] .theme-btn.active {
 }
 
 /* ─── Dashboard Grid (Charts) ─── */
-.dashboard-grid {
+.dashboard-top-row {
   display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 20px;
-  margin-top: 20px;
+  grid-template-columns: 1fr 300px;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.dashboard-bottom-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.dashboard-top-row > .chart-card,
+.dashboard-bottom-row > .chart-card {
+  margin-top: 0 !important;
+}
+
+@media (max-width: 1000px) {
+  .dashboard-top-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .chart-card {
@@ -1470,10 +1567,15 @@ body[data-theme="light"] .theme-btn.active {
 }
 
 .donut-center-label {
-  font-size: 0.6rem;
+  font-size: 0.55rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  max-width: 85px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .category-legend {
@@ -2017,14 +2119,7 @@ input[type="text"]:focus {
 
 /* ─── Responsive Design ─── */
 @media (max-width: 1024px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .ring-card {
-    max-width: 400px;
-    margin: 0 auto;
-  }
+  /* Removed fixed 1-column grid for dashboard-grid as it is now auto-fit */
 }
 
 @media (max-width: 768px) {
@@ -4115,3 +4210,29 @@ body[data-theme="light"] .break-action-card {
 }
 
 
+
+
+/* Sidebar icon tooltips when minimized */
+.sidebar.minimized .nav-item { position: relative; }
+.sidebar.minimized .nav-item::after {
+  content: attr(data-label);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 100;
+}
+.sidebar.minimized .nav-item:hover::after { opacity: 1; }
+
+/* Wellbeing Feature (moved to wellbeing.css) */

@@ -181,8 +181,48 @@ navItems.forEach(item => {
         }
         if (targetView === 'settings') loadSettings();
         if (targetView === 'location') initLocationView();
+        if (targetView === 'wellbeing') {
+            const wellbeingView = document.getElementById('wellbeingView');
+            if (wellbeingView && wellbeingView.children.length === 0) {
+                fetch('wellbeing.html')
+                    .then(res => res.text())
+                    .then(html => {
+                        wellbeingView.innerHTML = html;
+                        if (typeof initWellbeing === 'function') initWellbeing();
+                    })
+                    .catch(err => console.error('Failed to load wellbeing view:', err));
+            } else {
+                if (typeof initWellbeing === 'function') initWellbeing();
+            }
+        }
     };
 });
+
+// Add data-label to nav items for minimized tooltip
+navItems.forEach(item => {
+    const labelSpan = item.querySelector('.nav-label');
+    const label = labelSpan ? labelSpan.textContent.trim() : item.textContent.trim();
+    item.setAttribute('data-label', label);
+});
+
+// Collapsible Sidebar Logic
+(function() {
+    const sidebar = document.querySelector('.sidebar');
+    const toggleBtn = document.getElementById('sidebarToggle');
+    if (!sidebar || !toggleBtn) return;
+
+    // Default: minimized in HTML. If user expanded it before, remove class
+    const savedState = localStorage.getItem('sidebarExpanded');
+    if (savedState === 'true') {
+        sidebar.classList.remove('minimized');
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        const isMinimized = sidebar.classList.toggle('minimized');
+        localStorage.setItem('sidebarExpanded', !isMinimized);
+    });
+})();
+
 
 // Theme toggle buttons
 document.querySelectorAll('.theme-btn[data-theme]').forEach(btn => {
@@ -2371,13 +2411,22 @@ async function renderCategoryChart() {
             </div>
         `;
 
+        const maxSeconds = cats.length > 0 ? cats[0].seconds : 1;
         const legend = cats.map((cat, i) => {
             const color = colors.at(i % colors.length);
+            const pct = Math.max((cat.seconds / maxSeconds) * 100, 3);
             return `
-                <div class="category-item">
-                    <div class="category-pill" style="background:${color}"></div>
-                    <span class="category-name">${escapeHTML(cat.name)}</span>
-                    <span class="category-time">${formatHM(cat.seconds)}</span>
+                <div class="category-item" style="flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div class="category-pill" style="background:${color}"></div>
+                            <span class="category-name">${escapeHTML(cat.name)}</span>
+                        </div>
+                        <span class="category-time">${formatHM(cat.seconds)}</span>
+                    </div>
+                    <div class="app-bar-track" style="height: 4px; margin-left: 20px; border-radius: 2px;">
+                        <div class="app-bar-fill" style="background: ${color}; width: ${pct}%; border-radius: 2px;"></div>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -3458,3 +3507,8 @@ window.takeLunchBreak = takeLunchBreak;
 window.takeDinnerBreak = takeDinnerBreak;
 window.snoozeBreakReminder = snoozeBreakReminder;
 window.dismissBreakReminder = dismissBreakReminder;
+
+// ─── Wellbeing Feature ───
+
+
+// Wellbeing Feature moved to wellbeing.js

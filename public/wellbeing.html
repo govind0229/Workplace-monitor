@@ -1,0 +1,51 @@
+            <div class="view-title">
+                <h2>Productivity &amp; Wellbeing</h2>
+                <p class="view-subtitle">Manage breaks and healthy habits</p>
+            </div>
+            <div class="wellbeing-container">
+                <div class="wb-activities-section glass-card">
+                    <div class="wb-section-label">DAILY ACTIVITIES</div>
+                    <div class="wellbeing-grid" id="activitiesGrid">
+                        <!-- Cards populated by JS -->
+                    </div>
+                </div>
+                <div class="wellbeing-settings glass-card">
+                    <div class="wb-settings-section-title">ACTIVITY SETTINGS</div>
+
+                    <div class="wb-settings-row wb-settings-toggle-row">
+                        <span class="wb-settings-label">Dashboard Reminders</span>
+                        <div class="wb-toggle-wrap">
+                            <label class="wb-switch">
+                                <input type="checkbox" id="wellbeingEnableToggle">
+                                <span class="wb-slider"></span>
+                            </label>
+                            <span class="wb-toggle-status" id="wbToggleStatusText">ENABLED</span>
+                        </div>
+                    </div>
+
+                    <div class="wb-settings-row wb-settings-block-row">
+                        <label class="wb-field-label">REMINDER INTERVAL</label>
+                        <div class="wb-input-group">
+                            <input type="number" id="wbInterval" value="60" class="wb-input-num">
+                            <span class="wb-input-unit">Minutes <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </div>
+                    </div>
+
+                    <div class="wb-settings-row wb-settings-block-row">
+                        <label class="wb-field-label">DAILY GOALS</label>
+                        <div class="wb-input-group">
+                            <input type="number" id="wbGoals" value="8" class="wb-input-num">
+                            <span class="wb-input-unit">Activities <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </div>
+                    </div>
+
+                    <button id="saveWellbeingBtn" class="wb-save-btn" onclick="saveWellbeingSettings()">
+                        Save Settings
+                    </button>
+
+                    <div class="wb-settings-section-title wb-selected-title">MY SELECTED ACTIVITIES</div>
+                    <div class="wb-selected-list" id="selectedActivitiesList">
+                        <!-- Selected items will go here -->
+                    </div>
+                </div>
+            </div>
