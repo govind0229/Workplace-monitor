@@ -10,35 +10,35 @@ const wbState = {
 const wellbeingActivities = [
     {
         id: 'lunch', title: 'Lunch Break', desc: 'Step away for a proper meal break.', color: '#10b981',
-        svgIcon: '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="24" y="38" width="32" height="16" rx="4" fill="#10b981" opacity="0.4"/><rect x="24" y="38" width="32" height="7" rx="2" fill="#10b981" opacity="0.7"/><rect x="31" y="28" width="3" height="14" rx="1.5" fill="#6b7280"/><rect x="46" y="28" width="3" height="14" rx="1.5" fill="#6b7280"/><ellipse cx="40" cy="38" rx="14" ry="2.5" fill="#f59e0b" opacity="0.7"/></svg>'
+        svgIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>'
     },
     {
         id: 'water', title: 'Drink Water', desc: 'Stay hydrated throughout the day.', color: '#3b82f6',
-        svgIcon: '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M40 18 C40 18 26 34 26 46 a14 14 0 0 0 28 0 C54 34 40 18 40 18z" fill="#3b82f6" opacity="0.7"/><path d="M33 44 Q37 40 40 44" stroke="white" stroke-width="2" fill="none" opacity="0.7"/></svg>'
+        svgIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>'
     },
     {
         id: 'stretch_walk', title: 'Stand & Stretch', desc: 'Relieve tension with a quick stretch.', color: '#7c3aed',
-        svgIcon: '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="24" r="5" fill="#7c3aed"/><line x1="40" y1="29" x2="40" y2="50" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/><line x1="40" y1="36" x2="28" y2="30" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round"/><line x1="40" y1="36" x2="52" y2="30" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round"/><line x1="40" y1="50" x2="32" y2="60" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round"/><line x1="40" y1="50" x2="48" y2="60" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round"/></svg>'
+        svgIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'
     },
     {
         id: 'breathe', title: 'Breathe Deep', desc: 'Calm your mind with breathing.', color: '#ef4444',
-        svgIcon: '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="40" r="18" fill="#ef4444" opacity="0.2"/><circle cx="40" cy="40" r="12" fill="#ef4444" opacity="0.35"/><circle cx="40" cy="40" r="7" fill="#ef4444" opacity="0.7"/></svg>'
+        svgIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>'
     },
     {
         id: 'walk', title: 'Go For a Walk', desc: 'Get some fresh air and movement.', color: '#d97706',
-        svgIcon: '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="23" r="5" fill="#d97706"/><path d="M36 30 Q32 44 30 54" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M36 30 Q44 36 48 32" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M36 43 Q40 50 44 56" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>'
+        svgIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/></svg>'
     },
     {
         id: 'focus', title: 'Focus Session', desc: 'Deep work with no distractions.', color: '#0891b2',
-        svgIcon: '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="26" y="28" width="28" height="24" rx="3" fill="#0891b2" opacity="0.3"/><rect x="26" y="28" width="28" height="6" rx="3" fill="#0891b2" opacity="0.7"/><rect x="30" y="40" width="20" height="2" rx="1" fill="#0891b2"/><rect x="30" y="44" width="14" height="2" rx="1" fill="#0891b2" opacity="0.6"/></svg>'
+        svgIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
     },
     {
         id: 'mindful', title: 'Mindful Minute', desc: 'A moment of calm awareness.', color: '#16a34a',
-        svgIcon: '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M40 24 C32 24 26 30 26 38 C26 50 40 58 40 58 C40 58 54 50 54 38 C54 30 48 24 40 24z" fill="#16a34a" opacity="0.35"/><circle cx="40" cy="38" r="7" fill="#16a34a" opacity="0.7"/></svg>'
+        svgIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>'
     },
     {
         id: 'read', title: 'Read & Learn', desc: 'Invest in personal growth.', color: '#ca8a04',
-        svgIcon: '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="26" y="26" width="28" height="32" rx="3" fill="#ca8a04" opacity="0.25"/><rect x="26" y="26" width="4" height="32" rx="2" fill="#ca8a04" opacity="0.6"/><rect x="32" y="33" width="16" height="2" rx="1" fill="#ca8a04"/><rect x="32" y="38" width="16" height="2" rx="1" fill="#ca8a04" opacity="0.7"/><rect x="32" y="43" width="10" height="2" rx="1" fill="#ca8a04" opacity="0.5"/></svg>'
+        svgIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'
     },
 ];
 

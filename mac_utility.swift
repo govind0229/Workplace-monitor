@@ -395,8 +395,7 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
         window.contentView = webView
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.07, alpha: 1.0)
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor.windowBackgroundColor
 
         self.window = window
 
@@ -665,9 +664,9 @@ class BreakPopupController: NSObject, NSWindowDelegate, WKNavigationDelegate, WK
         window.contentView = webView
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 0.95)
-        window.appearance = NSAppearance(named: .darkAqua)
-        
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.isOpaque = false
+
         // Float on top of all windows & allow rendering across all virtual spaces / full-screen apps
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -791,8 +790,8 @@ class IdlePopupController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         window.contentView = webView
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 0.95)
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.isOpaque = false
         
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]

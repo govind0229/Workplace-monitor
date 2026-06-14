@@ -133,17 +133,30 @@ function applyAccentColor(colorKey) {
 
 // Ensure theme changes trigger accent color re-calculations for alpha differences
 function applyTheme(theme) {
-    document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
     document.querySelectorAll('.theme-btn[data-theme]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === theme);
     });
+
+    let activeTheme = theme;
+    if (theme === 'system') {
+        activeTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+
+    document.body.setAttribute('data-theme', activeTheme);
     // Refresh accent color alphas based on new theme
     applyAccentColor(localStorage.getItem('accentColor') || 'purple');
 }
 
+// Listen for system theme changes if using system theme
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+    if (localStorage.getItem('theme') === 'system') {
+        applyTheme('system');
+    }
+});
+
 // Apply saved theme & color immediately
-applyTheme(localStorage.getItem('theme') || 'dark');
+applyTheme(localStorage.getItem('theme') || 'system');
 
 // Navigation Logic
 navItems.forEach(item => {

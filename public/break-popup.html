@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
   <title>Time for a Break!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -10,9 +11,10 @@
       --primary-dim: rgba(139, 92, 246, 0.15);
       --secondary: #10b981;
       --secondary-dim: rgba(16, 185, 129, 0.15);
-      --bg: #0c0c14;
-      --surface: rgba(255, 255, 255, 0.03);
-      --surface-hover: rgba(255, 255, 255, 0.06);
+      --bg: transparent;
+      --container-bg: rgba(20, 20, 30, 0.93);
+      --surface: rgba(255, 255, 255, 0.02);
+      --surface-hover: rgba(255, 255, 255, 0.05);
       --border: rgba(255, 255, 255, 0.08);
       --text: #fafafa;
       --text-dim: #a1a1aa;
@@ -20,6 +22,20 @@
       --radius: 16px;
       --radius-sm: 10px;
       --blur: blur(20px);
+      --shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+    }
+    body[data-theme="light"] {
+      --primary: #8b5cf6;
+      --primary-dim: rgba(139, 92, 246, 0.1);
+      --secondary: #059669;
+      --secondary-dim: rgba(5, 150, 105, 0.1);
+      --container-bg: rgba(255, 255, 255, 0.95);
+      --border: rgba(0, 0, 0, 0.08);
+      --surface: rgba(0, 0, 0, 0.03);
+      --surface-hover: rgba(0, 0, 0, 0.06);
+      --text: #0f172a;
+      --text-dim: #475569;
+      --shadow: 0 16px 36px rgba(0, 0, 0, 0.15);
     }
 
     * {
@@ -43,15 +59,15 @@
     .popup-container {
       width: 100%;
       height: auto;
-      background: rgba(20, 20, 30, 0.93);
+      background: var(--container-bg);
       backdrop-filter: var(--blur);
       -webkit-backdrop-filter: var(--blur);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--shadow);
       animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
@@ -133,8 +149,8 @@
       align-items: flex-start;
       gap: 8px;
       padding: 6px 10px;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       margin-bottom: 8px;
     }
@@ -167,8 +183,8 @@
       gap: 4px;
       width: 100%;
       padding: 8px 4px !important;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       cursor: pointer;
       color: inherit;
@@ -177,7 +193,7 @@
     }
 
     .break-action-card:hover {
-      background: rgba(255, 255, 255, 0.05) !important;
+      background: var(--surface-hover) !important;
       transform: translateY(-2px);
     }
 
@@ -231,8 +247,8 @@
     }
 
     .snooze-select {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 6px;
       color: var(--text);
       font-size: 0.72rem;
@@ -247,12 +263,12 @@
     }
     
     .snooze-select:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--surface-hover);
       border-color: var(--accent);
     }
 
     .snooze-select option {
-      background: #0c0c14;
+      background: var(--container-bg);
       color: var(--text);
     }
 
@@ -263,8 +279,8 @@
       gap: 6px;
       width: 100%;
       padding: 6px 8px !important;
-      background: rgba(255, 255, 255, 0.01);
-      border: 1px solid rgba(255, 255, 255, 0.04);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       color: var(--text-dim);
       font-size: 0.8rem;
@@ -368,6 +384,18 @@
   </div>
 
   <script>
+    const savedTheme = localStorage.getItem('theme') || 'system';
+    let activeTheme = savedTheme;
+    if (savedTheme === 'system') {
+        activeTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.body.setAttribute('data-theme', activeTheme);
+    
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+        if (localStorage.getItem('theme') === 'system') {
+            document.body.setAttribute('data-theme', e.matches ? 'light' : 'dark');
+        }
+    });
     // Safe bridge call
     function closeWindow() {
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.closeBreakPopup) {
