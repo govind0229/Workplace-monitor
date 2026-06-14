@@ -366,7 +366,11 @@ nav {
 .view {
   content-visibility: hidden;
   position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
+  height: 0;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
   transform: translateY(16px);
@@ -382,6 +386,8 @@ nav {
 .view.active {
   content-visibility: visible;
   position: relative;
+  height: auto;
+  overflow: visible;
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
@@ -996,6 +1002,13 @@ body[data-theme="light"] .theme-btn.active {
   margin-top: 24px;
 }
 
+.dashboard-middle-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+
 .dashboard-bottom-row {
   display: grid;
   grid-template-columns: 1fr;
@@ -1004,6 +1017,7 @@ body[data-theme="light"] .theme-btn.active {
 }
 
 .dashboard-top-row > .chart-card,
+.dashboard-middle-row > .chart-card,
 .dashboard-bottom-row > .chart-card {
   margin-top: 0 !important;
 }
@@ -1533,8 +1547,8 @@ body[data-theme="light"] .theme-btn.active {
 
 .donut-chart-container {
   position: relative;
-  width: 140px;
-  height: 140px;
+  width: 180px;
+  height: 180px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1542,8 +1556,8 @@ body[data-theme="light"] .theme-btn.active {
 }
 
 .pie-svg {
-  width: 140px;
-  height: 140px;
+  width: 180px;
+  height: 180px;
   transform: rotate(-90deg);
   overflow: visible;
   filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2));
@@ -1571,7 +1585,7 @@ body[data-theme="light"] .theme-btn.active {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  max-width: 85px;
+  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2294,11 +2308,12 @@ input[type="text"]:focus {
   gap: 12px;
   align-items: center;
   padding: 8px 0;
+  flex-wrap: wrap;
 }
 
 .color-swatch {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 2px solid var(--border);
   background: var(--swatch-color);

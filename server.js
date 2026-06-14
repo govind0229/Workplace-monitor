@@ -1027,6 +1027,41 @@ app.get('/app-usage-categories', (req, res) => {
     res.json({ categories: result });
 });
 
+app.get('/app-timeline', (req, res) => {
+    // 1. Determine top 8 apps for the day
+    const topAppsUsage = getTodayAppUsage();
+    const top8AppNames = topAppsUsage.slice(0, 8).map(u => u.app_name);
+
+    // 2. Query timeline events
+    const timelineEvents = db.prepare(`
+        SELECT strftime('%H', timestamp) as hour, app_name, SUM(duration_seconds) as duration
+        FROM app_usage_timeline
+        WHERE date = date('now', 'localtime')
+        GROUP BY hour, app_name
+        ORDER BY hour ASC
+    `).all();
+
+    const appsByHour = {};
+
+    timelineEvents.forEach(event => {
+        // Only include apps that are in the Top 8
+        if (!top8AppNames.includes(event.app_name)) {
+            return;
+        }
+        
+        const hour = parseInt(event.hour, 10);
+        if (!appsByHour[hour]) {
+            appsByHour[hour] = {};
+        }
+        if (!appsByHour[hour][event.app_name]) {
+            appsByHour[hour][event.app_name] = 0;
+        }
+        appsByHour[hour][event.app_name] += event.duration;
+    });
+
+    res.json({ timeline: appsByHour, topApps: top8AppNames });
+});
+
 app.get('/settings', (req, res) => {
     const goalHours = getSetting('goalHours', '4');
     const goalMinutes = getSetting('goalMinutes', '10');

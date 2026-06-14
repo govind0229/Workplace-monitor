@@ -59,6 +59,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_app_usage_date ON app_usage(date);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_app_usage_date_app ON app_usage(date, app_name);
 
+  CREATE TABLE IF NOT EXISTS app_usage_timeline (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    date TEXT DEFAULT (date('now', 'localtime')),
+    app_name TEXT NOT NULL,
+    duration_seconds INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_app_usage_timeline_date ON app_usage_timeline(date);
+
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -297,6 +306,11 @@ module.exports = {
       VALUES (date('now', 'localtime'), ?, ?)
       ON CONFLICT(date, app_name) DO UPDATE SET total_seconds = total_seconds + ?
     `).run(appName, seconds, seconds);
+
+    db.prepare(`
+      INSERT INTO app_usage_timeline (timestamp, date, app_name, duration_seconds)
+      VALUES (datetime('now', 'localtime'), date('now', 'localtime'), ?, ?)
+    `).run(appName, seconds);
   },
   getTodayAppUsage: () => {
     return db.prepare(`

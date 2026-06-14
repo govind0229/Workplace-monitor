@@ -90,6 +90,7 @@ const domCache = {
 
 // Accent Color management
 const themeColors = {
+    // Original Gradients
     purple: { primary: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #d946ef)', r: 139, g: 92, b: 246 },
     ocean: { primary: '#0ea5e9', gradient: 'linear-gradient(135deg, #0ea5e9, #3b82f6)', r: 14, g: 165, b: 233 },
     sunset: { primary: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #ef4444)', r: 245, g: 158, b: 11 },
@@ -97,7 +98,20 @@ const themeColors = {
     rose: { primary: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #be123c)', r: 244, g: 63, b: 94 },
     indigo: { primary: '#4f46e5', gradient: 'linear-gradient(135deg, #4f46e5, #7c3aed)', r: 79, g: 70, b: 229 },
     teal: { primary: '#0d9488', gradient: 'linear-gradient(135deg, #0d9488, #0f766e)', r: 13, g: 148, b: 136 },
-    coral: { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #ea580c)', r: 249, g: 115, b: 22 }
+    coral: { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #ea580c)', r: 249, g: 115, b: 22 },
+    // New Gradients
+    fire: { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #facc15)', r: 249, g: 115, b: 22 },
+    forest: { primary: '#22c55e', gradient: 'linear-gradient(135deg, #22c55e, #14b8a6)', r: 34, g: 197, b: 94 },
+    berry: { primary: '#d946ef', gradient: 'linear-gradient(135deg, #d946ef, #f43f5e)', r: 217, g: 70, b: 239 },
+    midnight: { primary: '#312e81', gradient: 'linear-gradient(135deg, #4c1d95, #1e3a8a)', r: 49, g: 46, b: 129 },
+    // Solid Colors
+    solid_blue: { primary: '#2563eb', gradient: '#2563eb', r: 37, g: 99, b: 235 },
+    solid_red: { primary: '#dc2626', gradient: '#dc2626', r: 220, g: 38, b: 38 },
+    solid_green: { primary: '#16a34a', gradient: '#16a34a', r: 22, g: 163, b: 74 },
+    solid_purple: { primary: '#9333ea', gradient: '#9333ea', r: 147, g: 51, b: 234 },
+    solid_orange: { primary: '#ea580c', gradient: '#ea580c', r: 234, g: 88, b: 12 },
+    solid_pink: { primary: '#db2777', gradient: '#db2777', r: 219, g: 39, b: 119 },
+    solid_gray: { primary: '#4b5563', gradient: '#4b5563', r: 75, g: 85, b: 99 }
 };
 
 function applyAccentColor(colorKey) {
@@ -2387,23 +2401,25 @@ async function renderCategoryChart() {
         const topColor = colors.at(topIndex % colors.length);
 
         // Build SVG pie chart using conic segments via circle stroke-dasharray
-        const radius = 50;
+        const radius = 70;
         const circumference = 2 * Math.PI * radius;
         let offset = 0;
         const slices = cats.map((cat, i) => {
             const pct = cat.seconds / total;
             const dashLen = pct * circumference;
             const color = colors.at(i % colors.length);
-            const slice = `<circle cx="70" cy="70" r="${radius}" fill="none" stroke="${color}" stroke-width="25"
+            const slice = `<circle cx="90" cy="90" r="${radius}" fill="none" stroke="${color}" stroke-width="25"
                 stroke-dasharray="${dashLen} ${circumference - dashLen}" stroke-dashoffset="${-offset}"
-                style="transition: stroke-dashoffset 0.5s ease"/>`;
+                style="transition: stroke-dashoffset 0.5s ease; cursor: pointer; pointer-events: stroke;"
+                onmouseenter="showAppTooltip(event, '${escapeHTML(cat.name)}', ${cat.seconds})"
+                onmouseleave="hideColTooltip()"/>`;
             offset += dashLen;
             return slice;
         });
 
         const pieSvg = `
             <div class="donut-chart-container">
-                <svg class="pie-svg" viewBox="0 0 140 140">${slices.join('')}</svg>
+                <svg class="pie-svg" viewBox="0 0 180 180">${slices.join('')}</svg>
                 <div class="donut-center-content">
                     <div class="donut-center-pct">${topPct}%</div>
                     <div class="donut-center-label" style="color: ${topColor}">${escapeHTML(topCat.name).toUpperCase()}</div>
@@ -2411,22 +2427,13 @@ async function renderCategoryChart() {
             </div>
         `;
 
-        const maxSeconds = cats.length > 0 ? cats[0].seconds : 1;
         const legend = cats.map((cat, i) => {
             const color = colors.at(i % colors.length);
-            const pct = Math.max((cat.seconds / maxSeconds) * 100, 3);
             return `
-                <div class="category-item" style="flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 0;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div class="category-pill" style="background:${color}"></div>
-                            <span class="category-name">${escapeHTML(cat.name)}</span>
-                        </div>
-                        <span class="category-time">${formatHM(cat.seconds)}</span>
-                    </div>
-                    <div class="app-bar-track" style="height: 4px; margin-left: 20px; border-radius: 2px;">
-                        <div class="app-bar-fill" style="background: ${color}; width: ${pct}%; border-radius: 2px;"></div>
-                    </div>
+                <div class="category-item">
+                    <div class="category-pill" style="background:${color}"></div>
+                    <span class="category-name">${escapeHTML(cat.name)}</span>
+                    <span class="category-time">${formatHM(cat.seconds)}</span>
                 </div>
             `;
         }).join('');
@@ -2442,7 +2449,118 @@ async function loadDashboardCharts() {
     renderStatsChart(currentStatsRange);
     renderAppUsage();
     renderCategoryChart();
+    renderAppTimelineChart();
     renderActivityTimeline();
+}
+
+let appTimelineChartInstance = null;
+async function renderAppTimelineChart() {
+    const canvas = document.getElementById('appTimelineChart');
+    if (!canvas) return;
+
+    try {
+        const timeRes = await fetch(`${API_BASE}/app-timeline`);
+        const timeData = await timeRes.json();
+
+        const topApps = timeData.topApps || [];
+        const timeline = timeData.timeline || {};
+
+        const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#f97316', '#84cc16', '#d946ef'];
+        const appColorMap = {};
+        topApps.forEach((appName, i) => {
+            appColorMap[appName] = colors[i % colors.length];
+        });
+
+        const hoursWithData = Object.keys(timeline).map(Number).sort((a, b) => a - b);
+        const currentHour = new Date().getHours();
+        
+        // Start from the first hour of activity, or default to 8am. Don't start later than current hour.
+        let minHour = hoursWithData.length > 0 ? hoursWithData[0] : 8;
+        minHour = Math.min(minHour, currentHour);
+        
+        // Ensure we always show at least 4 hours of context
+        if (currentHour - minHour < 4) {
+            minHour = Math.max(0, currentHour - 4);
+        }
+
+        const labels = [];
+        for (let h = minHour; h <= currentHour; h++) {
+            const ampm = h >= 12 ? 'p' : 'a';
+            const hour12 = h % 12 || 12;
+            labels.push(`${hour12}${ampm}`);
+        }
+
+        const datasets = [];
+        topApps.forEach(appName => {
+            const data = [];
+            for (let h = minHour; h <= currentHour; h++) {
+                const hourData = timeline[h] || {};
+                const val = hourData[appName] || 0;
+                data.push(val / 60); // display in minutes
+            }
+            datasets.push({
+                label: appName,
+                data: data,
+                borderColor: appColorMap[appName],
+                backgroundColor: appColorMap[appName] + '20', // transparent fill
+                fill: true,
+                borderWidth: 2,
+                tension: 0.4,
+                cubicInterpolationMode: 'monotone',
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        });
+
+        if (appTimelineChartInstance) {
+            appTimelineChartInstance.destroy();
+        }
+
+        appTimelineChartInstance = new Chart(canvas, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) { label += ': '; }
+                                if (context.parsed.y !== null) {
+                                    label += Math.round(context.parsed.y) + ' mins';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: 'var(--text-muted)' }
+                    },
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { 
+                            color: 'var(--text-muted)', 
+                            maxTicksLimit: 12,
+                            maxRotation: 0,
+                            minRotation: 0
+                        }
+                    }
+                }
+            }
+        });
+    } catch (e) {
+        console.error('Error rendering category timeline', e);
+    }
 }
 
 // ─── Auto-refresh when window regains focus (native app + browser) ───
