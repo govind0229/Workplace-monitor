@@ -170,7 +170,7 @@ body::before {
 
 /* ─── Sidebar ─── */
 .sidebar {
-  width: 240px;
+  width: 260px;
   background: rgba(9, 9, 11, 0.7);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
@@ -219,7 +219,7 @@ body::before {
 /* nav-label — smooth transition */
 .nav-label {
   opacity: 1;
-  max-width: 160px;
+  max-width: 180px;
   overflow: hidden;
   white-space: nowrap;
   flex-shrink: 1;
@@ -259,7 +259,7 @@ body::before {
 
 .logo {
   padding: 0 28px;
-  padding-right: 40px; /* space for the absolute toggle btn */
+  padding-right: 24px; /* space for the absolute toggle btn */
   font-size: 1.1rem;
   font-weight: 700;
   margin-bottom: 40px;

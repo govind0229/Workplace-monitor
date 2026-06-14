@@ -149,6 +149,7 @@ applyTheme(localStorage.getItem('theme') || 'dark');
 navItems.forEach(item => {
     item.onclick = () => {
         const targetView = item.dataset.view;
+        sessionStorage.setItem('activeView', targetView);
 
         // Reset scroll position to top when switching views!
         const mainContent = document.querySelector('.main-content');
@@ -211,6 +212,13 @@ navItems.forEach(item => {
         }
     };
 });
+
+// Restore active view from sessionStorage
+const savedView = sessionStorage.getItem('activeView') || 'monitor';
+const targetNav = Array.from(navItems).find(n => n.dataset.view === savedView);
+if (targetNav) {
+    targetNav.click();
+}
 
 // Add data-label to nav items for minimized tooltip
 navItems.forEach(item => {
@@ -1407,6 +1415,12 @@ function updateGreeting() {
 
 async function updateStatus(forceSync = false) {
     const now = Date.now();
+
+    if (forceSync) {
+        // App was brought to foreground (e.g. from tray/widget)
+        const monitorNav = document.querySelector('[data-view="monitor"]');
+        if (monitorNav) monitorNav.click();
+    }
 
     if (forceSync || (now - lastSyncRealTime >= syncInterval)) {
         try {
