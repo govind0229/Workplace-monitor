@@ -1,4 +1,3 @@
-const { db, getTimelineReport } = require('./db.js');
-
-const timeline = getTimelineReport();
-console.log(JSON.stringify(timeline, null, 2));
+const db = require('./db');
+const res = db.getTimelineReport(null, null);
+console.log(JSON.stringify(res, null, 2));

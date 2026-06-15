@@ -130,7 +130,8 @@
     }
     .option-card:hover {
       background: var(--surface-hover);
-      transform: translateY(-2px);
+      border-color: var(--hover-color, var(--border));
+      transform: translateY(-1px);
     }
     .option-card:active {
       transform: translateY(0);
@@ -145,6 +146,13 @@
     }
     .option-emoji {
       font-size: 1.4rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .option-emoji svg {
+      width: 1.6rem;
+      height: 1.6rem;
     }
     .option-content {
       display: flex;
@@ -179,46 +187,8 @@
     <p class="description">You were away for <strong id="idleDurationText">...</strong>. How would you like to log this time?</p>
     
     <div class="category-header">Log as Break (Discard Time)</div>
-    <div class="options-grid">
-      <button class="option-card" onclick="respond('coffee')">
-        <div class="option-emoji">☕</div>
-        <div class="option-content">
-          <span class="option-title">Coffee / Snack</span>
-          <span class="option-desc">Short break</span>
-        </div>
-      </button>
-      
-      <button class="option-card" onclick="respond('driving')">
-        <div class="option-emoji">🚗</div>
-        <div class="option-content">
-          <span class="option-title">Driving</span>
-          <span class="option-desc">In transit</span>
-        </div>
-      </button>
-
-      <button class="option-card" onclick="respond('lunch')">
-        <div class="option-emoji">🍽️</div>
-        <div class="option-content">
-          <span class="option-title">Lunch / Meal</span>
-          <span class="option-desc">Meal break</span>
-        </div>
-      </button>
-
-      <button class="option-card" onclick="respond('exercise')">
-        <div class="option-emoji">🚶</div>
-        <div class="option-content">
-          <span class="option-title">Exercise</span>
-          <span class="option-desc">Physical activity</span>
-        </div>
-      </button>
-
-      <button class="option-card" onclick="respond('personal')">
-        <div class="option-emoji">📵</div>
-        <div class="option-content">
-          <span class="option-title">Personal</span>
-          <span class="option-desc">Off work</span>
-        </div>
-      </button>
+    <div class="options-grid" id="dynamicIdleBreakGrid">
+      <!-- Dynamic break options injected here via JS -->
     </div>
 
     <div class="category-header">Log as Work (Add to Session)</div>
@@ -249,6 +219,7 @@
     </div>
   </div>
 
+  <script src="shared-activities.js"></script>
   <script>
     const savedTheme = localStorage.getItem('theme') || 'system';
     let activeTheme = savedTheme;
@@ -317,7 +288,47 @@
       }
     }
 
+    function renderDynamicIdleOptions() {
+      const grid = document.getElementById('dynamicIdleBreakGrid');
+      const selectedIds = JSON.parse(localStorage.getItem('wbSelected') || '["lunch","water","stretch_walk","breathe"]');
+      
+      let html = '';
+      
+      selectedIds.forEach(id => {
+        const act = wellbeingActivities.find(a => a.id === id);
+        if (act) {
+           html += `
+             <button class="option-card" style="--hover-color: ${act.color}" onclick="respond('${act.id}')">
+               <div class="option-emoji">${act.svgIcon}</div>
+               <div class="option-content">
+                 <span class="option-title">${act.title}</span>
+                 <span class="option-desc">${act.desc}</span>
+               </div>
+             </button>
+           `;
+        }
+      });
+      
+      // Keep at least one generic option if nothing selected (though unlikely)
+      if (html === '') {
+        html = `
+             <button class="option-card" onclick="respond('personal')">
+               <div class="option-emoji">📵</div>
+               <div class="option-content">
+                 <span class="option-title">Personal</span>
+                 <span class="option-desc">Off work</span>
+               </div>
+             </button>
+        `;
+      }
+      
+      grid.innerHTML = html;
+      sendHeightToNative();
+    }
+
+    // Run on load
     loadStatus();
+    renderDynamicIdleOptions();
   </script>
 </body>
 </html>

@@ -4276,3 +4276,11 @@ body[data-theme="light"] .break-action-card {
 .sidebar.minimized .nav-item:hover::after { opacity: 1; }
 
 /* Wellbeing Feature (moved to wellbeing.css) */
+
+/* App version visibility fix */
+.sidebar.minimized .version-badge {
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}

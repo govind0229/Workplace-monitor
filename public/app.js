@@ -280,7 +280,11 @@ async function loadSettings() {
             const dynData = await dynRes.json();
             const dynText = document.getElementById('dynamicBreakText');
             if (dynText) {
-                dynText.textContent = `AI scheduled your next break for ${dynData.interval} minutes from now based on your behavior.`;
+                if (dynData.useAi) {
+                    dynText.textContent = `AI scheduled your next break for ${dynData.interval} minutes from now based on your behavior.`;
+                } else {
+                    dynText.textContent = `AI dynamic scheduling is currently disabled. Using your fixed interval of ${dynData.interval} minutes.`;
+                }
             }
         } catch (err) {
             console.error('Failed to load dynamic break stats', err);
@@ -340,7 +344,7 @@ async function loadAppSuggestions() {
         const data = await res.json();
         if (appSuggestions) {
             appSuggestions.innerHTML = data.apps.map(app =>
-                html`<option value="${escapeHTML(app)}">`
+                `<option value="${escapeHTML(app)}">`
             ).join('');
         }
     } catch (e) {

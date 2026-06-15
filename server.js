@@ -613,6 +613,16 @@ app.post('/event', asyncHandler(async (req, res) => {
         return res.status(400).json({ error: 'Invalid event. Must be "lock" or "unlock".' });
     }
 
+    if (event === 'lock' && metadata && metadata.action === 'lock_screen') {
+        console.log(`[System] Executing pmset displaysleepnow due to lock_screen action (Reason: ${reason})`);
+        const { exec } = require('child_process');
+        exec('pmset displaysleepnow', (err) => {
+            if (err) {
+                console.error("[System] Failed to lock screen via pmset:", err);
+            }
+        });
+    }
+
     const finishReasons = ['user_initiated', 'session_resign', 'system_sleep'];
 
     if (event === 'lock') {
@@ -931,21 +941,23 @@ app.post('/dismiss-break-reminder', asyncHandler(async (req, res) => {
 }));
 
 app.post('/snooze-break-reminder', asyncHandler(async (req, res) => {
-    let session = getActiveSession('manual');
-    let type = 'manual';
-    if (!session || session.status !== 'active') {
-        session = getTodayAutomaticSession();
-        type = 'automatic';
+    const manualSession = getActiveSession('manual');
+    const autoSession = getTodayAutomaticSession();
+    
+    let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+    if (breakMin === 1) breakMin = 60;
+    const snoozeMin = parseInt(req.body.minutes || '10');
+    const breakSec = breakMin * 60;
+    const snoozeSec = snoozeMin * 60;
+
+    for (const session of [manualSession, autoSession]) {
+        if (session && session.status === 'active') {
+            const newBreakNotify = session.total_seconds - breakSec + snoozeSec;
+            stmtSetBreakNotify.run(newBreakNotify, session.id);
+            console.log(`[Break Reminder] Snoozed session #${session.id} for ${snoozeMin} minutes. New last_break_notify = ${newBreakNotify}`);
+        }
     }
-    if (session && session.status === 'active') {
-        const breakMin = parseInt(type === 'manual' ? getCachedSetting('breakInterval', '60') : getCachedSetting('wfhBreakInterval', '60'));
-        const snoozeMin = parseInt(req.body.minutes || '10');
-        const breakSec = breakMin * 60;
-        const snoozeSec = snoozeMin * 60;
-        const newBreakNotify = session.total_seconds - breakSec + snoozeSec;
-        stmtSetBreakNotify.run(newBreakNotify, session.id);
-        console.log(`[Break Reminder] Snoozed session #${session.id} (${type}) for ${snoozeMin} minutes. New last_break_notify = ${newBreakNotify}`);
-    }
+
     pendingBreakReminder = null;
     res.json({ success: true });
 }));
@@ -1089,10 +1101,14 @@ app.get('/settings', (req, res) => {
 });
 
 app.post('/settings', asyncHandler(async (req, res) => {
-    const { goalHours, goalMinutes, breakInterval, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius, defaultProjectId } = req.body;
+    const { goalHours, goalMinutes, breakInterval, useAiDynamicBreak, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius, defaultProjectId } = req.body;
     if (goalHours !== undefined) setSetting('goalHours', goalHours);
     if (goalMinutes !== undefined) setSetting('goalMinutes', goalMinutes);
-    if (breakInterval !== undefined) setSetting('breakInterval', breakInterval);
+    if (useAiDynamicBreak !== undefined) setSetting('useAiDynamicBreak', useAiDynamicBreak.toString());
+    if (breakInterval !== undefined) {
+        setSetting('breakInterval', breakInterval);
+        setSetting('dynamicBreakInterval', breakInterval); // Sync so the backend timers use this immediately
+    }
     if (wfhBreakInterval !== undefined) setSetting('wfhBreakInterval', wfhBreakInterval);
     if (goalLinePercent !== undefined) setSetting('goalLinePercent', goalLinePercent);
     if (customAppCategories !== undefined) setSetting('customAppCategories', customAppCategories);
@@ -1522,7 +1538,8 @@ setInterval(updateDynamicBreak, 24 * 60 * 60 * 1000);
 
 app.get('/dynamic-break-stats', (req, res) => {
     const interval = getCachedSetting('dynamicBreakInterval', '60');
-    res.json({ interval: parseInt(interval) });
+    const useAi = getCachedSetting('useAiDynamicBreak', 'false') === 'true';
+    res.json({ interval: parseInt(interval), useAi: useAi });
 });
 
 app.listen(PORT, '0.0.0.0', () => {

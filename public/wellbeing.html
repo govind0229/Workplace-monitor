@@ -25,9 +25,18 @@
 
                     <div class="wb-settings-row wb-settings-block-row">
                         <label class="wb-field-label">REMINDER INTERVAL</label>
-                        <div class="wb-input-group">
+                        <div class="wb-input-group" style="margin-bottom: 12px;">
                             <input type="number" id="wbInterval" value="60" class="wb-input-num">
                             <span class="wb-input-unit">Minutes <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </div>
+                        <div class="wb-settings-toggle-row" style="padding: 0; background: transparent; border: none; margin-top: 8px;">
+                            <span class="wb-settings-label" style="font-size: 0.8rem; font-weight: normal; color: var(--text-dim);">Use AI Smart Breaks</span>
+                            <div class="wb-toggle-wrap" style="transform: scale(0.85); transform-origin: right;">
+                                <label class="wb-switch">
+                                    <input type="checkbox" id="wbAiToggle">
+                                    <span class="wb-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 
