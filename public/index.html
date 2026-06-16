@@ -1063,71 +1063,7 @@
     </div>
 
 
-    <!-- Smart Break Reminder Modal -->
-    <div id="breakReminderModal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true"
-        aria-labelledby="breakModalTitle">
-        <div class="modal-backdrop"></div>
-        <div class="glass-card modal-container break-reminder-container">
-            <div class="break-reminder-header">
-                <div class="break-reminder-cup-wrapper">
-                    <!-- Premium Animated Wellness Glowing Cup -->
-                    <div class="breathing-cup">☕</div>
-                </div>
-                <div>
-                    <h2 id="breakModalTitle">Time for a Break!</h2>
-                    <span class="break-subtitle">Wellness &amp; Focus Guard</span>
-                </div>
-            </div>
 
-            <div class="break-reminder-body">
-                <p class="break-description">You've been working continuously for <strong id="breakElapsedText">60
-                        minutes</strong>.</p>
-                <div class="break-message-bubble glass-card">
-                    <span class="bubble-icon">💡</span>
-                    <p id="breakMessageText">Take a moment to stretch and rest your eyes.</p>
-                </div>
-
-                <div class="break-actions-grid">
-                    <!-- Option 1: Short Break -->
-                    <button class="break-action-card glass-card pause-card" onclick="takeBreakNow()">
-                        <div class="action-emoji">⏸️</div>
-                        <div class="action-content">
-                            <span class="action-title">Short Break</span>
-                        </div>
-                    </button>
-
-                    <!-- Option 2: Lunch -->
-                    <button class="break-action-card glass-card lunch-card" onclick="takeLunchBreak()">
-                        <div class="action-emoji">🍴</div>
-                        <div class="action-content">
-                            <span class="action-title">Lunch</span>
-                        </div>
-                    </button>
-
-                    <!-- Option 3: Dinner -->
-                    <button class="break-action-card glass-card dinner-card" onclick="takeDinnerBreak()">
-                        <div class="action-emoji">🍽️</div>
-                        <div class="action-content">
-                            <span class="action-title">Dinner</span>
-                        </div>
-                    </button>
-
-                    <!-- Option 4: Snooze 10m -->
-                    <button class="break-action-card glass-card snooze-card" onclick="snoozeBreakReminder(10)">
-                        <div class="action-emoji">⏳</div>
-                        <div class="action-content">
-                            <span class="action-title">Snooze 10m</span>
-                        </div>
-                    </button>
-                </div>
-
-                <!-- Full-width Dismiss Button -->
-                <button class="break-dismiss-button" onclick="dismissBreakReminder()">
-                    <span>✕ Dismiss</span>
-                </button>
-            </div>
-        </div>
-    </div>
 
     <script src="app.js"></script>
     <script src="shared-activities.js"></script>
