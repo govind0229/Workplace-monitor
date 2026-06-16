@@ -2167,13 +2167,13 @@ async function renderWeeklyChart() {
             return `<div class="chart-day-cell"><span class="${cls}">${d.label}</span></div>`;
         }).join('');
 
-        container.innerHTML = DOMPurify.sanitize(`
+        container.innerHTML = `
             <div class="chart-bars-area">
                 <div class="chart-goal-line" style="bottom: ${goalPct}%"></div>
                 <div class="chart-cols-row">${colsHTML}</div>
             </div>
             <div class="chart-day-labels-row">${labelsHTML}</div>
-        `);
+        `;
     } catch (e) {
         container.innerHTML = DOMPurify.sanitize('<div class="chart-loading">Unable to load</div>');
     }
@@ -2198,11 +2198,11 @@ function showColTooltip(e, el, label) {
     globalTooltip.innerHTML = DOMPurify.sanitize(`
         <div class="tooltip-title">${label}</div>
         <div style="display:flex; justify-content:space-between; gap:16px;">
-            <span style="color:var(--text-dim)">Workplace</span>
+            <span style="color:var(--text-dim)">WFO</span>
             <span class="tooltip-value">${formatHM(manual)}</span>
         </div>
         <div style="display:flex; justify-content:space-between; gap:16px;">
-            <span style="color:var(--text-dim)">Day Hours</span>
+            <span style="color:var(--text-dim)">WFH</span>
             <span class="tooltip-value">${formatHM(auto)}</span>
         </div>
     `);
@@ -2382,7 +2382,7 @@ async function renderAppUsage() {
 
             const row = document.createElement('div');
             row.className = 'app-row';
-            row.innerHTML = DOMPurify.sanitize(`
+            row.innerHTML = `
                 <div style="display:flex; width:100%; align-items:center;"
                      onmouseenter="showAppTooltip(event, '${escapeHTML(app.app_name)}', parseInt('${app.total_seconds}'))"
                      onmousemove="positionTooltip(event)"
@@ -2398,7 +2398,7 @@ async function renderAppUsage() {
                         </div>
                     </div>
                 </div>
-            `);
+            `;
             fragment.appendChild(row);
         });
 
