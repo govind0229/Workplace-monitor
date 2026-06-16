@@ -2382,6 +2382,11 @@ body[data-theme="light"] .color-swatch.active {
 }
 
 .full-map {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
   height: 100%;
   z-index: 1;
@@ -2866,6 +2871,11 @@ body[data-theme="light"] .color-swatch.active {
     text-shadow: 0 0 20px rgba(167, 139, 250, 0.2);
 }
 
+body[data-theme="light"] .distance-value {
+    color: var(--text);
+    text-shadow: none;
+}
+
 .distance-unit {
     font-size: 1rem;
     font-weight: 500;
@@ -2885,15 +2895,15 @@ body[data-theme="light"] .color-swatch.active {
 }
 
 .distance-status-badge.inside {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: var(--secondary-dim);
+    color: var(--secondary);
+    border: 1px solid var(--secondary-dim);
 }
 
 .distance-status-badge.outside {
-    background: rgba(248, 113, 113, 0.12);
-    color: #f87171;
-    border: 1px solid rgba(248, 113, 113, 0.25);
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
 .distance-coords-hint {
@@ -2903,6 +2913,10 @@ body[data-theme="light"] .color-swatch.active {
     letter-spacing: 0.2px;
     margin-top: 4px;
     opacity: 0.6;
+}
+
+body[data-theme="light"] .distance-coords-hint {
+    opacity: 0.9;
 }
 
 /* ─── Route ETA Row ─── */

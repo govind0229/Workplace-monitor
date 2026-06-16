@@ -1139,6 +1139,13 @@ function initLocationView() {
     // Fix tile rendering after view switch
     setTimeout(() => locationMap.invalidateSize(), 200);
 
+    // Handle window resizes
+    window.addEventListener('resize', () => {
+        if (locationMap) {
+            locationMap.invalidateSize();
+        }
+    });
+
     // Wire up "Locate Me" buttons
     if (locateMeBtn) locateMeBtn.onclick = centerOnUser;
     if (mapLocateMeBtn) mapLocateMeBtn.onclick = centerOnUser;
