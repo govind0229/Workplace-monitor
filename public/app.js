@@ -2150,6 +2150,7 @@ async function renderWeeklyChart() {
                      data-manual="${d.manual}" 
                      data-auto="${d.auto}"
                      onmouseenter="showColTooltip(event, this, '${d.label}')"
+                     onmousemove="positionTooltip(event)"
                      onmouseleave="hideColTooltip()">
                     <div class="chart-col-top">${valLabel}</div>
                     <div class="chart-col-bars">
@@ -2219,19 +2220,19 @@ function positionTooltip(e) {
     if (!globalTooltip) return;
 
     // Offset slightly from cursor
-    let x = e.clientX + 15;
-    let y = e.clientY - 40;
+    let x = e.pageX + 15;
+    let y = e.pageY - 40;
 
     // Check boundaries
     globalTooltip.style.visibility = 'hidden';
     globalTooltip.style.display = 'block';
     const rect = globalTooltip.getBoundingClientRect();
 
-    if (x + rect.width > window.innerWidth) {
-        x = e.clientX - rect.width - 15;
+    if (e.clientX + 15 + rect.width > window.innerWidth) {
+        x = e.pageX - rect.width - 15;
     }
-    if (y < 0) {
-        y = e.clientY + 15;
+    if (e.clientY - 40 < 0) {
+        y = e.pageY + 15;
     }
 
     globalTooltip.style.left = x + 'px';
@@ -2384,6 +2385,7 @@ async function renderAppUsage() {
             row.innerHTML = DOMPurify.sanitize(`
                 <div style="display:flex; width:100%; align-items:center;"
                      onmouseenter="showAppTooltip(event, '${escapeHTML(app.app_name)}', parseInt('${app.total_seconds}'))"
+                     onmousemove="positionTooltip(event)"
                      onmouseleave="hideColTooltip()">
                     <span class="app-rank">${i + 1}</span>
                     <div class="app-info">
@@ -2443,6 +2445,7 @@ async function renderCategoryChart() {
                 stroke-dasharray="${dashLen} ${circumference - dashLen}" stroke-dashoffset="${-offset}"
                 style="transition: stroke-dashoffset 0.5s ease; cursor: pointer; pointer-events: stroke;"
                 onmouseenter="showAppTooltip(event, '${escapeHTML(cat.name)}', ${cat.seconds})"
+                onmousemove="positionTooltip(event)"
                 onmouseleave="hideColTooltip()"/>`;
             offset += dashLen;
             return slice;
