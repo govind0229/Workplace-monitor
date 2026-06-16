@@ -4277,10 +4277,7 @@ body[data-theme="light"] .break-action-card {
 
 /* Wellbeing Feature (moved to wellbeing.css) */
 
-/* App version visibility fix */
+/* App version visibility fix - keeping version visible when minimized */
 .sidebar.minimized .version-badge {
-  opacity: 0;
-  max-width: 0;
-  overflow: hidden;
-  pointer-events: none;
+  /* Version badge remains visible */
 }
