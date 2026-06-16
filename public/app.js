@@ -2533,8 +2533,8 @@ async function renderAppTimelineChart() {
                 label: appName,
                 data: data,
                 borderColor: appColorMap[appName],
-                backgroundColor: appColorMap[appName] + '20', // transparent fill
-                fill: true,
+                backgroundColor: appColorMap[appName], 
+                fill: false,
                 borderWidth: 2,
                 tension: 0.4,
                 cubicInterpolationMode: 'monotone',

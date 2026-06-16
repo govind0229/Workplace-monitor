@@ -614,11 +614,13 @@ app.post('/event', asyncHandler(async (req, res) => {
     }
 
     if (event === 'lock' && metadata && metadata.action === 'lock_screen') {
-        console.log(`[System] Executing pmset displaysleepnow due to lock_screen action (Reason: ${reason})`);
+        console.log(`[System] Executing Mac screen lock due to lock_screen action (Reason: ${reason})`);
         const { exec } = require('child_process');
-        exec('pmset displaysleepnow', (err) => {
+        const lockCmd = `python3 -c 'import ctypes; ctypes.CDLL("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login").SACLockScreenImmediate()' || python -c 'import ctypes; ctypes.CDLL("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login").SACLockScreenImmediate()'`;
+        exec(lockCmd, (err) => {
             if (err) {
-                console.error("[System] Failed to lock screen via pmset:", err);
+                console.error("[System] Failed to lock screen via python, falling back to pmset:", err);
+                exec('pmset displaysleepnow');
             }
         });
     }

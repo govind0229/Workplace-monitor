@@ -1257,9 +1257,8 @@ class MenuBarUtility: NSObject {
             return
         }
 
-        let idleTime = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
-        let idleKeyboard = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
-        let minIdle = min(idleTime, idleKeyboard)
+        let anyInputEventType = CGEventType(rawValue: UInt32.max)!
+        let minIdle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInputEventType)
 
         if minIdle >= idleThresholdSeconds && !isIdle {
             isIdle = true

@@ -446,7 +446,6 @@ module.exports = {
     };
   },
 
-  
   getTimelineReport: (startDate, endDate) => {
     let sessionQuery = "SELECT * FROM sessions";
     let params = [];
@@ -541,23 +540,6 @@ module.exports = {
           currentState = 'working';
           currentTime = event.timestamp;
           currentReason = null;
-        } else if (event.event_type.startsWith('idle_respond_discard_')) {
-          const choice = event.event_type.replace('idle_respond_discard_', '');
-          if (currentState === 'break' && (currentReason === 'lock_idle' || currentReason === 'lock_system_idle' || currentReason === 'lock_unknown')) {
-            currentReason = `lock_${choice}`;
-          } else {
-            const blocks = timelineByDate[date];
-            if (blocks && blocks.length > 0) {
-              for (let i = blocks.length - 1; i >= 0; i--) {
-                if (blocks[i].type === 'break' && blocks[i].session_id === session.id) {
-                  if (blocks[i].reason === 'lock_idle' || blocks[i].reason === 'lock_system_idle' || blocks[i].reason === 'lock_unknown') {
-                    blocks[i].reason = `lock_${choice}`;
-                  }
-                  break;
-                }
-              }
-            }
-          }
         }
       });
       
