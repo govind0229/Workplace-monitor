@@ -1,6 +1,6 @@
 {
   "name": "working-hours-calculate",
-  "version": "6.1.0",
+  "version": "7.0.0",
   "description": "",
   "main": "server.js",
   "scripts": {

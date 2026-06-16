@@ -30,7 +30,7 @@
     </choice>
 
     <pkg-ref id="com.workplacemonitor.app.pkg"
-             version="6.1.0"
+             version="7.0.0"
              onConclusion="none">WorkplaceMonitor-component.pkg</pkg-ref>
 
 </installer-gui-script>

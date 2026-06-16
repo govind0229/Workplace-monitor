@@ -1,0 +1,66 @@
+/* Wellbeing Feature */
+/* Wellbeing Feature - View container uses default .view styling */
+.wb-page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.wb-page-title h2 { font-size: 1.5rem; font-weight: 800; color: var(--text); margin: 0; }
+.wb-section-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 14px; }
+.wellbeing-container { display: grid; grid-template-columns: 1fr 290px; gap: 24px; align-items: start; }
+.wb-activities-section { min-width: 0; }
+.wellbeing-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.wb-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; display: flex; flex-direction: row; align-items: center; padding: 16px; gap: 14px; cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); position: relative; overflow: hidden; }
+.wb-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at top right, color-mix(in srgb, var(--act-color, #8b5cf6) 12%, transparent), transparent 70%); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; }
+.wb-card:hover::before { opacity: 1; }
+.wb-card:hover { background: var(--surface-hover); border-color: color-mix(in srgb, var(--act-color, var(--border)) 30%, var(--border)); box-shadow: 0 8px 24px rgba(0,0,0,0.12); transform: translateY(-2px); }
+body[data-theme="light"] .wb-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+.wb-card-selected { border-color: color-mix(in srgb, var(--act-color, #10b981) 50%, var(--border)) !important; background: color-mix(in srgb, var(--act-color, #10b981) 4%, var(--surface)) !important; }
+.wb-card-selected::before { opacity: 0.6; }
+.wb-card-icon-wrap { width: 50px; height: 50px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: color-mix(in srgb, var(--act-color, #8b5cf6) 15%, transparent); color: var(--act-color, #8b5cf6); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--act-color, #8b5cf6) 10%, transparent); }
+.wb-card:hover .wb-card-icon-wrap { transform: scale(1.05); }
+.wb-card-icon-wrap svg { width: 24px; height: 24px; }
+.wb-card-content { flex: 1; display: flex; flex-direction: column; min-width: 0; justify-content: center; gap: 2px; }
+.wb-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wb-card-title { font-size: 0.85rem; font-weight: 700; color: var(--text); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-card-desc { font-size: 0.72rem; color: var(--text-dim); line-height: 1.3; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-card-time-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.7rem; color: var(--text-dim); font-weight: 600; background: color-mix(in srgb, var(--text-dim) 10%, transparent); padding: 4px 8px; border-radius: 6px; width: fit-content; margin-top: 6px; }
+.wb-card-time-badge svg { color: var(--text-muted); width: 12px; height: 12px; }
+.wb-card-action { display: flex; align-items: center; justify-content: center; }
+.wb-card-time { font-size: 0.65rem; color: var(--text-dim); font-weight: 500; }
+.wb-card-time-sep { display: inline-block; width: 1px; height: 10px; background: var(--border); margin: 0 2px; }
+.wb-card-detail { font-size: 0.65rem; color: var(--text-dim); font-weight: 500; display: flex; align-items: center; gap: 2px; }
+.wb-checkbox { position: relative; cursor: pointer; width: 14px; height: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; margin-right: 2px; }
+.wb-checkbox input { opacity: 0; width: 0; height: 0; position: absolute; }
+.wb-check-box { width: 14px; height: 14px; border: 1.5px solid var(--border); border-radius: 3px; background: var(--bg); transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+.wb-checkbox input:checked ~ .wb-check-box { background: var(--secondary, #10b981); border-color: var(--secondary, #10b981); }
+.wb-checkbox input:checked ~ .wb-check-box::after { content: ""; display: block; width: 3px; height: 6px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg) translateY(-1px); }
+.wellbeing-settings { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 20px; }
+.wb-settings-section-title { font-size: 0.7rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
+.wb-selected-title { margin-top: 2px; padding-top: 12px; border-top: 1px solid var(--border); }
+.wb-settings-row { display: flex; flex-direction: column; gap: 5px; }
+.wb-settings-toggle-row { flex-direction: row; align-items: center; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.wb-settings-label { font-size: 0.85rem; font-weight: 500; color: var(--text); }
+.wb-toggle-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.wb-toggle-status { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.5px; color: var(--secondary, #10b981); }
+.wb-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+.wb-switch input { opacity: 0; width: 0; height: 0; }
+.wb-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--border-hover); border-radius: 22px; transition: 0.3s; }
+.wb-slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #9ca3af; border-radius: 50%; transition: 0.3s; }
+.wb-switch input:checked + .wb-slider { background: var(--secondary, #10b981); }
+.wb-switch input:checked + .wb-slider:before { transform: translateX(18px); background: #fff; }
+.wb-field-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-dim); }
+.wb-input-group { display: flex; align-items: center; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; background: var(--bg); height: 36px; }
+.wb-input-num { flex: 1; background: transparent; border: none; outline: none; padding: 0 10px; font-size: 0.9rem; font-weight: 600; color: var(--text); -moz-appearance: textfield; }
+.wb-input-num::-webkit-outer-spin-button, .wb-input-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.wb-input-unit { background: var(--bg); border-left: 1px solid var(--border); color: var(--text-dim); font-size: 0.75rem; padding: 0 8px; height: 100%; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.wb-save-btn { background: var(--secondary, #10b981); color: #fff; border: none; border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; width: 100%; transition: opacity 0.2s, transform 0.1s; }
+.wb-save-btn:hover { opacity: 0.9; }
+.wb-save-btn:active { transform: scale(0.98); }
+.wb-selected-list { display: flex; flex-direction: column; gap: 5px; max-height: 280px; overflow-y: auto; }
+.wb-empty-selected { text-align: center; padding: 16px 10px; color: var(--text-muted); font-size: 0.78rem; line-height: 1.6; }
+.wb-selected-item { display: flex; align-items: center; gap: 7px; padding: 7px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; transition: border-color 0.2s; }
+.wb-selected-item-first { border-color: var(--secondary, #10b981); background: color-mix(in srgb, var(--secondary, #10b981) 8%, transparent); }
+.wb-drag-handle { cursor: grab; color: var(--text-muted); display: flex; align-items: center; flex-shrink: 0; }
+.wb-selected-item-content { flex: 1; min-width: 0; }
+.wb-selected-item-title { font-size: 0.82rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-selected-item-desc { font-size: 0.72rem; color: var(--text-dim); margin-top: 1px; }
+.wb-remove-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 3px; border-radius: 5px; display: flex; align-items: center; transition: color 0.2s, background 0.2s; flex-shrink: 0; }
+.wb-remove-btn:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
+@media (max-width: 780px) { .wellbeing-container { grid-template-columns: 1fr; } }

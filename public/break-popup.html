@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
   <title>Time for a Break!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -10,9 +11,10 @@
       --primary-dim: rgba(139, 92, 246, 0.15);
       --secondary: #10b981;
       --secondary-dim: rgba(16, 185, 129, 0.15);
-      --bg: #0c0c14;
-      --surface: rgba(255, 255, 255, 0.03);
-      --surface-hover: rgba(255, 255, 255, 0.06);
+      --bg: transparent;
+      --container-bg: rgba(20, 20, 30, 0.93);
+      --surface: rgba(255, 255, 255, 0.02);
+      --surface-hover: rgba(255, 255, 255, 0.05);
       --border: rgba(255, 255, 255, 0.08);
       --text: #fafafa;
       --text-dim: #a1a1aa;
@@ -20,6 +22,20 @@
       --radius: 16px;
       --radius-sm: 10px;
       --blur: blur(20px);
+      --shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+    }
+    body[data-theme="light"] {
+      --primary: #8b5cf6;
+      --primary-dim: rgba(139, 92, 246, 0.1);
+      --secondary: #059669;
+      --secondary-dim: rgba(5, 150, 105, 0.1);
+      --container-bg: rgba(255, 255, 255, 0.95);
+      --border: rgba(0, 0, 0, 0.08);
+      --surface: rgba(0, 0, 0, 0.03);
+      --surface-hover: rgba(0, 0, 0, 0.06);
+      --text: #0f172a;
+      --text-dim: #475569;
+      --shadow: 0 16px 36px rgba(0, 0, 0, 0.15);
     }
 
     * {
@@ -43,15 +59,15 @@
     .popup-container {
       width: 100%;
       height: auto;
-      background: rgba(20, 20, 30, 0.93);
+      background: var(--container-bg);
       backdrop-filter: var(--blur);
       -webkit-backdrop-filter: var(--blur);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--shadow);
       animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
@@ -133,8 +149,8 @@
       align-items: flex-start;
       gap: 8px;
       padding: 6px 10px;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       margin-bottom: 8px;
     }
@@ -167,8 +183,8 @@
       gap: 4px;
       width: 100%;
       padding: 8px 4px !important;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       cursor: pointer;
       color: inherit;
@@ -177,7 +193,7 @@
     }
 
     .break-action-card:hover {
-      background: rgba(255, 255, 255, 0.05) !important;
+      background: var(--surface-hover) !important;
       transform: translateY(-2px);
     }
 
@@ -211,9 +227,22 @@
       box-shadow: 0 8px 20px -6px rgba(236, 72, 153, 0.2);
     }
 
+    .break-action-card.dynamic-card:hover {
+      border-color: var(--hover-color, var(--secondary)) !important;
+      box-shadow: 0 8px 20px -6px rgba(128, 128, 128, 0.2);
+    }
+
     .action-emoji {
       font-size: 1.2rem;
       flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .action-emoji svg {
+      width: 1.5rem;
+      height: 1.5rem;
     }
 
     .action-content {
@@ -231,8 +260,8 @@
     }
 
     .snooze-select {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 6px;
       color: var(--text);
       font-size: 0.72rem;
@@ -247,12 +276,12 @@
     }
     
     .snooze-select:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--surface-hover);
       border-color: var(--accent);
     }
 
     .snooze-select option {
-      background: #0c0c14;
+      background: var(--container-bg);
       color: var(--text);
     }
 
@@ -263,8 +292,8 @@
       gap: 6px;
       width: 100%;
       padding: 6px 8px !important;
-      background: rgba(255, 255, 255, 0.01);
-      border: 1px solid rgba(255, 255, 255, 0.04);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       color: var(--text-dim);
       font-size: 0.8rem;
@@ -303,62 +332,11 @@
         <p id="breakMessageText">Loading your wellness status...</p>
       </div>
       
-      <div class="break-actions-grid">
-        <!-- Option 1: Short Break -->
-        <button class="break-action-card pause-card" id="btnTakeBreak">
-          <div class="action-emoji">⏸️</div>
-          <div class="action-content">
-            <span class="action-title">Short Break</span>
-          </div>
-        </button>
-        
-        <!-- Option 2: Coffee / Tea -->
-        <button class="break-action-card coffee-card" id="btnCoffee">
-          <div class="action-emoji">☕</div>
-          <div class="action-content">
-            <span class="action-title">Coffee Break</span>
-          </div>
-        </button>
-
-        <!-- Option 3: Stretch & Walk -->
-        <button class="break-action-card walk-card" id="btnWalk">
-          <div class="action-emoji">🚶‍♂️</div>
-          <div class="action-content">
-            <span class="action-title">Stretch &amp; Walk</span>
-          </div>
-        </button>
-        
-        <!-- Option 4: Snooze with Dropdown -->
-        <button class="break-action-card snooze-card" id="btnSnooze">
-          <div class="action-emoji">⏳</div>
-          <div class="action-content">
-            <span class="action-title">Snooze</span>
-            <select id="snoozeTimeSelect" class="snooze-select" onclick="event.stopPropagation()">
-              <option value="5">5m</option>
-              <option value="10" selected>10m</option>
-              <option value="15">15m</option>
-              <option value="30">30m</option>
-              <option value="60">1h</option>
-            </select>
-          </div>
-        </button>
-
-        <!-- Option 5: Lunch -->
-        <button class="break-action-card lunch-card" id="btnLunch">
-          <div class="action-emoji">🍴</div>
-          <div class="action-content">
-            <span class="action-title">Lunch</span>
-          </div>
-        </button>
-
-        <!-- Option 6: Dinner -->
-        <button class="break-action-card dinner-card" id="btnDinner">
-          <div class="action-emoji">🍽️</div>
-          <div class="action-content">
-            <span class="action-title">Dinner</span>
-          </div>
-        </button>
+      <div class="break-actions-grid" id="dynamicBreakGrid">
+        <!-- Dynamic options injected here via JS -->
       </div>
+
+      <!-- Option: Snooze with Dropdown (Always injected below grid, but we can put it inside the grid at the end dynamically or keep it here if we want it separate. Actually, let's put it back in the grid dynamically to preserve layout) -->
 
       <!-- Full-width Dismiss Button -->
       <button class="break-dismiss-button" id="btnDismiss">
@@ -367,7 +345,20 @@
     </div>
   </div>
 
+  <script src="shared-activities.js"></script>
   <script>
+    const savedTheme = localStorage.getItem('theme') || 'system';
+    let activeTheme = savedTheme;
+    if (savedTheme === 'system') {
+        activeTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.body.setAttribute('data-theme', activeTheme);
+    
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+        if (localStorage.getItem('theme') === 'system') {
+            document.body.setAttribute('data-theme', e.matches ? 'light' : 'dark');
+        }
+    });
     // Safe bridge call
     function closeWindow() {
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.closeBreakPopup) {
@@ -418,17 +409,13 @@
       }
     }
 
-    // Bind Button Click handlers
-    document.getElementById('btnTakeBreak').addEventListener('click', async () => {
+    async function logBreak(reason) {
       try {
-        // 1. Record the break event and pause active session
         await fetch('/event', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'lock', metadata: { reason: 'take_break' } })
+          body: JSON.stringify({ event: 'lock', metadata: { reason: reason, action: 'lock_screen' } })
         });
-
-        // 2. Clear break reminder state on the server
         await fetch('/dismiss-break-reminder', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
@@ -438,103 +425,70 @@
       } finally {
         closeWindow();
       }
-    });
+    }
 
-    document.getElementById('btnCoffee').addEventListener('click', async () => {
-      try {
-        await fetch('/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'lock', metadata: { reason: 'coffee' } })
-        });
-        await fetch('/dismiss-break-reminder', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (err) {
-        console.error("Error logging coffee break:", err);
-      } finally {
-        closeWindow();
-      }
-    });
+    function renderDynamicOptions() {
+      const grid = document.getElementById('dynamicBreakGrid');
+      const selectedIds = JSON.parse(localStorage.getItem('wbSelected') || '["lunch","water","stretch_walk","breathe"]');
+      
+      let html = '';
+      
+      // We always add a generic 'Short Break' option at the top if desired, or we just render selected wellbeing options
+      
+      selectedIds.forEach(id => {
+        const act = wellbeingActivities.find(a => a.id === id);
+        if (act) {
+           // We extract the inner SVG/emoji depending on if it's an emoji or SVG. 
+           // wellbeingActivities uses SVG string. We can just inject it.
+           html += `
+             <button class="break-action-card dynamic-card" style="--hover-color: ${act.color}" onclick="logBreak('${act.id}')">
+               <div class="action-emoji">${act.svgIcon}</div>
+               <div class="action-content">
+                 <span class="action-title">${act.title}</span>
+               </div>
+             </button>
+           `;
+        }
+      });
 
-    document.getElementById('btnWalk').addEventListener('click', async () => {
-      try {
-        await fetch('/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'lock', metadata: { reason: 'stretch_walk' } })
-        });
-        await fetch('/dismiss-break-reminder', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (err) {
-        console.error("Error logging stretch/walk break:", err);
-      } finally {
-        closeWindow();
-      }
-    });
+      // Always append Snooze option at the end
+      html += `
+        <button class="break-action-card snooze-card" id="btnSnooze">
+          <div class="action-emoji">⏳</div>
+          <div class="action-content">
+            <span class="action-title">Snooze</span>
+            <select id="snoozeTimeSelect" class="snooze-select" onclick="event.stopPropagation()">
+              <option value="5">5m</option>
+              <option value="10" selected>10m</option>
+              <option value="15">15m</option>
+              <option value="30">30m</option>
+              <option value="60">1h</option>
+            </select>
+          </div>
+        </button>
+      `;
 
-    document.getElementById('btnLunch').addEventListener('click', async () => {
-      try {
-        // 1. Record Lunch break event
-        await fetch('/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'lock', metadata: { reason: 'lunch' } })
-        });
+      grid.innerHTML = html;
 
-        // 2. Clear break reminder state
-        await fetch('/dismiss-break-reminder', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (err) {
-        console.error("Error logging lunch break:", err);
-      } finally {
-        closeWindow();
-      }
-    });
-
-    document.getElementById('btnDinner').addEventListener('click', async () => {
-      try {
-        // 1. Record Dinner break event
-        await fetch('/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'lock', metadata: { reason: 'dinner' } })
-        });
-
-        // 2. Clear break reminder state
-        await fetch('/dismiss-break-reminder', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (err) {
-        console.error("Error logging dinner break:", err);
-      } finally {
-        closeWindow();
-      }
-    });
-
-    document.getElementById('btnSnooze').addEventListener('click', async (e) => {
-      // Prevent button action from firing if they just select options
-      if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
-
-      const mins = parseInt(document.getElementById('snoozeTimeSelect').value || '10');
-      try {
-        await fetch('/snooze-break-reminder', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ minutes: mins })
-        });
-      } catch (err) {
-        console.error("Error snoozing break:", err);
-      } finally {
-        closeWindow();
-      }
-    });
+      // Bind Snooze handler
+      document.getElementById('btnSnooze').addEventListener('click', async (e) => {
+        if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+        const mins = parseInt(document.getElementById('snoozeTimeSelect').value || '10');
+        try {
+          await fetch('/snooze-break-reminder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ minutes: mins })
+          });
+        } catch (err) {
+          console.error("Error snoozing break:", err);
+        } finally {
+          closeWindow();
+        }
+      });
+      
+      sendHeightToNative();
+    }
 
     document.getElementById('btnDismiss').addEventListener('click', async () => {
       try {
@@ -551,6 +505,7 @@
 
     // Run on load
     loadStatus();
+    renderDynamicOptions();
   </script>
 </body>
 </html>

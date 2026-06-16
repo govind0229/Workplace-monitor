@@ -90,6 +90,7 @@ const domCache = {
 
 // Accent Color management
 const themeColors = {
+    // Original Gradients
     purple: { primary: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #d946ef)', r: 139, g: 92, b: 246 },
     ocean: { primary: '#0ea5e9', gradient: 'linear-gradient(135deg, #0ea5e9, #3b82f6)', r: 14, g: 165, b: 233 },
     sunset: { primary: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #ef4444)', r: 245, g: 158, b: 11 },
@@ -97,7 +98,20 @@ const themeColors = {
     rose: { primary: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #be123c)', r: 244, g: 63, b: 94 },
     indigo: { primary: '#4f46e5', gradient: 'linear-gradient(135deg, #4f46e5, #7c3aed)', r: 79, g: 70, b: 229 },
     teal: { primary: '#0d9488', gradient: 'linear-gradient(135deg, #0d9488, #0f766e)', r: 13, g: 148, b: 136 },
-    coral: { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #ea580c)', r: 249, g: 115, b: 22 }
+    coral: { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #ea580c)', r: 249, g: 115, b: 22 },
+    // New Gradients
+    fire: { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #facc15)', r: 249, g: 115, b: 22 },
+    forest: { primary: '#22c55e', gradient: 'linear-gradient(135deg, #22c55e, #14b8a6)', r: 34, g: 197, b: 94 },
+    berry: { primary: '#d946ef', gradient: 'linear-gradient(135deg, #d946ef, #f43f5e)', r: 217, g: 70, b: 239 },
+    midnight: { primary: '#312e81', gradient: 'linear-gradient(135deg, #4c1d95, #1e3a8a)', r: 49, g: 46, b: 129 },
+    // Solid Colors
+    solid_blue: { primary: '#2563eb', gradient: '#2563eb', r: 37, g: 99, b: 235 },
+    solid_red: { primary: '#dc2626', gradient: '#dc2626', r: 220, g: 38, b: 38 },
+    solid_green: { primary: '#16a34a', gradient: '#16a34a', r: 22, g: 163, b: 74 },
+    solid_purple: { primary: '#9333ea', gradient: '#9333ea', r: 147, g: 51, b: 234 },
+    solid_orange: { primary: '#ea580c', gradient: '#ea580c', r: 234, g: 88, b: 12 },
+    solid_pink: { primary: '#db2777', gradient: '#db2777', r: 219, g: 39, b: 119 },
+    solid_gray: { primary: '#4b5563', gradient: '#4b5563', r: 75, g: 85, b: 99 }
 };
 
 function applyAccentColor(colorKey) {
@@ -119,22 +133,36 @@ function applyAccentColor(colorKey) {
 
 // Ensure theme changes trigger accent color re-calculations for alpha differences
 function applyTheme(theme) {
-    document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
-    document.querySelectorAll('.theme-btn').forEach(btn => {
+    document.querySelectorAll('.theme-btn[data-theme]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === theme);
     });
+
+    let activeTheme = theme;
+    if (theme === 'system') {
+        activeTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+
+    document.body.setAttribute('data-theme', activeTheme);
     // Refresh accent color alphas based on new theme
     applyAccentColor(localStorage.getItem('accentColor') || 'purple');
 }
 
+// Listen for system theme changes if using system theme
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+    if (localStorage.getItem('theme') === 'system') {
+        applyTheme('system');
+    }
+});
+
 // Apply saved theme & color immediately
-applyTheme(localStorage.getItem('theme') || 'dark');
+applyTheme(localStorage.getItem('theme') || 'system');
 
 // Navigation Logic
 navItems.forEach(item => {
     item.onclick = () => {
         const targetView = item.dataset.view;
+        sessionStorage.setItem('activeView', targetView);
 
         // Reset scroll position to top when switching views!
         const mainContent = document.querySelector('.main-content');
@@ -181,11 +209,58 @@ navItems.forEach(item => {
         }
         if (targetView === 'settings') loadSettings();
         if (targetView === 'location') initLocationView();
+        if (targetView === 'wellbeing') {
+            const wellbeingView = document.getElementById('wellbeingView');
+            if (wellbeingView && wellbeingView.children.length === 0) {
+                fetch('wellbeing.html')
+                    .then(res => res.text())
+                    .then(html => {
+                        wellbeingView.innerHTML = html;
+                        if (typeof initWellbeing === 'function') initWellbeing();
+                    })
+                    .catch(err => console.error('Failed to load wellbeing view:', err));
+            } else {
+                if (typeof initWellbeing === 'function') initWellbeing();
+            }
+        }
     };
 });
 
+// Restore active view from sessionStorage
+const savedView = sessionStorage.getItem('activeView') || 'monitor';
+const targetNav = Array.from(navItems).find(n => n.dataset.view === savedView);
+if (targetNav) {
+    targetNav.click();
+}
+
+// Add data-label to nav items for minimized tooltip
+navItems.forEach(item => {
+    const labelSpan = item.querySelector('.nav-label');
+    const label = labelSpan ? labelSpan.textContent.trim() : item.textContent.trim();
+    item.setAttribute('data-label', label);
+});
+
+// Collapsible Sidebar Logic
+(function() {
+    const sidebar = document.querySelector('.sidebar');
+    const toggleBtn = document.getElementById('sidebarToggle');
+    if (!sidebar || !toggleBtn) return;
+
+    // Default: minimized in HTML. If user expanded it before, remove class
+    const savedState = localStorage.getItem('sidebarExpanded');
+    if (savedState === 'true') {
+        sidebar.classList.remove('minimized');
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        const isMinimized = sidebar.classList.toggle('minimized');
+        localStorage.setItem('sidebarExpanded', !isMinimized);
+    });
+})();
+
+
 // Theme toggle buttons
-document.querySelectorAll('.theme-btn').forEach(btn => {
+document.querySelectorAll('.theme-btn[data-theme]').forEach(btn => {
     btn.onclick = () => applyTheme(btn.dataset.theme);
 });
 
@@ -205,7 +280,11 @@ async function loadSettings() {
             const dynData = await dynRes.json();
             const dynText = document.getElementById('dynamicBreakText');
             if (dynText) {
-                dynText.textContent = `AI scheduled your next break for ${dynData.interval} minutes from now based on your behavior.`;
+                if (dynData.useAi) {
+                    dynText.textContent = `AI scheduled your next break for ${dynData.interval} minutes from now based on your behavior.`;
+                } else {
+                    dynText.textContent = `AI dynamic scheduling is currently disabled. Using your fixed interval of ${dynData.interval} minutes.`;
+                }
             }
         } catch (err) {
             console.error('Failed to load dynamic break stats', err);
@@ -265,7 +344,7 @@ async function loadAppSuggestions() {
         const data = await res.json();
         if (appSuggestions) {
             appSuggestions.innerHTML = data.apps.map(app =>
-                html`<option value="${escapeHTML(app)}">`
+                `<option value="${escapeHTML(app)}">`
             ).join('');
         }
     } catch (e) {
@@ -750,8 +829,8 @@ async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'dr
             }
 
             // Bring markers on top of the route line
-            if (officeMarker) officeMarker.bringToFront();
-            if (userMarker) userMarker.bringToFront();
+            if (officeMarker) officeMarker.setZIndexOffset(1000);
+            if (userMarker) userMarker.setZIndexOffset(1000);
         }
 
     } catch (err) {
@@ -1060,6 +1139,13 @@ function initLocationView() {
     // Fix tile rendering after view switch
     setTimeout(() => locationMap.invalidateSize(), 200);
 
+    // Handle window resizes
+    window.addEventListener('resize', () => {
+        if (locationMap) {
+            locationMap.invalidateSize();
+        }
+    });
+
     // Wire up "Locate Me" buttons
     if (locateMeBtn) locateMeBtn.onclick = centerOnUser;
     if (mapLocateMeBtn) mapLocateMeBtn.onclick = centerOnUser;
@@ -1211,7 +1297,7 @@ function switchMapType(type) {
 
     // Bring markers to front if needed
     if (officeCircle) officeCircle.bringToFront();
-    if (officeMarker) officeMarker.bringToFront();
+    if (officeMarker) officeMarker.setZIndexOffset(1000);
 }
 
 function updateRadiusUI(radius) {
@@ -1354,14 +1440,18 @@ function updateGreeting() {
 async function updateStatus(forceSync = false) {
     const now = Date.now();
 
+    if (forceSync) {
+        // App was brought to foreground (e.g. from tray/widget)
+        const monitorNav = document.querySelector('[data-view="monitor"]');
+        if (monitorNav) monitorNav.click();
+    }
+
     if (forceSync || (now - lastSyncRealTime >= syncInterval)) {
         try {
             const res = await fetch(`${API_BASE}/status`);
             const data = await res.json();
 
 
-            // Check for smart break reminder
-            checkPendingBreakReminder(data);
 
             // Store ground truth from server
             baseManualSeconds = data.manual.total_seconds || 0;
@@ -1726,7 +1816,7 @@ async function renderProjectReport() {
 
 function renderActiveTab() {
     if (!reportsData) return;
-    const data = reportsData[currentTab] || [];
+    let data = reportsData[currentTab] || [];
 
     // Use DocumentFragment for better performance
     const fragment = document.createDocumentFragment();
@@ -1745,6 +1835,15 @@ function renderActiveTab() {
             <span>Office Span</span>
             <span>Workplace Duration</span>
             <span>Breaks</span>
+        `);
+    } else if (currentTab === 'timeline') {
+        reportsList.classList.remove('projects-grid');
+        reportsList.classList.remove('visits-grid');
+        header.innerHTML = DOMPurify.sanitize(`
+            <span>Date / Block</span>
+            <span>Duration</span>
+            <span>Type</span>
+            <span>Details</span>
         `);
     } else {
         reportsList.classList.remove('projects-grid');
@@ -1804,6 +1903,76 @@ function renderActiveTab() {
                     <span class="auto-total-dim">${item.total_seconds > 0 ? formatTime(item.total_seconds) : '—'}</span>
                     <span>${item.break_count > 0 ? formatTime(item.break_duration) : '—'}</span>
                 `);
+            } else if (currentTab === 'timeline') {
+                const dateHeader = document.createElement('div');
+                dateHeader.className = 'report-item report-header';
+                dateHeader.style.marginTop = '16px';
+                dateHeader.style.background = 'rgba(255,255,255,0.05)';
+                dateHeader.innerHTML = DOMPurify.sanitize(`<span style="grid-column: 1 / -1; text-align: center;">${escapeHTML(item.date)}</span>`);
+                fragment.appendChild(dateHeader);
+
+                item.blocks.forEach(b => {
+                    const blockRow = document.createElement('div');
+                    blockRow.className = 'report-item';
+                    
+                    const safeExtractTime = (datetimeStr) => {
+                        if (!datetimeStr) return '—';
+                        const d = new Date(datetimeStr.replace(' ', 'T') + 'Z');
+                        if (isNaN(d.getTime())) return '—';
+                        return d.toLocaleTimeString([], { 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            second: '2-digit',
+                            hour12: timeFormat === 'ampm' 
+                        });
+                    };
+                    
+                    const formatReason = (reason) => {
+                        if (!reason) return '';
+                        const map = {
+                            'take_break': 'Took Break (UI)',
+                            'lock_take_break': 'Took Break (UI)',
+                            'lock_idle': 'System Idle',
+                            'lock_system_idle': 'System Idle',
+                            'lock_sleep': 'Computer Sleep',
+                            'lock_screen_saver': 'Screen Saver',
+                            'unlock_idle_return': 'Returned from Idle',
+                            'unlock_unknown': 'System Unlock',
+                            'lock_unknown': 'System Lock',
+                            'lock_user_initiated': 'User Locked',
+                        };
+                        return map[reason] || reason.replace(/_/g, ' ');
+                    };
+                    
+                    const startStr = safeExtractTime(b.start);
+                    const endStr = safeExtractTime(b.end);
+                    
+                    const t1 = b.start ? new Date(b.start.replace(' ', 'T') + 'Z').getTime() : 0;
+                    const t2 = b.end ? new Date(b.end.replace(' ', 'T') + 'Z').getTime() : 0;
+                    const durationSec = Math.floor((t2 - t1) / 1000);
+                    const durFormat = durationSec > 0 ? formatTime(durationSec) : '00:00:00';
+                    
+                    const typeColor = b.type === 'working' ? 'var(--primary)' : 'var(--accent)';
+                    const typeLabel = b.type === 'working' ? '🟢 Working' : '☕ Break';
+                    
+                    let details = b.session_type + ' session #' + b.session_id;
+                    if (b.type === 'break') {
+                        const r1 = formatReason(b.reason);
+                        const r2 = formatReason(b.end_reason);
+                        if (r1 && r2) details += ` (${r1} → ${r2})`;
+                        else if (r1 || r2) details += ` (${r1 || r2})`;
+                        else if (b.reason) details += ` (${b.reason})`;
+                    }
+                    
+                    blockRow.innerHTML = DOMPurify.sanitize(`
+                        <span>${startStr} - ${endStr}</span>
+                        <span>${durFormat}</span>
+                        <span style="color:${typeColor}; font-weight:500;">${typeLabel}</span>
+                        <span class="auto-total-dim">${escapeHTML(details)}</span>
+                    `);
+                    fragment.appendChild(blockRow);
+                });
+                return;
             } else {
                 let label = item.date || item.week || item.month;
                 if (currentTab === 'weekly' && item.week) {
@@ -1986,6 +2155,7 @@ async function renderWeeklyChart() {
                      data-manual="${d.manual}" 
                      data-auto="${d.auto}"
                      onmouseenter="showColTooltip(event, this, '${d.label}')"
+                     onmousemove="positionTooltip(event)"
                      onmouseleave="hideColTooltip()">
                     <div class="chart-col-top">${valLabel}</div>
                     <div class="chart-col-bars">
@@ -2002,13 +2172,13 @@ async function renderWeeklyChart() {
             return `<div class="chart-day-cell"><span class="${cls}">${d.label}</span></div>`;
         }).join('');
 
-        container.innerHTML = DOMPurify.sanitize(`
+        container.innerHTML = `
             <div class="chart-bars-area">
                 <div class="chart-goal-line" style="bottom: ${goalPct}%"></div>
                 <div class="chart-cols-row">${colsHTML}</div>
             </div>
             <div class="chart-day-labels-row">${labelsHTML}</div>
-        `);
+        `;
     } catch (e) {
         container.innerHTML = DOMPurify.sanitize('<div class="chart-loading">Unable to load</div>');
     }
@@ -2033,11 +2203,11 @@ function showColTooltip(e, el, label) {
     globalTooltip.innerHTML = DOMPurify.sanitize(`
         <div class="tooltip-title">${label}</div>
         <div style="display:flex; justify-content:space-between; gap:16px;">
-            <span style="color:var(--text-dim)">Workplace</span>
+            <span style="color:var(--text-dim)">WFO</span>
             <span class="tooltip-value">${formatHM(manual)}</span>
         </div>
         <div style="display:flex; justify-content:space-between; gap:16px;">
-            <span style="color:var(--text-dim)">Day Hours</span>
+            <span style="color:var(--text-dim)">WFH</span>
             <span class="tooltip-value">${formatHM(auto)}</span>
         </div>
     `);
@@ -2055,19 +2225,19 @@ function positionTooltip(e) {
     if (!globalTooltip) return;
 
     // Offset slightly from cursor
-    let x = e.clientX + 15;
-    let y = e.clientY - 40;
+    let x = e.pageX + 15;
+    let y = e.pageY - 40;
 
     // Check boundaries
     globalTooltip.style.visibility = 'hidden';
     globalTooltip.style.display = 'block';
     const rect = globalTooltip.getBoundingClientRect();
 
-    if (x + rect.width > window.innerWidth) {
-        x = e.clientX - rect.width - 15;
+    if (e.clientX + 15 + rect.width > window.innerWidth) {
+        x = e.pageX - rect.width - 15;
     }
-    if (y < 0) {
-        y = e.clientY + 15;
+    if (e.clientY - 40 < 0) {
+        y = e.pageY + 15;
     }
 
     globalTooltip.style.left = x + 'px';
@@ -2217,9 +2387,10 @@ async function renderAppUsage() {
 
             const row = document.createElement('div');
             row.className = 'app-row';
-            row.innerHTML = DOMPurify.sanitize(`
+            row.innerHTML = `
                 <div style="display:flex; width:100%; align-items:center;"
                      onmouseenter="showAppTooltip(event, '${escapeHTML(app.app_name)}', parseInt('${app.total_seconds}'))"
+                     onmousemove="positionTooltip(event)"
                      onmouseleave="hideColTooltip()">
                     <span class="app-rank">${i + 1}</span>
                     <div class="app-info">
@@ -2232,7 +2403,7 @@ async function renderAppUsage() {
                         </div>
                     </div>
                 </div>
-            `);
+            `;
             fragment.appendChild(row);
         });
 
@@ -2259,34 +2430,49 @@ async function renderCategoryChart() {
         }
 
         const total = cats.reduce((sum, c) => sum + c.seconds, 0) || 1;
-        const colors = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#f97316', '#84cc16', '#d946ef'];
+        const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#f97316', '#84cc16', '#d946ef'];
+
+        // Find the top category for the center display
+        const topCat = cats.reduce((max, cat) => cat.seconds > max.seconds ? cat : max, cats[0]);
+        const topPct = (topCat.seconds / total * 100).toFixed(1);
+        const topIndex = cats.indexOf(topCat);
+        const topColor = colors.at(topIndex % colors.length);
 
         // Build SVG pie chart using conic segments via circle stroke-dasharray
-        const radius = 50;
+        const radius = 70;
         const circumference = 2 * Math.PI * radius;
         let offset = 0;
         const slices = cats.map((cat, i) => {
             const pct = cat.seconds / total;
             const dashLen = pct * circumference;
             const color = colors.at(i % colors.length);
-            const slice = `<circle cx="70" cy="70" r="${radius}" fill="none" stroke="${color}" stroke-width="30"
+            const slice = `<circle cx="90" cy="90" r="${radius}" fill="none" stroke="${color}" stroke-width="25"
                 stroke-dasharray="${dashLen} ${circumference - dashLen}" stroke-dashoffset="${-offset}"
-                style="transition: stroke-dashoffset 0.5s ease"/>`;
+                style="transition: stroke-dashoffset 0.5s ease; cursor: pointer; pointer-events: stroke;"
+                onmouseenter="showAppTooltip(event, '${escapeHTML(cat.name)}', ${cat.seconds})"
+                onmousemove="positionTooltip(event)"
+                onmouseleave="hideColTooltip()"/>`;
             offset += dashLen;
             return slice;
         });
 
-        const pieSvg = `<svg class="pie-svg" viewBox="0 0 140 140">${slices.join('')}</svg>`;
+        const pieSvg = `
+            <div class="donut-chart-container">
+                <svg class="pie-svg" viewBox="0 0 180 180">${slices.join('')}</svg>
+                <div class="donut-center-content">
+                    <div class="donut-center-pct">${topPct}%</div>
+                    <div class="donut-center-label" style="color: ${topColor}">${escapeHTML(topCat.name).toUpperCase()}</div>
+                </div>
+            </div>
+        `;
 
         const legend = cats.map((cat, i) => {
-            const pct = Math.round((cat.seconds / total) * 100);
             const color = colors.at(i % colors.length);
             return `
                 <div class="category-item">
-                    <div class="category-dot" style="background:${color}"></div>
+                    <div class="category-pill" style="background:${color}"></div>
                     <span class="category-name">${escapeHTML(cat.name)}</span>
                     <span class="category-time">${formatHM(cat.seconds)}</span>
-                    <span class="category-pct">${pct}%</span>
                 </div>
             `;
         }).join('');
@@ -2302,7 +2488,118 @@ async function loadDashboardCharts() {
     renderStatsChart(currentStatsRange);
     renderAppUsage();
     renderCategoryChart();
+    renderAppTimelineChart();
     renderActivityTimeline();
+}
+
+let appTimelineChartInstance = null;
+async function renderAppTimelineChart() {
+    const canvas = document.getElementById('appTimelineChart');
+    if (!canvas) return;
+
+    try {
+        const timeRes = await fetch(`${API_BASE}/app-timeline`);
+        const timeData = await timeRes.json();
+
+        const topApps = timeData.topApps || [];
+        const timeline = timeData.timeline || {};
+
+        const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#f97316', '#84cc16', '#d946ef'];
+        const appColorMap = {};
+        topApps.forEach((appName, i) => {
+            appColorMap[appName] = colors[i % colors.length];
+        });
+
+        const hoursWithData = Object.keys(timeline).map(Number).sort((a, b) => a - b);
+        const currentHour = new Date().getHours();
+        
+        // Start from the first hour of activity, or default to 8am. Don't start later than current hour.
+        let minHour = hoursWithData.length > 0 ? hoursWithData[0] : 8;
+        minHour = Math.min(minHour, currentHour);
+        
+        // Ensure we always show at least 4 hours of context
+        if (currentHour - minHour < 4) {
+            minHour = Math.max(0, currentHour - 4);
+        }
+
+        const labels = [];
+        for (let h = minHour; h <= currentHour; h++) {
+            const ampm = h >= 12 ? 'p' : 'a';
+            const hour12 = h % 12 || 12;
+            labels.push(`${hour12}${ampm}`);
+        }
+
+        const datasets = [];
+        topApps.forEach(appName => {
+            const data = [];
+            for (let h = minHour; h <= currentHour; h++) {
+                const hourData = timeline[h] || {};
+                const val = hourData[appName] || 0;
+                data.push(val / 60); // display in minutes
+            }
+            datasets.push({
+                label: appName,
+                data: data,
+                borderColor: appColorMap[appName],
+                backgroundColor: appColorMap[appName], 
+                fill: false,
+                borderWidth: 2,
+                tension: 0.4,
+                cubicInterpolationMode: 'monotone',
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        });
+
+        if (appTimelineChartInstance) {
+            appTimelineChartInstance.destroy();
+        }
+
+        appTimelineChartInstance = new Chart(canvas, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) { label += ': '; }
+                                if (context.parsed.y !== null) {
+                                    label += Math.round(context.parsed.y) + ' mins';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: 'var(--text-muted)' }
+                    },
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { 
+                            color: 'var(--text-muted)', 
+                            maxTicksLimit: 12,
+                            maxRotation: 0,
+                            minRotation: 0
+                        }
+                    }
+                }
+            }
+        });
+    } catch (e) {
+        console.error('Error rendering category timeline', e);
+    }
 }
 
 // ─── Auto-refresh when window regains focus (native app + browser) ───
@@ -3176,194 +3473,9 @@ function renderAIDigestUI() {
 }
 
 
-// --- Smart Break Reminder Overlay & Controls ---
-let currentBreakReminder = null;
 
-function checkPendingBreakReminder(data) {
-    const modal = document.getElementById('breakReminderModal');
-    if (!modal) return;
 
-    if (data.pending_break_reminder) {
-        // If we already have this exact reminder open, don't re-trigger
-        if (currentBreakReminder && currentBreakReminder.sessionId === data.pending_break_reminder.sessionId && currentBreakReminder.minutes === data.pending_break_reminder.minutes) {
-            return;
-        }
+// ─── Wellbeing Feature ───
 
-        currentBreakReminder = data.pending_break_reminder;
 
-        const elapsedTextEl = document.getElementById('breakElapsedText');
-        if (elapsedTextEl) {
-            const mins = data.pending_break_reminder.minutes;
-            elapsedTextEl.textContent = `${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
-        }
-
-        const messageTextEl = document.getElementById('breakMessageText');
-        if (messageTextEl) {
-            messageTextEl.textContent = data.pending_break_reminder.message || 'Take a moment to stretch and rest your eyes.';
-        }
-
-        modal.style.display = 'flex';
-        // Allow rendering display: flex before adding active class for transition
-        requestAnimationFrame(() => {
-            modal.classList.add('active');
-        });
-    } else {
-        // Only hide if the server has cleared the reminder
-        if (modal.classList.contains('active')) {
-            modal.classList.remove('active');
-            setTimeout(() => {
-                modal.style.display = 'none';
-                currentBreakReminder = null;
-            }, 300);
-        }
-    }
-}
-
-async function takeLunchBreak() {
-    try {
-        // 1. Record the break event and pause active session
-        await fetch(`${API_BASE}/event`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event: 'lock', metadata: { reason: 'lunch' } })
-        });
-
-        // 2. Clear break reminder state on the server
-        await fetch(`${API_BASE}/dismiss-break-reminder`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-
-        // 3. Clear UI state
-        const modal = document.getElementById('breakReminderModal');
-        if (modal) {
-            modal.classList.remove('active');
-            setTimeout(() => {
-                modal.style.display = 'none';
-                currentBreakReminder = null;
-            }, 300);
-        }
-
-        // 4. Force state sync
-        updateStatus(true);
-    } catch (e) {
-        console.error("Error initiating lunch break:", e);
-    }
-}
-
-async function takeDinnerBreak() {
-    try {
-        // 1. Record the break event and pause active session
-        await fetch(`${API_BASE}/event`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event: 'lock', metadata: { reason: 'dinner' } })
-        });
-
-        // 2. Clear break reminder state on the server
-        await fetch(`${API_BASE}/dismiss-break-reminder`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-
-        // 3. Clear UI state
-        const modal = document.getElementById('breakReminderModal');
-        if (modal) {
-            modal.classList.remove('active');
-            setTimeout(() => {
-                modal.style.display = 'none';
-                currentBreakReminder = null;
-            }, 300);
-        }
-
-        // 4. Force state sync
-        updateStatus(true);
-    } catch (e) {
-        console.error("Error initiating dinner break:", e);
-    }
-}
-
-async function takeBreakNow() {
-    try {
-        // 1. Record the break event and pause active session
-        await fetch(`${API_BASE}/event`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event: 'lock', metadata: { reason: 'take_break' } })
-        });
-
-        // 2. Clear break reminder state on the server
-        await fetch(`${API_BASE}/dismiss-break-reminder`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-
-        // 3. Clear UI state
-        const modal = document.getElementById('breakReminderModal');
-        if (modal) {
-            modal.classList.remove('active');
-            setTimeout(() => {
-                modal.style.display = 'none';
-                currentBreakReminder = null;
-            }, 300);
-        }
-
-        // 4. Force state sync
-        updateStatus(true);
-    } catch (e) {
-        console.error("Error initiating break:", e);
-    }
-}
-
-async function snoozeBreakReminder(minutes = 10) {
-    try {
-        await fetch(`${API_BASE}/snooze-break-reminder`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ minutes })
-        });
-
-        const modal = document.getElementById('breakReminderModal');
-        if (modal) {
-            modal.classList.remove('active');
-            setTimeout(() => {
-                modal.style.display = 'none';
-                currentBreakReminder = null;
-            }, 300);
-        }
-
-        updateStatus(true);
-    } catch (e) {
-        console.error("Error snoozing break reminder:", e);
-    }
-}
-
-async function dismissBreakReminder() {
-    try {
-        await fetch(`${API_BASE}/dismiss-break-reminder`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-
-        const modal = document.getElementById('breakReminderModal');
-        if (modal) {
-            modal.classList.remove('active');
-            setTimeout(() => {
-                modal.style.display = 'none';
-                currentBreakReminder = null;
-            }, 300);
-        }
-
-        updateStatus(true);
-    } catch (e) {
-        console.error("Error dismissing break reminder:", e);
-    }
-}
-
-// Bind to window to allow HTML button invocation
-window.checkPendingBreakReminder = checkPendingBreakReminder;
-window.takeBreakNow = takeBreakNow;
-window.takeLunchBreak = takeLunchBreak;
-window.takeDinnerBreak = takeDinnerBreak;
-window.snoozeBreakReminder = snoozeBreakReminder;
-window.dismissBreakReminder = dismissBreakReminder;
+// Wellbeing Feature moved to wellbeing.js

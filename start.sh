@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Kill existing processes
-pkill -f "node server.js"
-pkill -f "mac_utility"
+pkill -f "node server.js" || true
+pkill -f "mac_utility" || true
+pkill -f "WorkingHours" || true
 
 echo "Building mac_utility for development..."
 swiftc mac_utility.swift -framework WebKit -o mac_utility 2>/dev/null

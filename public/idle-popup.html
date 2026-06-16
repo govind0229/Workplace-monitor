@@ -2,17 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
   <title>Break Completed</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --primary: #8b5cf6;
       --secondary: #10b981;
-      --bg: #0c0c14;
+      --bg: transparent;
+      --container-bg: rgba(20, 20, 30, 0.93);
+      --border: rgba(255, 255, 255, 0.08);
+      --surface: rgba(255, 255, 255, 0.03);
+      --surface-hover: rgba(255, 255, 255, 0.06);
       --text: #fafafa;
       --text-dim: #a1a1aa;
       --radius: 16px;
       --blur: blur(20px);
+      --shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+    }
+    body[data-theme="light"] {
+      --primary: #8b5cf6;
+      --secondary: #059669;
+      --container-bg: rgba(255, 255, 255, 0.95);
+      --border: rgba(0, 0, 0, 0.08);
+      --surface: rgba(0, 0, 0, 0.03);
+      --surface-hover: rgba(0, 0, 0, 0.06);
+      --text: #0f172a;
+      --text-dim: #475569;
+      --shadow: 0 16px 36px rgba(0, 0, 0, 0.15);
     }
     * {
       box-sizing: border-box;
@@ -33,15 +50,15 @@
     .popup-container {
       width: 100%;
       height: auto;
-      background: rgba(20, 20, 30, 0.93);
+      background: var(--container-bg);
       backdrop-filter: var(--blur);
       -webkit-backdrop-filter: var(--blur);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--shadow);
       animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
     @keyframes slideUp {
@@ -102,8 +119,8 @@
       align-items: center;
       gap: 10px;
       padding: 10px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 12px;
       cursor: pointer;
       color: inherit;
@@ -112,8 +129,9 @@
       text-align: left;
     }
     .option-card:hover {
-      background: rgba(255, 255, 255, 0.06);
-      transform: translateY(-2px);
+      background: var(--surface-hover);
+      border-color: var(--hover-color, var(--border));
+      transform: translateY(-1px);
     }
     .option-card:active {
       transform: translateY(0);
@@ -128,6 +146,13 @@
     }
     .option-emoji {
       font-size: 1.4rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .option-emoji svg {
+      width: 1.6rem;
+      height: 1.6rem;
     }
     .option-content {
       display: flex;
@@ -162,46 +187,8 @@
     <p class="description">You were away for <strong id="idleDurationText">...</strong>. How would you like to log this time?</p>
     
     <div class="category-header">Log as Break (Discard Time)</div>
-    <div class="options-grid">
-      <button class="option-card" onclick="respond('coffee')">
-        <div class="option-emoji">☕</div>
-        <div class="option-content">
-          <span class="option-title">Coffee / Snack</span>
-          <span class="option-desc">Short break</span>
-        </div>
-      </button>
-      
-      <button class="option-card" onclick="respond('driving')">
-        <div class="option-emoji">🚗</div>
-        <div class="option-content">
-          <span class="option-title">Driving</span>
-          <span class="option-desc">In transit</span>
-        </div>
-      </button>
-
-      <button class="option-card" onclick="respond('lunch')">
-        <div class="option-emoji">🍽️</div>
-        <div class="option-content">
-          <span class="option-title">Lunch / Meal</span>
-          <span class="option-desc">Meal break</span>
-        </div>
-      </button>
-
-      <button class="option-card" onclick="respond('exercise')">
-        <div class="option-emoji">🚶</div>
-        <div class="option-content">
-          <span class="option-title">Exercise</span>
-          <span class="option-desc">Physical activity</span>
-        </div>
-      </button>
-
-      <button class="option-card" onclick="respond('personal')">
-        <div class="option-emoji">📵</div>
-        <div class="option-content">
-          <span class="option-title">Personal</span>
-          <span class="option-desc">Off work</span>
-        </div>
-      </button>
+    <div class="options-grid" id="dynamicIdleBreakGrid">
+      <!-- Dynamic break options injected here via JS -->
     </div>
 
     <div class="category-header">Log as Work (Add to Session)</div>
@@ -232,7 +219,21 @@
     </div>
   </div>
 
+  <script src="shared-activities.js"></script>
   <script>
+    const savedTheme = localStorage.getItem('theme') || 'system';
+    let activeTheme = savedTheme;
+    if (savedTheme === 'system') {
+        activeTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.body.setAttribute('data-theme', activeTheme);
+    
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+        if (localStorage.getItem('theme') === 'system') {
+            document.body.setAttribute('data-theme', e.matches ? 'light' : 'dark');
+        }
+    });
+
     function closeWindow() {
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.closeIdlePopup) {
         window.webkit.messageHandlers.closeIdlePopup.postMessage(null);
@@ -287,7 +288,47 @@
       }
     }
 
+    function renderDynamicIdleOptions() {
+      const grid = document.getElementById('dynamicIdleBreakGrid');
+      const selectedIds = JSON.parse(localStorage.getItem('wbSelected') || '["lunch","water","stretch_walk","breathe"]');
+      
+      let html = '';
+      
+      selectedIds.forEach(id => {
+        const act = wellbeingActivities.find(a => a.id === id);
+        if (act) {
+           html += `
+             <button class="option-card" style="--hover-color: ${act.color}" onclick="respond('${act.id}')">
+               <div class="option-emoji">${act.svgIcon}</div>
+               <div class="option-content">
+                 <span class="option-title">${act.title}</span>
+                 <span class="option-desc">${act.desc}</span>
+               </div>
+             </button>
+           `;
+        }
+      });
+      
+      // Keep at least one generic option if nothing selected (though unlikely)
+      if (html === '') {
+        html = `
+             <button class="option-card" onclick="respond('personal')">
+               <div class="option-emoji">📵</div>
+               <div class="option-content">
+                 <span class="option-title">Personal</span>
+                 <span class="option-desc">Off work</span>
+               </div>
+             </button>
+        `;
+      }
+      
+      grid.innerHTML = html;
+      sendHeightToNative();
+    }
+
+    // Run on load
     loadStatus();
+    renderDynamicIdleOptions();
   </script>
 </body>
 </html>

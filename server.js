@@ -613,9 +613,20 @@ app.post('/event', asyncHandler(async (req, res) => {
         return res.status(400).json({ error: 'Invalid event. Must be "lock" or "unlock".' });
     }
 
-    const finishReasons = ['user_initiated', 'session_resign', 'system_sleep'];
+    if (event === 'lock' && metadata && metadata.action === 'lock_screen') {
+        console.log(`[System] Executing Mac screen lock due to lock_screen action (Reason: ${reason})`);
+        const { exec } = require('child_process');
+        const lockCmd = `python3 -c 'import ctypes; ctypes.CDLL("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login").SACLockScreenImmediate()' || python -c 'import ctypes; ctypes.CDLL("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login").SACLockScreenImmediate()'`;
+        exec(lockCmd, (err) => {
+            if (err) {
+                console.error("[System] Failed to lock screen via python, falling back to pmset:", err);
+                exec('pmset displaysleepnow');
+            }
+        });
+    }
 
     if (event === 'lock') {
+        lastIdleStart = Date.now();
         if (finishReasons.includes(reason)) {
             lastIdleStart = null; // Do not calculate idle duration for sleep/finish
 
@@ -683,51 +694,41 @@ app.post('/event', asyncHandler(async (req, res) => {
         }
     }
 
-    // 1. Handle Automatic Session (Completes on user action, pauses on idle)
+    // 1. Handle Automatic Session
     const autoSession = getTodayAutomaticSession();
     const wasAutoStatus = autoSession.status;
 
-    if (event === 'lock' && finishReasons.includes(reason)) {
-        completeSession(autoSession.id);
-        clearSessionState(autoSession.id);
-        addEvent(autoSession.id, `${event}_${reason}`);
-        console.log(sanitizeLog(`[Auto] Session #${autoSession.id} COMPLETED due to user action (${reason}).`));
-        sendNativeNotification('🏠 WFH Session Finished', 'Lid closed or manual sleep detected. WFH session finished.');
-    } else {
-        const autoStatus = event === 'lock' ? 'paused' : 'active';
-        db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
-        addEvent(autoSession.id, `${event}_${reason}`);
-
-        // Send notification for automatic session state changes
-        if (event === 'unlock' && wasAutoStatus !== 'active') {
-            if (!autoSession.notified) {
-                console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session started (Reason: ${reason}).`));
-                sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
-                db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
-            } else {
-                console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session resumed (Reason: ${reason}).`));
-                sendNativeNotification('🏠 WFH Session Resumed', 'Screen unlocked. Timer resumed.');
-            }
-        } else if (event === 'lock' && wasAutoStatus === 'active') {
-            console.log(sanitizeLog(`[Auto] Screen locked — automatic session paused (Reason: ${reason}).`));
-            sendNativeNotification('🏠 WFH Session Paused', 'Screen locked. Timer paused.');
-        }
+    const autoStatus = event === 'lock' ? 'paused' : 'active';
+    db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
+    
+    if (event === 'unlock' && autoSession.total_seconds === 0) {
+        db.prepare("UPDATE sessions SET start_time = CURRENT_TIMESTAMP WHERE id = ?").run(autoSession.id);
+        console.log(`[Auto] Session #${autoSession.id} first unlock. Erasing PowerNap time by resetting start_time.`);
     }
 
-    // 2. Handle Manual Session (Completes on user-initiated sleep, pauses on idle)
+    addEvent(autoSession.id, `${event}_${reason}`);
+
+    // Send notification for automatic session state changes
+    if (event === 'unlock' && wasAutoStatus !== 'active') {
+        if (!autoSession.notified) {
+            console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session started (Reason: ${reason}).`));
+            sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
+            db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
+        } else {
+            console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session resumed (Reason: ${reason}).`));
+            sendNativeNotification('🏠 WFH Session Resumed', 'Screen unlocked. Timer resumed.');
+        }
+    } else if (event === 'lock' && wasAutoStatus === 'active') {
+        console.log(sanitizeLog(`[Auto] Screen locked — automatic session paused (Reason: ${reason}).`));
+        sendNativeNotification('🏠 WFH Session Paused', 'Screen locked. Timer paused.');
+    }
+
+    // 2. Handle Manual Session
     const manualSession = getActiveSession('manual');
     if (manualSession) {
         if (event === 'lock') {
-            if (finishReasons.includes(reason)) {
-                // Force complete manual session (assuming user is leaving or closing lid)
-                completeSession(manualSession.id);
-                clearSessionState(manualSession.id);
-                console.log(sanitizeLog(`[Manual] Session #${manualSession.id} COMPLETED due to user action (${reason})`));
-                sendNativeNotification('✅ Session Finished', 'Lid closed or manual sleep detected. Session finished.');
-            } else {
-                db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
-                console.log(sanitizeLog(`[Manual] Session #${manualSession.id} PAUSED due to idle (${reason})`));
-            }
+            db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
+            console.log(sanitizeLog(`[Manual] Session #${manualSession.id} PAUSED due to idle (${reason})`));
             addEvent(manualSession.id, `lock_${reason}`);
         } else if (event === 'unlock') {
             // Auto-resume on unlock (unless it was completed)
@@ -925,21 +926,23 @@ app.post('/dismiss-break-reminder', asyncHandler(async (req, res) => {
 }));
 
 app.post('/snooze-break-reminder', asyncHandler(async (req, res) => {
-    let session = getActiveSession('manual');
-    let type = 'manual';
-    if (!session || session.status !== 'active') {
-        session = getTodayAutomaticSession();
-        type = 'automatic';
+    const manualSession = getActiveSession('manual');
+    const autoSession = getTodayAutomaticSession();
+    
+    let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+    if (breakMin === 1) breakMin = 60;
+    const snoozeMin = parseInt(req.body.minutes || '10');
+    const breakSec = breakMin * 60;
+    const snoozeSec = snoozeMin * 60;
+
+    for (const session of [manualSession, autoSession]) {
+        if (session && session.status === 'active') {
+            const newBreakNotify = session.total_seconds - breakSec + snoozeSec;
+            stmtSetBreakNotify.run(newBreakNotify, session.id);
+            console.log(`[Break Reminder] Snoozed session #${session.id} for ${snoozeMin} minutes. New last_break_notify = ${newBreakNotify}`);
+        }
     }
-    if (session && session.status === 'active') {
-        const breakMin = parseInt(type === 'manual' ? getCachedSetting('breakInterval', '60') : getCachedSetting('wfhBreakInterval', '60'));
-        const snoozeMin = parseInt(req.body.minutes || '10');
-        const breakSec = breakMin * 60;
-        const snoozeSec = snoozeMin * 60;
-        const newBreakNotify = session.total_seconds - breakSec + snoozeSec;
-        stmtSetBreakNotify.run(newBreakNotify, session.id);
-        console.log(`[Break Reminder] Snoozed session #${session.id} (${type}) for ${snoozeMin} minutes. New last_break_notify = ${newBreakNotify}`);
-    }
+
     pendingBreakReminder = null;
     res.json({ success: true });
 }));
@@ -1021,6 +1024,41 @@ app.get('/app-usage-categories', (req, res) => {
     res.json({ categories: result });
 });
 
+app.get('/app-timeline', (req, res) => {
+    // 1. Determine top 8 apps for the day
+    const topAppsUsage = getTodayAppUsage();
+    const top8AppNames = topAppsUsage.slice(0, 8).map(u => u.app_name);
+
+    // 2. Query timeline events
+    const timelineEvents = db.prepare(`
+        SELECT strftime('%H', timestamp) as hour, app_name, SUM(duration_seconds) as duration
+        FROM app_usage_timeline
+        WHERE date = date('now', 'localtime')
+        GROUP BY hour, app_name
+        ORDER BY hour ASC
+    `).all();
+
+    const appsByHour = {};
+
+    timelineEvents.forEach(event => {
+        // Only include apps that are in the Top 8
+        if (!top8AppNames.includes(event.app_name)) {
+            return;
+        }
+        
+        const hour = parseInt(event.hour, 10);
+        if (!appsByHour[hour]) {
+            appsByHour[hour] = {};
+        }
+        if (!appsByHour[hour][event.app_name]) {
+            appsByHour[hour][event.app_name] = 0;
+        }
+        appsByHour[hour][event.app_name] += event.duration;
+    });
+
+    res.json({ timeline: appsByHour, topApps: top8AppNames });
+});
+
 app.get('/settings', (req, res) => {
     const goalHours = getSetting('goalHours', '4');
     const goalMinutes = getSetting('goalMinutes', '10');
@@ -1048,10 +1086,14 @@ app.get('/settings', (req, res) => {
 });
 
 app.post('/settings', asyncHandler(async (req, res) => {
-    const { goalHours, goalMinutes, breakInterval, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius, defaultProjectId } = req.body;
+    const { goalHours, goalMinutes, breakInterval, useAiDynamicBreak, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius, defaultProjectId } = req.body;
     if (goalHours !== undefined) setSetting('goalHours', goalHours);
     if (goalMinutes !== undefined) setSetting('goalMinutes', goalMinutes);
-    if (breakInterval !== undefined) setSetting('breakInterval', breakInterval);
+    if (useAiDynamicBreak !== undefined) setSetting('useAiDynamicBreak', useAiDynamicBreak.toString());
+    if (breakInterval !== undefined) {
+        setSetting('breakInterval', breakInterval);
+        setSetting('dynamicBreakInterval', breakInterval); // Sync so the backend timers use this immediately
+    }
     if (wfhBreakInterval !== undefined) setSetting('wfhBreakInterval', wfhBreakInterval);
     if (goalLinePercent !== undefined) setSetting('goalLinePercent', goalLinePercent);
     if (customAppCategories !== undefined) setSetting('customAppCategories', customAppCategories);
@@ -1088,7 +1130,7 @@ app.get('/today-events', (req, res) => {
 });
 
 app.get('/export-csv', (req, res) => {
-    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getProjectReport } = require('./db');
+    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getProjectReport, getTimelineReport } = require('./db');
     const tab = req.query.tab || 'daily';
     const timeFormat = req.query.timeFormat || '24h';
     const start = req.query.start;
@@ -1168,6 +1210,68 @@ app.get('/export-csv', (req, res) => {
         });
         res.setHeader('Content-Type', 'text/csv');
         return res.send(headers + '\n' + rows.join('\n'));
+    } else if (tab === 'timeline') {
+        data = getTimelineReport(start, end);
+        headers = 'Date,Block Start,Block End,Duration (seconds),Duration,Type,Details';
+        res.setHeader('Content-Disposition', 'attachment; filename=timeline_report.csv');
+
+        const formatReason = (reason) => {
+            if (!reason) return '';
+            const map = {
+                'take_break': 'Took Break (UI)',
+                'lock_take_break': 'Took Break (UI)',
+                'lock_idle': 'System Idle',
+                'lock_system_idle': 'System Idle',
+                'lock_sleep': 'Computer Sleep',
+                'lock_screen_saver': 'Screen Saver',
+                'unlock_idle_return': 'Returned from Idle',
+                'unlock_unknown': 'System Unlock',
+                'lock_unknown': 'System Lock',
+                'lock_user_initiated': 'User Locked',
+            };
+            return map[reason] || reason.replace(/_/g, ' ');
+        };
+
+        const formatLocalTime = (datetimeStr) => {
+            if (!datetimeStr) return '—';
+            const d = new Date(datetimeStr.replace(' ', 'T') + 'Z');
+            if (isNaN(d.getTime())) return '—';
+            const h = d.getHours();
+            const m = d.getMinutes().toString().padStart(2, '0');
+            const s = d.getSeconds().toString().padStart(2, '0');
+            if (timeFormat === 'ampm') {
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                let h12 = h % 12;
+                h12 = h12 ? h12 : 12;
+                return `${h12}:${m}:${s} ${ampm}`;
+            }
+            return `${h.toString().padStart(2, '0')}:${m}:${s}`;
+        };
+
+        const rows = [];
+        data.forEach(item => {
+            item.blocks.forEach(b => {
+                const t1 = b.start ? new Date(b.start.replace(' ', 'T') + 'Z').getTime() : 0;
+                const t2 = b.end ? new Date(b.end.replace(' ', 'T') + 'Z').getTime() : 0;
+                const durationSec = Math.floor((t2 - t1) / 1000);
+                const durFormat = durationSec > 0 ? fmtTime(durationSec) : '00:00:00';
+                
+                const typeLabel = b.type === 'working' ? 'Working' : 'Break';
+                
+                let details = b.session_type + ' session #' + b.session_id;
+                if (b.type === 'break') {
+                    const r1 = formatReason(b.reason);
+                    const r2 = formatReason(b.end_reason);
+                    if (r1 && r2) details += ` (${r1} -> ${r2})`;
+                    else if (r1 || r2) details += ` (${r1 || r2})`;
+                    else if (b.reason) details += ` (${b.reason})`;
+                }
+                
+                rows.push(`${item.date},${formatLocalTime(b.start)},${formatLocalTime(b.end)},${durationSec},${durFormat},${typeLabel},"${details}"`);
+            });
+        });
+        res.setHeader('Content-Type', 'text/csv');
+        return res.send(headers + '\n' + rows.join('\n'));
     } else {
         data = getDailyReport(start, end);
         headers = 'Date,Workplace Duration (seconds),Workplace Duration,Day Total (seconds),Day Total,Breaks';
@@ -1188,12 +1292,13 @@ app.get('/export-csv', (req, res) => {
 
 app.get('/reports', (req, res) => {
     const { start, end } = req.query;
-    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport } = require('./db');
+    const { getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getTimelineReport } = require('./db');
     res.json({
         daily: getDailyReport(start, end),
         weekly: getWeeklyReport(start, end),
         monthly: getMonthlyReport(start, end),
-        visits: getOfficeVisitsReport(start, end)
+        visits: getOfficeVisitsReport(start, end),
+        timeline: getTimelineReport(start, end)
     });
 });
 
@@ -1418,7 +1523,8 @@ setInterval(updateDynamicBreak, 24 * 60 * 60 * 1000);
 
 app.get('/dynamic-break-stats', (req, res) => {
     const interval = getCachedSetting('dynamicBreakInterval', '60');
-    res.json({ interval: parseInt(interval) });
+    const useAi = getCachedSetting('useAiDynamicBreak', 'false') === 'true';
+    res.json({ interval: parseInt(interval), useAi: useAi });
 });
 
 app.listen(PORT, '0.0.0.0', () => {

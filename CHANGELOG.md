@@ -2,6 +2,16 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [7.0.0] - 2026-06-16
+
+### Added
+- **Location Page Enhancements** — Reorganized the Location page layout, moving the interactive map to the left side with a centered, medium-width format for improved readability. Updated sliding animations to match the new layout naturally.
+- **Dashboard Tooltip Analytics** — Enhanced the dashboard tooltips to provide clearer and more detailed analytics.
+- **Premium UI Polish** — Extensive visual refresh across the app including new glassmorphism modal overlays, dynamic background SVG noise patterns, enhanced shadow depths, rounded pill shapes, and staggered view animations for a smoother user experience.
+
+### Removed
+- **Activities Report Feature** — Removed the legacy activities report functionality to streamline the codebase and focus on core location and project reporting.
+
 ## [6.1.0] - 2026-05-28
 
 ### Changed

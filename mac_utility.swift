@@ -11,6 +11,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     var menuBarUtility: MenuBarUtility!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Enforce single instance
+        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier!)
+        if runningApps.count > 1 {
+            print("Another instance is already running. Terminating.")
+            NSApplication.shared.terminate(nil)
+            return
+        }
+
         // First run setup
         registerLaunchAgent()
         
@@ -391,12 +399,12 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
             defer: false
         )
         window.title = "Workplace Monitor"
+        window.titleVisibility = .hidden
         window.minSize = NSSize(width: 700, height: 500)
         window.contentView = webView
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.07, alpha: 1.0)
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor.windowBackgroundColor
 
         self.window = window
 
@@ -665,9 +673,9 @@ class BreakPopupController: NSObject, NSWindowDelegate, WKNavigationDelegate, WK
         window.contentView = webView
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 0.95)
-        window.appearance = NSAppearance(named: .darkAqua)
-        
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.isOpaque = false
+
         // Float on top of all windows & allow rendering across all virtual spaces / full-screen apps
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -791,8 +799,8 @@ class IdlePopupController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         window.contentView = webView
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 0.95)
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.isOpaque = false
         
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -886,6 +894,9 @@ class MenuBarUtility: NSObject {
     var lastShownBreakMinutes: Int?
     var lastShownIdleSessionId: Int?
     var lastShownIdleDuration: Int?
+    
+    var lastAppHeartbeatTime: Date?
+    var activityAssertion: NSObjectProtocol?
     
     var appMenu: NSMenu!
 
@@ -994,6 +1005,8 @@ class MenuBarUtility: NSObject {
     }
 
     func startTimers() {
+        activityAssertion = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: "Workplace Monitor background timers")
+
         // Adaptive polling: started at 5s, will adjust based on server response
         startPollTimer(interval: 5.0)
         
@@ -1210,7 +1223,10 @@ class MenuBarUtility: NSObject {
 
     func trackFrontmostApp() {
         // Don't track when screen is locked, sleeping, or idle
-        guard !isScreenLocked && !isIdle else { return }
+        guard !isScreenLocked && !isIdle else {
+            lastAppHeartbeatTime = nil
+            return
+        }
 
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
               let appName = frontApp.localizedName else { return }
@@ -1234,12 +1250,23 @@ class MenuBarUtility: NSObject {
             }
         }
 
-        // Send heartbeat — 5 seconds of usage for this tracked name
+        let now = Date()
+        var secondsToReport = 5
+        if let last = lastAppHeartbeatTime {
+            secondsToReport = Int(now.timeIntervalSince(last))
+        }
+        lastAppHeartbeatTime = now
+        
+        // Safety cap (max 60s) to prevent enormous spikes if the timer gets delayed
+        if secondsToReport > 60 { secondsToReport = 60 }
+        if secondsToReport <= 0 { return }
+
+        // Send heartbeat
         guard let url = URL(string: "\(serverURL)/app-heartbeat") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let json: [String: Any] = ["app_name": trackedName, "seconds": 5]
+        let json: [String: Any] = ["app_name": trackedName, "seconds": secondsToReport]
         request.httpBody = try? JSONSerialization.data(withJSONObject: json)
         URLSession.shared.dataTask(with: request).resume()
     }
@@ -1258,9 +1285,8 @@ class MenuBarUtility: NSObject {
             return
         }
 
-        let idleTime = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
-        let idleKeyboard = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
-        let minIdle = min(idleTime, idleKeyboard)
+        let anyInputEventType = CGEventType(rawValue: UInt32.max)!
+        let minIdle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInputEventType)
 
         if minIdle >= idleThresholdSeconds && !isIdle {
             isIdle = true
