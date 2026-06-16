@@ -11,6 +11,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     var menuBarUtility: MenuBarUtility!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Enforce single instance
+        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier!)
+        if runningApps.count > 1 {
+            print("Another instance is already running. Terminating.")
+            NSApplication.shared.terminate(nil)
+            return
+        }
+
         // First run setup
         registerLaunchAgent()
         
