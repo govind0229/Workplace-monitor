@@ -625,33 +625,8 @@ app.post('/event', asyncHandler(async (req, res) => {
         });
     }
 
-    const finishReasons = ['user_initiated', 'session_resign', 'system_sleep'];
-
     if (event === 'lock') {
-        if (finishReasons.includes(reason)) {
-            lastIdleStart = null; // Do not calculate idle duration for sleep/finish
-
-            const manualSession = getActiveSession('manual');
-            const locationSession = getActiveSession('location');
-
-            if (manualSession) {
-                completeSession(manualSession.id);
-                clearSessionState(manualSession.id);
-                console.log(`[Auto-Stop] Manual session stopped due to Mac sleep: ${manualSession.id}`);
-            }
-
-            if (locationSession) {
-                completeSession(locationSession.id);
-                clearSessionState(locationSession.id);
-                console.log(`[Auto-Stop] Location session stopped due to Mac sleep: ${locationSession.id}`);
-            }
-
-            if (manualSession || locationSession) {
-                sendNativeNotification('💤 Session Auto-Stopped', 'Mac went to sleep. Your session has been safely closed.');
-            }
-        } else {
-            lastIdleStart = Date.now();
-        }
+        lastIdleStart = Date.now();
     } else if (event === 'unlock') {
         let duration = 0;
         let isOvernight = false;
@@ -695,57 +670,41 @@ app.post('/event', asyncHandler(async (req, res) => {
         }
     }
 
-    // 1. Handle Automatic Session (Completes on user action, pauses on idle)
+    // 1. Handle Automatic Session
     const autoSession = getTodayAutomaticSession();
     const wasAutoStatus = autoSession.status;
 
-    if (event === 'lock' && finishReasons.includes(reason)) {
-        completeSession(autoSession.id);
-        clearSessionState(autoSession.id);
-        addEvent(autoSession.id, `${event}_${reason}`);
-        console.log(sanitizeLog(`[Auto] Session #${autoSession.id} COMPLETED due to user action (${reason}).`));
-        sendNativeNotification('🏠 WFH Session Finished', 'Lid closed or manual sleep detected. WFH session finished.');
-    } else {
-        const autoStatus = event === 'lock' ? 'paused' : 'active';
-        db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
-        
-        if (event === 'unlock' && autoSession.total_seconds === 0) {
-            db.prepare("UPDATE sessions SET start_time = CURRENT_TIMESTAMP WHERE id = ?").run(autoSession.id);
-            console.log(`[Auto] Session #${autoSession.id} first unlock. Erasing PowerNap time by resetting start_time.`);
-        }
-
-        addEvent(autoSession.id, `${event}_${reason}`);
-
-        // Send notification for automatic session state changes
-        if (event === 'unlock' && wasAutoStatus !== 'active') {
-            if (!autoSession.notified) {
-                console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session started (Reason: ${reason}).`));
-                sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
-                db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
-            } else {
-                console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session resumed (Reason: ${reason}).`));
-                sendNativeNotification('🏠 WFH Session Resumed', 'Screen unlocked. Timer resumed.');
-            }
-        } else if (event === 'lock' && wasAutoStatus === 'active') {
-            console.log(sanitizeLog(`[Auto] Screen locked — automatic session paused (Reason: ${reason}).`));
-            sendNativeNotification('🏠 WFH Session Paused', 'Screen locked. Timer paused.');
-        }
+    const autoStatus = event === 'lock' ? 'paused' : 'active';
+    db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
+    
+    if (event === 'unlock' && autoSession.total_seconds === 0) {
+        db.prepare("UPDATE sessions SET start_time = CURRENT_TIMESTAMP WHERE id = ?").run(autoSession.id);
+        console.log(`[Auto] Session #${autoSession.id} first unlock. Erasing PowerNap time by resetting start_time.`);
     }
 
-    // 2. Handle Manual Session (Completes on user-initiated sleep, pauses on idle)
+    addEvent(autoSession.id, `${event}_${reason}`);
+
+    // Send notification for automatic session state changes
+    if (event === 'unlock' && wasAutoStatus !== 'active') {
+        if (!autoSession.notified) {
+            console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session started (Reason: ${reason}).`));
+            sendNativeNotification('🏠 WFH Session Started', 'Automatic tracking is now active.');
+            db.prepare("UPDATE sessions SET notified = 1 WHERE id = ?").run(autoSession.id);
+        } else {
+            console.log(sanitizeLog(`[Auto] Screen unlocked — automatic session resumed (Reason: ${reason}).`));
+            sendNativeNotification('🏠 WFH Session Resumed', 'Screen unlocked. Timer resumed.');
+        }
+    } else if (event === 'lock' && wasAutoStatus === 'active') {
+        console.log(sanitizeLog(`[Auto] Screen locked — automatic session paused (Reason: ${reason}).`));
+        sendNativeNotification('🏠 WFH Session Paused', 'Screen locked. Timer paused.');
+    }
+
+    // 2. Handle Manual Session
     const manualSession = getActiveSession('manual');
     if (manualSession) {
         if (event === 'lock') {
-            if (finishReasons.includes(reason)) {
-                // Force complete manual session (assuming user is leaving or closing lid)
-                completeSession(manualSession.id);
-                clearSessionState(manualSession.id);
-                console.log(sanitizeLog(`[Manual] Session #${manualSession.id} COMPLETED due to user action (${reason})`));
-                sendNativeNotification('✅ Session Finished', 'Lid closed or manual sleep detected. Session finished.');
-            } else {
-                db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
-                console.log(sanitizeLog(`[Manual] Session #${manualSession.id} PAUSED due to idle (${reason})`));
-            }
+            db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
+            console.log(sanitizeLog(`[Manual] Session #${manualSession.id} PAUSED due to idle (${reason})`));
             addEvent(manualSession.id, `lock_${reason}`);
         } else if (event === 'unlock') {
             // Auto-resume on unlock (unless it was completed)
