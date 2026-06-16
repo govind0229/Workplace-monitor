@@ -399,6 +399,7 @@ class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegat
             defer: false
         )
         window.title = "Workplace Monitor"
+        window.titleVisibility = .hidden
         window.minSize = NSSize(width: 700, height: 500)
         window.contentView = webView
         window.delegate = self

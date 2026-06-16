@@ -829,8 +829,8 @@ async function calculateRoute(userLat, userLng, officeLat, officeLng, mode = 'dr
             }
 
             // Bring markers on top of the route line
-            if (officeMarker) officeMarker.bringToFront();
-            if (userMarker) userMarker.bringToFront();
+            if (officeMarker) officeMarker.setZIndexOffset(1000);
+            if (userMarker) userMarker.setZIndexOffset(1000);
         }
 
     } catch (err) {
@@ -1290,7 +1290,7 @@ function switchMapType(type) {
 
     // Bring markers to front if needed
     if (officeCircle) officeCircle.bringToFront();
-    if (officeMarker) officeMarker.bringToFront();
+    if (officeMarker) officeMarker.setZIndexOffset(1000);
 }
 
 function updateRadiusUI(radius) {
