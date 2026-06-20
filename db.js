@@ -95,6 +95,16 @@ db.exec(`
     last_synced_id INTEGER DEFAULT 0,
     last_sync_time DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS breaks_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER,
+    status TEXT DEFAULT 'offered', -- 'offered', 'snoozed', 'started', 'completed', 'ignored'
+    offered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME,
+    completed_at DATETIME,
+    duration_seconds INTEGER DEFAULT 0
+  );
 `);
 
 // Migrations for existing databases
@@ -106,7 +116,7 @@ try { db.exec("ALTER TABLE sessions ADD COLUMN project_id INTEGER REFERENCES pro
 module.exports = {
   db,
   startSession: (type = 'manual', projectId = null) => {
-    const info = db.prepare("INSERT INTO sessions (status, last_tick, type, project_id) VALUES ('active', CURRENT_TIMESTAMP, ?, ?)").run(type, projectId);
+    const info = db.prepare("INSERT INTO sessions (status, last_tick, type, project_id, date) VALUES ('active', CURRENT_TIMESTAMP, ?, ?, date('now', 'localtime'))").run(type, projectId);
     return info.lastInsertRowid;
   },
   getActiveSession: (type = 'manual') => {
@@ -120,7 +130,7 @@ module.exports = {
     if (!session) {
       // Start as PAUSED — the Swift app will send 'unlock' to activate it.
       // This prevents time from accumulating overnight when the machine is asleep.
-      const info = db.prepare("INSERT INTO sessions (status, last_tick, type, project_id) VALUES ('paused', CURRENT_TIMESTAMP, 'automatic', ?)").run(defaultProjectId);
+      const info = db.prepare("INSERT INTO sessions (status, last_tick, type, project_id, date) VALUES ('paused', CURRENT_TIMESTAMP, 'automatic', ?, date('now', 'localtime'))").run(defaultProjectId);
       session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(info.lastInsertRowid);
     } else if (session.project_id === null && defaultProjectId !== null) {
       // If session exists but has no project, and we have a default project, apply it!

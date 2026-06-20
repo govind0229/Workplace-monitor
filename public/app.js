@@ -209,6 +209,7 @@ navItems.forEach(item => {
         }
         if (targetView === 'settings') loadSettings();
         if (targetView === 'location') initLocationView();
+        if (targetView === 'wellnessReport') initWellnessReport();
         if (targetView === 'wellbeing') {
             const wellbeingView = document.getElementById('wellbeingView');
             if (wellbeingView && wellbeingView.children.length === 0) {
@@ -2111,7 +2112,7 @@ async function renderWeeklyChart() {
         for (let i = 6; i >= 0; i--) {
             const d = new Date(today);
             d.setDate(d.getDate() - i);
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
             const found = daily.find(r => r.date === dateStr);
             days.push({
                 label: dayNames.at(d.getDay()),
@@ -2741,7 +2742,7 @@ async function renderStatsChart(rangeDays) {
         for (let i = rangeDays - 1; i >= 0; i--) {
             const d = new Date(today);
             d.setDate(d.getDate() - i);
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
             const found = daily.find(r => r.date === dateStr);
             days.push({
                 dateObj: d,
@@ -3092,8 +3093,8 @@ function initReportFilters() {
                 start = new Date(now.getFullYear(), now.getMonth(), 1);
             }
 
-            filterStartDate = start.toISOString().split('T')[0];
-            filterEndDate = end.toISOString().split('T')[0];
+            filterStartDate = [start.getFullYear(), String(start.getMonth() + 1).padStart(2, '0'), String(start.getDate()).padStart(2, '0')].join('-');
+            filterEndDate = [end.getFullYear(), String(end.getMonth() + 1).padStart(2, '0'), String(end.getDate()).padStart(2, '0')].join('-');
             if (startInp) startInp.value = filterStartDate;
             if (endInp) endInp.value = filterEndDate;
 
@@ -3479,3 +3480,24 @@ function renderAIDigestUI() {
 
 
 // Wellbeing Feature moved to wellbeing.js
+
+async function initWellnessReport() {
+    try {
+        const response = await fetch('/wellness-report-data');
+        if (!response.ok) throw new Error('Failed to fetch wellness data');
+        const data = await response.json();
+        
+        const avgElem = document.getElementById('avgFocusStreak');
+        if (avgElem) avgElem.innerText = data.avgFocusStreak;
+        
+        const compElem = document.getElementById('breakComplianceRate');
+        if (compElem) compElem.innerText = data.breakComplianceRate + '%';
+        
+        const list = document.getElementById('wellnessTipsList');
+        if (list) {
+            list.innerHTML = data.tips.map(tip => `<li>${tip}</li>`).join('');
+        }
+    } catch (err) {
+        console.error("Error loading wellness report:", err);
+    }
+}

@@ -2,6 +2,17 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [7.1.0] - 2026-06-21
+
+### Added
+- **Verified Breaks System** — Implemented verified breaks that automatically monitor keyboard and mouse activity. If the user continues to use the computer after initiating a break, the break is automatically canceled and the timer resumes.
+- **Smart Startup Tracking** — Improved backend logic to recognize when a user is actively working at the keyboard during application startup to automatically resume monitoring, avoiding false "Paused" states.
+
+### Fixed
+- **UI Timezone Data Shift** — Fixed an issue where the dashboard charts would pull data for the wrong day if viewed just past midnight due to UTC conversion bugs. Chart dates are now strictly handled in the system's local time.
+- **Backend Timezone Logging** — Fixed a database insertion bug where new daily sessions created near midnight were incorrectly stamped with yesterday's UTC date, which caused an infinite loop of duplicate sessions.
+- **Double Lock Event Fix** — Corrected an issue where multiple locked or paused events could stack incorrectly on the database, preventing accurate session tracking.
+
 ## [7.0.0] - 2026-06-16
 
 ### Added

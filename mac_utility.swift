@@ -5,6 +5,7 @@ import CoreLocation
 import UserNotifications
 import AVFoundation
 import UniformTypeIdentifiers
+import IOKit.pwr_mgt
 
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -1260,13 +1261,20 @@ class MenuBarUtility: NSObject {
         // Safety cap (max 60s) to prevent enormous spikes if the timer gets delayed
         if secondsToReport > 60 { secondsToReport = 60 }
         if secondsToReport <= 0 { return }
+        
+        let anyInputEventType = CGEventType(rawValue: UInt32.max)!
+        let minIdle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInputEventType)
 
         // Send heartbeat
         guard let url = URL(string: "\(serverURL)/app-heartbeat") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let json: [String: Any] = ["app_name": trackedName, "seconds": secondsToReport]
+        let json: [String: Any] = [
+            "app_name": trackedName, 
+            "seconds": secondsToReport,
+            "minIdle": minIdle
+        ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: json)
         URLSession.shared.dataTask(with: request).resume()
     }
@@ -1281,6 +1289,17 @@ class MenuBarUtility: NSObject {
                 idleStartTime = nil
                 sendEvent("unlock")
                 print("[Call] Call detected — resuming sessions from idle")
+            }
+            return
+        }
+        
+        // Phase 2: If media is playing (NoDisplaySleepAssertion active), we are NOT idle
+        if isMediaPlaying() {
+            if isIdle {
+                isIdle = false
+                idleStartTime = nil
+                sendEvent("unlock")
+                print("[Media] Video playing — resuming sessions from idle")
             }
             return
         }
@@ -1309,6 +1328,9 @@ class MenuBarUtility: NSObject {
                 sendEvent("unlock")
             }
             print("User returned from idle after \(totalIdleDuration)s — resuming sessions")
+            
+            // Force an immediate status fetch to update popups instantly
+            self.fetchStatus(force: true)
         }
     }
 
@@ -1342,6 +1364,18 @@ class MenuBarUtility: NSObject {
             }
         }
 
+        return false
+    }
+
+    /// Checks if video/media is playing by looking at Display Sleep power assertions
+    func isMediaPlaying() -> Bool {
+        var assertionStatus: Unmanaged<CFDictionary>?
+        let result = IOPMCopyAssertionsStatus(&assertionStatus)
+        if result == kIOReturnSuccess, let status = assertionStatus?.takeRetainedValue() as? [String: Any] {
+            if let displaySleep = status[kIOPMAssertionTypeNoDisplaySleep as String] as? Int {
+                return displaySleep > 0
+            }
+        }
         return false
     }
 

@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <title>Office Hours Monitor</title>
-    <link rel="stylesheet" href="style.css?v=7.0.0">
+    <link rel="stylesheet" href="style.css?v=7.1.0">
     <link rel="stylesheet" href="wellbeing.css">
-    <link rel="stylesheet" href="style.css?v=6.1.0">
+    <link rel="stylesheet" href="style.css?v=7.1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
@@ -91,9 +91,16 @@
                 </svg>
                 <span class="nav-label">Wellbeing</span>
             </button>
+            <button class="nav-item" data-view="wellnessReport">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                </svg>
+                <span class="nav-label">Wellness Report</span>
+            </button>
         </nav>
         <div class="sidebar-footer">
-            <span class="version-badge">v7.0.0</span>
+            <span class="version-badge">v7.1.0</span>
         </div>
     </div>
 
@@ -427,7 +434,36 @@
 
         <!-- Wellbeing View (Dynamically Loaded) -->
         <div id="wellbeingView" class="view">
-            <!-- Content will be fetched from wellbeing.html -->
+            <!-- Dynamically populated from wellbeing-content.html -->
+        </div>
+
+        <div id="wellnessReportView" class="view">
+            <div class="header-content">
+                <div class="title-area">
+                    <h1>Wellness Report</h1>
+                    <p class="subtitle">Insights into your work habits and health.</p>
+                </div>
+            </div>
+            
+            <div class="metrics-grid" style="margin-top: 2rem;">
+                <div class="glass-card stat-card">
+                    <div class="stat-title">Average Focus Streak</div>
+                    <div class="stat-value" id="avgFocusStreak">-</div>
+                    <div class="stat-subtitle">Minutes before taking a break</div>
+                </div>
+                <div class="glass-card stat-card">
+                    <div class="stat-title">Break Compliance Rate</div>
+                    <div class="stat-value" id="breakComplianceRate">-</div>
+                    <div class="stat-subtitle">% of breaks taken on time</div>
+                </div>
+            </div>
+
+            <div class="glass-card history-content" style="margin-top: 2rem;">
+                <h3 style="margin-bottom: 1rem; color: var(--text-primary); border-bottom: 1px solid var(--bg-tertiary); padding-bottom: 0.5rem;">AI Health Insights</h3>
+                <ul id="wellnessTipsList" style="list-style-type: disc; padding-left: 1.5rem; color: var(--text-secondary); line-height: 1.8;">
+                    <!-- Populated via JS -->
+                </ul>
+            </div>
         </div>
 
         <!-- Settings View -->
@@ -1069,7 +1105,7 @@
     <script src="app.js"></script>
     <script src="shared-activities.js"></script>
     <script src="wellbeing.js"></script>
-    <script src="app.js?v=6.1.0"></script>
+    <script src="app.js?v=7.1.0"></script>
 </body>
 
 </html>

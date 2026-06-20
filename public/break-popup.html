@@ -338,9 +338,9 @@
 
       <!-- Option: Snooze with Dropdown (Always injected below grid, but we can put it inside the grid at the end dynamically or keep it here if we want it separate. Actually, let's put it back in the grid dynamically to preserve layout) -->
 
-      <!-- Full-width Dismiss Button -->
+      <!-- Full-width Start Break Button -->
       <button class="break-dismiss-button" id="btnDismiss">
-        <span>💼 Continue to Work</span>
+        <span>🏃‍♂️ Start Break (Requires 3 mins idle)</span>
       </button>
     </div>
   </div>
@@ -395,8 +395,27 @@
         const data = await response.json();
         if (data.pending_break_reminder) {
           const mins = data.pending_break_reminder.minutes;
+          const snoozeCount = data.pending_break_reminder.snoozeCount || 0;
           document.getElementById('breakElapsedText').textContent = `${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
           document.getElementById('breakMessageText').textContent = data.pending_break_reminder.message || 'Take a moment to stretch and rest your eyes.';
+          
+          if (snoozeCount >= 2) {
+             document.querySelector('.popup-container').style.border = '2px solid #ef4444';
+             document.querySelector('.break-reminder-cup-wrapper').style.background = 'rgba(239, 68, 68, 0.12)';
+             document.querySelector('.break-reminder-cup-wrapper').style.color = '#ef4444';
+             document.querySelector('.breathing-cup').innerHTML = '⚠️';
+             const btn = document.getElementById('btnDismiss');
+             btn.innerHTML = '<span>🔒 Must wait 10s...</span>';
+             btn.disabled = true;
+             btn.style.opacity = '0.5';
+             btn.style.cursor = 'not-allowed';
+             setTimeout(() => {
+                 btn.disabled = false;
+                 btn.style.opacity = '1';
+                 btn.style.cursor = 'pointer';
+                 btn.innerHTML = '<span>🏃‍♂️ Start Break (Requires 3 mins idle)</span>';
+             }, 10000);
+          }
         } else {
           // Default fallback just in case
           document.getElementById('breakElapsedText').textContent = 'a continuous session';
@@ -411,14 +430,10 @@
 
     async function logBreak(reason) {
       try {
-        await fetch('/event', {
+        await fetch('/start-break', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'lock', metadata: { reason: reason, action: 'lock_screen' } })
-        });
-        await fetch('/dismiss-break-reminder', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          body: JSON.stringify({ reason: reason })
         });
       } catch (err) {
         console.error("Error logging break:", err);
@@ -492,12 +507,12 @@
 
     document.getElementById('btnDismiss').addEventListener('click', async () => {
       try {
-        await fetch('/dismiss-break-reminder', {
+        await fetch('/start-break', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
         });
       } catch (err) {
-        console.error("Error dismissing break:", err);
+        console.error("Error starting break:", err);
       } finally {
         closeWindow();
       }

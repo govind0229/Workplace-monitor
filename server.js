@@ -155,7 +155,7 @@ function buildGrammar(slot) {
     });
 }
 
-function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
+function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null, intensity = 'low') {
     const now = new Date();
     const hour = now.getHours();
     const min = now.getMinutes();
@@ -171,18 +171,15 @@ function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
     const grammar = buildGrammar(slot);
     grammar.addModifiers(tracery.baseEngModifiers);
 
-    // Load the 7-day sent history upfront
     const recentKeys = new Set(getRecentlySentMessages(7));
 
-    // Try up to 8 times to generate a message not seen in the past 7 days
     let body, title, key;
     let attempts = 0;
     const MAX_ATTEMPTS = 8;
 
     do {
         body = grammar.flatten('#origin#');
-        // Use longer body string as key for reliable dedup
-        key = `${slot}_${body.trim().toLowerCase().replace(/\W+/g, '_').substring(0, 100)}`;
+        key = `${slot}_${body.trim().toLowerCase().replace(/\\W+/g, '_').substring(0, 100)}`;
         const slotData = Object.hasOwn(SLOT_RULES, slot) ? Reflect.get(SLOT_RULES, slot) : Reflect.get(SLOT_RULES, 'afternoon');
         title = slotData.slot_title.at(Math.floor(Math.random() * slotData.slot_title.length));
         attempts++;
@@ -190,8 +187,16 @@ function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
 
     markMessageSent(key);
 
-    const prefix = sessionType === 'automatic' ? '(WFH) ' : '';
-    console.log(`[Tracery Break] Slot: ${slot}, Attempts: ${attempts}, Key: ${key}`);
+    let prefix = sessionType === 'automatic' ? '(WFH) ' : '';
+    
+    // Add health guidance based on intensity
+    if (intensity === 'high') {
+        body += " You've been in high focus mode! Remember the 20-20-20 rule to rest your eyes.";
+    } else if (intensity === 'medium') {
+        body += " Great work staying productive. Take a short stretch to relieve tension.";
+    }
+
+    console.log(`[Tracery Break] Slot: ${slot}, Intensity: ${intensity}, Attempts: ${attempts}, Key: ${key}`);
 
     return { title, body: `${prefix}${body}` };
 }
@@ -339,6 +344,41 @@ function checkTimeBasedNotifications() {
 let lastRolloverDateStr = new Date().toLocaleDateString();
 
 // Background loop to increment time if active (recursive setTimeout prevents overlap)
+const HIGH_INTENSITY_APPS = ['Xcode', 'Code', 'IntelliJ IDEA', 'Android Studio', 'Terminal', 'iTerm2', 'Figma', 'Sketch'];
+
+function calculateDynamicBreakInterval(baseMinutes) {
+    if (getCachedSetting('wbAiToggle', 'false') !== 'true') {
+        return { min: baseMinutes, intensity: 'low' };
+    }
+
+    try {
+        const todayApps = db.prepare("SELECT app_name, total_seconds FROM app_usage WHERE date = date('now', 'localtime')").all();
+        if (!todayApps || todayApps.length === 0) return { min: baseMinutes, intensity: 'low' };
+
+        let totalTime = 0;
+        let highIntensityTime = 0;
+
+        todayApps.forEach(app => {
+            totalTime += app.total_seconds;
+            if (HIGH_INTENSITY_APPS.some(hi => app.app_name.includes(hi))) {
+                highIntensityTime += app.total_seconds;
+            }
+        });
+
+        if (totalTime === 0) return { min: baseMinutes, intensity: 'low' };
+        const intensityRatio = highIntensityTime / totalTime;
+        
+        if (intensityRatio > 0.6) {
+            return { min: Math.max(20, Math.floor(baseMinutes * 0.75)), intensity: 'high' };
+        } else if (intensityRatio > 0.3) {
+            return { min: Math.max(30, Math.floor(baseMinutes * 0.85)), intensity: 'medium' };
+        }
+    } catch (err) {
+        console.error("Error calculating dynamic break interval:", err);
+    }
+    return { min: baseMinutes, intensity: 'low' };
+}
+
 function runBackgroundLoop() {
     try {
         const todayStr = new Date().toLocaleDateString();
@@ -382,7 +422,10 @@ function runBackgroundLoop() {
 
         for (const [type, activeSession] of [['manual', manualSession], ['automatic', automaticSession]]) {
             if (!activeSession || activeSession.status !== 'active') continue;
-
+            
+            // Phase 1: Verified Breaks Check
+            // We used to cancel breaks here, but now /start-break forces a lock instantly.
+            // We will cancel the break if we receive /app-heartbeat while paused.
             const now = Date.now();
             const lastUpdate = activeSession.last_tick
                 ? new Date(activeSession.last_tick.replace(' ', 'T') + 'Z').getTime()
@@ -420,40 +463,64 @@ function runBackgroundLoop() {
                 }
 
                 // Break reminder
-                let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                const baseMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                let { min: breakMin, intensity } = calculateDynamicBreakInterval(baseMin);
                 if (breakMin === 1) breakMin = 60; // Self-healing if set to 1 for tests
 
                 if (breakMin > 0) {
                     const breakSec = breakMin * 60;
                     const lastBreak = activeSession.last_break_notify || 0;
                     if (activeSession.total_seconds - lastBreak >= breakSec) {
-                        const msg = getSmartBreakMessage('manual');
+                        const msg = getSmartBreakMessage('manual', null, intensity);
                         sendNativeNotification(msg.title, msg.body);
                         stmtSetBreakNotify.run(activeSession.total_seconds, activeSession.id);
+                        
+                        const snoozeCount = db.prepare("SELECT COUNT(*) as cnt FROM breaks_history WHERE session_id = ? AND status = 'snoozed' AND date(offered_at) = date('now')").get(activeSession.id).cnt;
+                        
+                        if (activeSession.total_seconds >= 10800 && snoozeCount >= 3) {
+                            console.log(`[Enforcement] Manual session over 3 hours with ${snoozeCount} snoozes. Forcing lock screen.`);
+                            require('child_process').exec(`python3 -c 'import ctypes; ctypes.CDLL("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login").SACLockScreenImmediate()'`);
+                        }
+                        
+                        const breakRecord = db.prepare("INSERT INTO breaks_history (session_id, status) VALUES (?, 'offered')").run(activeSession.id);
                         pendingBreakReminder = {
+                            id: breakRecord.lastInsertRowid,
                             sessionId: activeSession.id,
                             type: 'manual',
                             minutes: breakMin,
-                            message: msg.body
+                            message: msg.body,
+                            snoozeCount: snoozeCount
                         };
                     }
                 }
             } else if (type === 'automatic') {
-                let wfhBreakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                const baseMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                let { min: wfhBreakMin, intensity } = calculateDynamicBreakInterval(baseMin);
                 if (wfhBreakMin === 1) wfhBreakMin = 60;
 
                 if (wfhBreakMin > 0) {
                     const breakSec = wfhBreakMin * 60;
                     const lastBreak = activeSession.last_break_notify || 0;
                     if (activeSession.total_seconds - lastBreak >= breakSec) {
-                        const msg = getSmartBreakMessage('automatic');
+                        const msg = getSmartBreakMessage('automatic', null, intensity);
                         sendNativeNotification(msg.title, msg.body);
                         stmtSetBreakNotify.run(activeSession.total_seconds, activeSession.id);
+                        
+                        const snoozeCount = db.prepare("SELECT COUNT(*) as cnt FROM breaks_history WHERE session_id = ? AND status = 'snoozed' AND date(offered_at) = date('now')").get(activeSession.id).cnt;
+                        
+                        if (activeSession.total_seconds >= 10800 && snoozeCount >= 3) {
+                            console.log(`[Enforcement] Auto session over 3 hours with ${snoozeCount} snoozes. Forcing lock screen.`);
+                            require('child_process').exec(`python3 -c 'import ctypes; ctypes.CDLL("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login").SACLockScreenImmediate()'`);
+                        }
+
+                        const breakRecord = db.prepare("INSERT INTO breaks_history (session_id, status) VALUES (?, 'offered')").run(activeSession.id);
                         pendingBreakReminder = {
+                            id: breakRecord.lastInsertRowid,
                             sessionId: activeSession.id,
                             type: 'automatic',
                             minutes: wfhBreakMin,
-                            message: msg.body
+                            message: msg.body,
+                            snoozeCount: snoozeCount
                         };
                     }
                 }
@@ -689,6 +756,7 @@ app.post('/event', asyncHandler(async (req, res) => {
                     sessionType: manualSession ? 'manual' : 'automatic',
                     duration: duration
                 };
+                pendingBreakReminder = null; // Clear old break reminders
                 console.log(`[Idle Prompt] Generated pending prompt for session #${session.id}, duration: ${duration}s`);
             }
         }
@@ -698,15 +766,32 @@ app.post('/event', asyncHandler(async (req, res) => {
     const autoSession = getTodayAutomaticSession();
     const wasAutoStatus = autoSession.status;
 
-    const autoStatus = event === 'lock' ? 'paused' : 'active';
-    db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
-    
-    if (event === 'unlock' && autoSession.total_seconds === 0) {
-        db.prepare("UPDATE sessions SET start_time = CURRENT_TIMESTAMP WHERE id = ?").run(autoSession.id);
-        console.log(`[Auto] Session #${autoSession.id} first unlock. Erasing PowerNap time by resetting start_time.`);
+    // Phase 1 enhancement: Link pending break reason to the lock event
+    let finalReason = reason;
+    if (event === 'lock') {
+        const manualSession = getActiveSession('manual');
+        for (const session of [manualSession, autoSession]) {
+            if (session && session.pending_break_reason) {
+                finalReason = session.pending_break_reason;
+                console.log(`[Verified Breaks] Linked reason '${session.pending_break_reason}' to idle lock for session #${session.id}`);
+                session.pending_break_reason = null; // Clear it so it only applies once
+            }
+        }
     }
 
-    addEvent(autoSession.id, `${event}_${reason}`);
+    const autoStatus = event === 'lock' ? 'paused' : 'active';
+    if (wasAutoStatus !== autoStatus) {
+        db.prepare("UPDATE sessions SET status = ?, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(autoStatus, autoSession.id);
+        
+        if (event === 'unlock' && autoSession.total_seconds === 0) {
+            db.prepare("UPDATE sessions SET start_time = CURRENT_TIMESTAMP WHERE id = ?").run(autoSession.id);
+        }
+        if (event === 'lock') {
+            addEvent(autoSession.id, `lock_${finalReason}`);
+        } else if (event === 'unlock') {
+            addEvent(autoSession.id, `unlock_${finalReason}`);
+        }
+    }
 
     // Send notification for automatic session state changes
     if (event === 'unlock' && wasAutoStatus !== 'active') {
@@ -724,18 +809,19 @@ app.post('/event', asyncHandler(async (req, res) => {
     }
 
     // 2. Handle Manual Session
-    const manualSession = getActiveSession('manual');
-    if (manualSession) {
-        if (event === 'lock') {
-            db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
-            console.log(sanitizeLog(`[Manual] Session #${manualSession.id} PAUSED due to idle (${reason})`));
-            addEvent(manualSession.id, `lock_${reason}`);
-        } else if (event === 'unlock') {
-            // Auto-resume on unlock (unless it was completed)
-            if (manualSession.status === 'paused') {
-                db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(manualSession.id);
-                addEvent(manualSession.id, `unlock_${reason}`);
-                console.log(`[Manual] Session #${manualSession.id} RESUMED after unlock.`);
+    const activeSession = getActiveSession('manual');
+    if (activeSession) {
+        const wasManualStatus = activeSession.status;
+        if (event === 'lock' && wasManualStatus !== 'paused') {
+            db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(activeSession.id);
+            addEvent(activeSession.id, `lock_${finalReason}`);
+            console.log(`[Manual] Session #${activeSession.id} PAUSED due to idle (${reason})`);
+        } else if (event === 'unlock' && wasManualStatus !== 'active') {
+            db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(activeSession.id);
+            addEvent(activeSession.id, `unlock_${finalReason}`);
+            console.log(`[Manual] Session #${activeSession.id} RESUMED after unlock.`);
+            if (activeSession.total_seconds === 0) {
+                db.prepare("UPDATE sessions SET start_time = CURRENT_TIMESTAMP WHERE id = ?").run(activeSession.id);
             }
         }
     }
@@ -893,7 +979,7 @@ app.get('/status', (req, res) => {
         officeRadius: parseInt(officeRadius),
         pending_notification: pendingNotification,
         pending_idle_prompt: pendingIdlePrompt,
-        pending_break_reminder: pendingBreakReminder,
+        pending_break_reminder: pendingIdlePrompt ? null : pendingBreakReminder,
         suggested_poll_ms: suggestedPollMs
     });
 });
@@ -911,9 +997,32 @@ app.post('/respond-idle-prompt', asyncHandler(async (req, res) => {
         updateSessionSeconds(sessionId, duration);
         addEvent(sessionId, `idle_respond_keep_${choice}`);
         console.log(sanitizeLog(`[Idle Prompt] Added ${duration}s back to session #${sessionId} (Choice: ${choice})`));
+        
+        const session = db.prepare("SELECT total_seconds, last_break_notify FROM sessions WHERE id = ?").get(sessionId);
+        let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+        if (breakMin === 1) breakMin = 60;
+        const breakSec = breakMin * 60;
+        
+        if (session && (session.total_seconds - session.last_break_notify >= breakSec)) {
+            const newNotify = session.total_seconds - breakSec + 600; // 10 mins grace
+            stmtSetBreakNotify.run(newNotify, sessionId);
+            console.log(`[Grace Period] Applied 10-minute grace period to session #${sessionId}`);
+        }
     } else {
         addEvent(sessionId, `idle_respond_discard_${choice}`);
         console.log(`[Idle Prompt] Discarded idle duration ${duration}s (Choice: ${choice})`);
+        
+        // The user just took a break, so reset their break reminder timer
+        const session = db.prepare("SELECT total_seconds FROM sessions WHERE id = ?").get(sessionId);
+        if (session) {
+            stmtSetBreakNotify.run(session.total_seconds, sessionId);
+            // Mark any offered or started break as completed
+            db.prepare("UPDATE breaks_history SET status = 'completed', completed_at = CURRENT_TIMESTAMP, duration_seconds = ? WHERE session_id = ? AND status IN ('started', 'offered')").run(duration, sessionId);
+            if (pendingBreakReminder && pendingBreakReminder.sessionId === sessionId) {
+                pendingBreakReminder = null;
+            }
+            console.log(`[Idle Prompt] Reset break reminder for session #${sessionId} to ${session.total_seconds}s`);
+        }
     }
 
     pendingIdlePrompt = null;
@@ -921,7 +1030,47 @@ app.post('/respond-idle-prompt', asyncHandler(async (req, res) => {
 }));
 
 app.post('/dismiss-break-reminder', asyncHandler(async (req, res) => {
+    if (pendingBreakReminder) {
+        db.prepare("UPDATE breaks_history SET status = 'ignored' WHERE id = ?").run(pendingBreakReminder.id);
+    }
     pendingBreakReminder = null;
+    res.json({ success: true });
+}));
+
+app.post('/start-break', asyncHandler(async (req, res) => {
+    const { reason } = req.body || {};
+    if (pendingBreakReminder) {
+        db.prepare("UPDATE breaks_history SET status = 'started', started_at = CURRENT_TIMESTAMP WHERE id = ?").run(pendingBreakReminder.id);
+        
+        // Link the selected activity reason to the session and simulate a lock instantly!
+        const manualSession = getActiveSession('manual');
+        const autoSession = getTodayAutomaticSession();
+        for (const session of [manualSession, autoSession]) {
+            if (session && session.id === pendingBreakReminder.sessionId) {
+                session.pending_break_reason = null; // No need to pend it
+                
+                // Simulate lock immediately so the UI updates and break starts instantly
+                if (session.status === 'active') {
+                    db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+                    addEvent(session.id, `lock_${reason || 'unknown'}`);
+                    console.log(`[Verified Breaks] Instantly started break '${reason}' for session #${session.id}`);
+                }
+            }
+        }
+        
+        pendingBreakReminder = null;
+    } else {
+        // Even if no pending reminder, allow starting a break from the Wellbeing Dashboard manually
+        const manualSession = getActiveSession('manual');
+        const autoSession = getTodayAutomaticSession();
+        for (const session of [manualSession, autoSession]) {
+            if (session && session.status === 'active') {
+                db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+                addEvent(session.id, `lock_${reason || 'unknown'}`);
+                console.log(`[Verified Breaks] Manually started break '${reason}' for session #${session.id}`);
+            }
+        }
+    }
     res.json({ success: true });
 }));
 
@@ -943,15 +1092,55 @@ app.post('/snooze-break-reminder', asyncHandler(async (req, res) => {
         }
     }
 
+    if (pendingBreakReminder) {
+        db.prepare("UPDATE breaks_history SET status = 'snoozed' WHERE id = ?").run(pendingBreakReminder.id);
+    }
     pendingBreakReminder = null;
     res.json({ success: true });
 }));
 
 app.post('/app-heartbeat', asyncHandler(async (req, res) => {
-    const { app_name, seconds } = req.body;
+    const { app_name, seconds, minIdle } = req.body;
     if (!app_name || !seconds) {
         return res.status(400).json({ error: 'app_name and seconds required' });
     }
+    
+    // Phase 1: Verified Breaks Check
+    // If the session is currently paused (meaning they are supposedly on a break),
+    // but they are physically using the computer (minIdle < 15 seconds)
+    // and it's been more than 60 seconds since the break started, we cancel it.
+    const manualSession = getActiveSession('manual');
+    const autoSession = getTodayAutomaticSession();
+    for (const session of [manualSession, autoSession]) {
+        if (session && session.status === 'paused') {
+            const latestLock = db.prepare("SELECT * FROM lock_events WHERE session_id = ? ORDER BY id DESC LIMIT 1").get(session.id);
+            if (latestLock && latestLock.event_type.startsWith('lock_')) {
+                const lockTime = new Date(latestLock.timestamp.replace(' ', 'T') + 'Z').getTime();
+                if ((Date.now() - lockTime) > 60000 && minIdle !== undefined && minIdle < 15) {
+                    console.log(`[Verified Breaks] User actively working (minIdle: ${minIdle}) 60s after starting break! Cancelling break.`);
+                    db.prepare("UPDATE sessions SET status = 'active', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+                    addEvent(session.id, `unlock_unknown`);
+                    
+                    // Mark any breaks_history as ignored
+                    db.prepare("UPDATE breaks_history SET status = 'ignored' WHERE session_id = ? AND status = 'started'").run(session.id);
+                    
+                    // Penalize: rollback the last_break_notify so they instantly get a new popup!
+                    const breakMinForRollback = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                    const penaltyNotify = session.total_seconds - (breakMinForRollback * 60) - 60;
+                    stmtSetBreakNotify.run(penaltyNotify, session.id);
+                    session.last_break_notify = penaltyNotify; // Update local memory
+                }
+            } else if (minIdle !== undefined && minIdle < 15 && session.type === 'automatic') {
+                // Session is paused, but has no pending lock event. 
+                // This happens when the app restarts and creates the automatic session as paused by default.
+                // Since minIdle < 15, the user is actively using the computer, so we unpause it automatically!
+                console.log(`[Startup] User actively working (minIdle: ${minIdle}), unpausing fresh session #${session.id}.`);
+                db.prepare("UPDATE sessions SET status = 'active', start_time = CURRENT_TIMESTAMP, last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+                addEvent(session.id, `unlock_startup`);
+            }
+        }
+    }
+    
     recordAppUsage(app_name, seconds);
     res.json({ success: true });
 }));
@@ -1525,6 +1714,63 @@ app.get('/dynamic-break-stats', (req, res) => {
     const interval = getCachedSetting('dynamicBreakInterval', '60');
     const useAi = getCachedSetting('useAiDynamicBreak', 'false') === 'true';
     res.json({ interval: parseInt(interval), useAi: useAi });
+});
+
+app.get('/wellness-report-data', (req, res) => {
+    try {
+        const todayDateStr = db.prepare("SELECT date('now', 'localtime') as date").get().date;
+
+        // Calculate Break Compliance Rate for today
+        const breaksToday = db.prepare("SELECT status FROM breaks_history WHERE date(offered_at, 'localtime') = ?").all(todayDateStr);
+        let breakComplianceRate = 0;
+        let completed = 0;
+        let totalBreaks = breaksToday.length;
+        
+        if (totalBreaks > 0) {
+            completed = breaksToday.filter(b => b.status === 'completed').length;
+            breakComplianceRate = Math.round((completed / totalBreaks) * 100);
+        }
+
+        // Calculate Average Focus Streak for today (in minutes)
+        // Focus streak = Total worked minutes today / (completed breaks + 1)
+        const manualTotalSecs = db.prepare("SELECT SUM(total_seconds) as total FROM sessions WHERE type = 'manual' AND date(start_time, 'localtime') = ?").get(todayDateStr).total || 0;
+        let avgFocusStreak = 0;
+        if (manualTotalSecs > 0) {
+            avgFocusStreak = Math.round((manualTotalSecs / 60) / (completed + 1));
+        }
+
+        let tips = [];
+        if (totalBreaks === 0 && manualTotalSecs === 0) {
+            tips.push("Welcome to a new day! Ready to start focusing?");
+            breakComplianceRate = "-";
+            avgFocusStreak = "-";
+        } else {
+            if (avgFocusStreak > 90) {
+                tips.push("Your focus streaks are very long. Consider taking more frequent short breaks to prevent fatigue.");
+            } else if (avgFocusStreak > 30) {
+                tips.push("Great average focus streak! You're balancing deep work with necessary breaks.");
+            } else if (avgFocusStreak > 0) {
+                tips.push("Your focus streaks are a bit short. Try eliminating distractions to focus longer.");
+            }
+
+            if (breakComplianceRate >= 80) {
+                tips.push("Excellent break compliance! You are adhering well to your break schedule.");
+            } else if (breakComplianceRate >= 50) {
+                tips.push("You are doing okay with breaks, but try to skip fewer of them to maintain your health.");
+            } else if (breakComplianceRate !== "-") {
+                tips.push("Your break compliance is low today. Please don't ignore your body's need to rest!");
+            }
+        }
+
+        res.json({
+            avgFocusStreak,
+            breakComplianceRate,
+            tips
+        });
+    } catch (err) {
+        console.error("Error fetching wellness report data:", err);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
