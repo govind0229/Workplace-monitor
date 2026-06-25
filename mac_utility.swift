@@ -708,6 +708,12 @@ class BreakPopupController: NSObject, NSWindowDelegate, WKNavigationDelegate, WK
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         self.hideWindow()
+        if let url = URL(string: "http://127.0.0.1:3000/dismiss-break-reminder") {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            let task = URLSession.shared.dataTask(with: request)
+            task.resume()
+        }
         return false
     }
 
@@ -978,8 +984,11 @@ class MenuBarUtility: NSObject {
             self.sendEvent("lock", metadata: ["reason": reason])
         }
         wsnc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
-            self.isScreenLocked = false
-            self.sendEvent("unlock")
+            // Do not blindly send unlock on wake. Power Nap causes dark wakes where the screen remains locked.
+            // Rely on screenIsUnlocked or sessionDidBecomeActiveNotification to send the actual unlock event.
+            if !self.isScreenLocked {
+                self.sendEvent("unlock")
+            }
         }
         
         // Additional reliable observers for session state

@@ -292,6 +292,25 @@ async function loadSettings() {
         }
         if (goalLinePercentInput) goalLinePercentInput.value = data.goalLinePercent || 44;
         defaultProjectId = data.defaultProjectId || null;
+        
+        const strictBreakModeEl = document.getElementById('strictBreakMode');
+        const maxSkipsBeforeLockEl = document.getElementById('maxSkipsBeforeLock');
+        const strictBreakSettingsRowEl = document.getElementById('strictBreakSettingsRow');
+        
+        if (strictBreakModeEl) {
+            strictBreakModeEl.checked = !!data.strictBreakMode;
+            if (strictBreakSettingsRowEl) {
+                strictBreakSettingsRowEl.style.display = strictBreakModeEl.checked ? 'flex' : 'none';
+            }
+            strictBreakModeEl.addEventListener('change', (e) => {
+                if (strictBreakSettingsRowEl) {
+                    strictBreakSettingsRowEl.style.display = e.target.checked ? 'flex' : 'none';
+                }
+            });
+        }
+        if (maxSkipsBeforeLockEl && data.maxSkipsBeforeLock) {
+            maxSkipsBeforeLockEl.value = data.maxSkipsBeforeLock;
+        }
 
 
         if (officeRadiusInput && data.officeRadius) {
@@ -481,6 +500,9 @@ saveSettingsBtn.onclick = async () => {
     }
 
     try {
+        const strictBreakModeEl = document.getElementById('strictBreakMode');
+        const maxSkipsBeforeLockEl = document.getElementById('maxSkipsBeforeLock');
+        
         await fetch(`${API_BASE}/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -490,7 +512,9 @@ saveSettingsBtn.onclick = async () => {
 
                 goalLinePercent: linePct,
                 officeRadius: radius,
-                customAppCategories: JSON.stringify(customAppCategories)
+                customAppCategories: JSON.stringify(customAppCategories),
+                strictBreakMode: strictBreakModeEl ? strictBreakModeEl.checked : false,
+                maxSkipsBeforeLock: maxSkipsBeforeLockEl ? parseInt(maxSkipsBeforeLockEl.value) : 5
             })
         });
         alert('Settings saved!');
@@ -1413,6 +1437,7 @@ function formatWeekLabel(dateStr) {
 
 let baseManualSeconds = 0;
 let baseAutoSeconds = 0;
+let baseOfficeSpanSeconds = 0;
 let lastSyncRealTime = 0;
 let manualStatus = 'idle';
 let autoStatus = 'idle';
@@ -1420,6 +1445,7 @@ let syncInterval = 10000; // Sync every 10s
 let animationFrameId = null;
 let _lastRenderedManual = -1;
 let _lastRenderedAuto = -1;
+let _lastRenderedOfficeSpan = -1;
 
 function updateGreeting() {
     const greetingEl = document.getElementById('dashboardGreeting');
@@ -1457,6 +1483,7 @@ async function updateStatus(forceSync = false) {
             // Store ground truth from server
             baseManualSeconds = data.manual.total_seconds || 0;
             baseAutoSeconds = data.automatic.total_seconds || 0;
+            baseOfficeSpanSeconds = data.officeSpan || 0;
             manualStatus = data.manual.status;
             autoStatus = data.automatic.status;
 
@@ -1568,13 +1595,20 @@ async function updateStatus(forceSync = false) {
         displayAuto = baseAutoSeconds + elapsed;
     }
 
+    let displayOfficeSpan = baseOfficeSpanSeconds;
+    if (manualStatus === 'active' || manualStatus === 'paused') {
+        const elapsed = Math.floor((currentNow - lastSyncRealTime) / 1000);
+        displayOfficeSpan = baseOfficeSpanSeconds + elapsed;
+    }
+
     // Optimization: Only update DOM if the rounded seconds have changed, drastically reducing CPU usage
-    if (!forceSync && displayManual === _lastRenderedManual && displayAuto === _lastRenderedAuto) {
+    if (!forceSync && displayManual === _lastRenderedManual && displayAuto === _lastRenderedAuto && displayOfficeSpan === _lastRenderedOfficeSpan) {
         return;
     }
 
     _lastRenderedManual = displayManual;
     _lastRenderedAuto = displayAuto;
+    _lastRenderedOfficeSpan = displayOfficeSpan;
 
     // Batch all DOM updates in a single animation frame
     requestAnimationFrame(() => {
@@ -1604,19 +1638,27 @@ async function updateStatus(forceSync = false) {
         // Update the main timer display with the hero's time
         timerDisplay.textContent = formatTime(heroSeconds);
 
-        // Goal progress is ALWAYS based on Workplace (manual) duration only
+        // Update Desk Progress Bar
         const progress = Math.min((displayManual / goalSeconds) * 100, 100);
         progressBar.style.width = progress + '%';
-
-        if (!domCache.progressPercent) {
-            domCache.progressPercent = document.querySelector('.progress-percent');
-        }
-        if (domCache.progressPercent) {
-            domCache.progressPercent.textContent = Math.floor(progress) + '%';
+        const deskProgressPercent = document.getElementById('deskProgressPercent');
+        if (deskProgressPercent) {
+            deskProgressPercent.textContent = Math.floor(progress) + '%';
         }
 
-        // Update goal ring (always workplace time)
-        if (typeof updateGoalRing === 'function') updateGoalRing(displayManual);
+        // Update Office Presence Progress Bar
+        const officeProgress = Math.min((displayOfficeSpan / goalSeconds) * 100, 100);
+        const officeProgressBar = document.getElementById('officeProgressBar');
+        if (officeProgressBar) {
+            officeProgressBar.style.width = officeProgress + '%';
+        }
+        const officeProgressPercent = document.getElementById('officeProgressPercent');
+        if (officeProgressPercent) {
+            officeProgressPercent.textContent = Math.floor(officeProgress) + '%';
+        }
+
+        // Update goal ring (always workplace time + office span time)
+        if (typeof updateGoalRing === 'function') updateGoalRing(displayManual, displayOfficeSpan);
     });
 }
 
@@ -2264,27 +2306,46 @@ function showAppTooltip(e, appName, seconds) {
     positionTooltip(e);
 }
 
-function updateGoalRing(manualSeconds) {
+function updateGoalRing(manualSeconds, officeSpanSeconds = 0) {
     const ring = document.getElementById('ringProgress');
     const pctEl = document.getElementById('ringPercent');
-    if (!ring || !pctEl) return;
+    const officeRing = document.getElementById('officeRingProgress');
+    const legendDeskVal = document.getElementById('legendDeskVal');
+    const legendOfficeVal = document.getElementById('legendOfficeVal');
+    
+    const deskPct = goalSeconds > 0 ? Math.floor((manualSeconds / goalSeconds) * 100) : 0;
+    const officePct = goalSeconds > 0 ? Math.floor((officeSpanSeconds / goalSeconds) * 100) : 0;
+    
+    if (ring) {
+        const circumference = 326.73;
+        const ratio = goalSeconds > 0 ? manualSeconds / goalSeconds : 0;
+        const pctClamped = Math.min(ratio, 1);
+        const offset = circumference - (pctClamped * circumference);
 
-    const circumference = 326.73;
-    const ratio = manualSeconds / goalSeconds;
-    const pct = Math.min(ratio, 1);
-    const offset = circumference - (pct * circumference);
-
-    ring.style.strokeDashoffset = offset;
-    pctEl.textContent = Math.floor(pct * 100) + '%';
-
-    // Dynamic ring color: purple/fuchsia < goal, green >= goal, orange >= goal+1h
-    const overtimeThreshold = goalSeconds + 3600;
-    if (manualSeconds >= overtimeThreshold) {
-        ring.style.stroke = '#f59e0b';
-    } else if (manualSeconds >= goalSeconds) {
-        ring.style.stroke = '#10b981';
-    } else {
+        ring.style.strokeDashoffset = offset;
         ring.style.stroke = 'url(#ringGradient)';
+    }
+
+    if (pctEl) {
+        pctEl.textContent = `${deskPct}%`;
+    }
+
+    if (officeRing) {
+        const circumference = 251.33; // 2 * Math.PI * 40
+        const ratio = goalSeconds > 0 ? officeSpanSeconds / goalSeconds : 0;
+        const pctClamped = Math.min(ratio, 1);
+        const offset = circumference - (pctClamped * circumference);
+
+        officeRing.style.strokeDashoffset = offset;
+        officeRing.style.stroke = 'url(#officeRingGradient)';
+    }
+
+    if (legendDeskVal) {
+        legendDeskVal.textContent = `${deskPct}% (${formatHM(manualSeconds)})`;
+    }
+
+    if (legendOfficeVal) {
+        legendOfficeVal.textContent = `${officePct}% (${formatHM(officeSpanSeconds)})`;
     }
 }
 

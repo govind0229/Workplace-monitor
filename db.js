@@ -21,6 +21,7 @@ const dbPath = path.normalize(joinedPath);
 if (!dbPath.startsWith(dbBasePath)) { throw new Error('Invalid path'); }
 
 const db = new Database(dbPath);
+db.pragma('journal_mode = WAL');
 
 // Initialize schema
 db.exec(`
@@ -34,7 +35,8 @@ db.exec(`
     last_tick DATETIME DEFAULT CURRENT_TIMESTAMP,
     notified INTEGER DEFAULT 0,
     type TEXT DEFAULT 'manual', -- 'manual', 'automatic'
-    last_break_notify INTEGER DEFAULT 0 -- total_seconds at last break reminder
+    last_break_notify INTEGER DEFAULT 0, -- total_seconds at last break reminder
+    snooze_until INTEGER DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS lock_events (
@@ -42,6 +44,7 @@ db.exec(`
     session_id INTEGER,
     event_type TEXT, -- 'lock', 'unlock'
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reason TEXT,
     FOREIGN KEY(session_id) REFERENCES sessions(id)
   );
 
@@ -112,6 +115,7 @@ try { db.exec("ALTER TABLE sessions ADD COLUMN type TEXT DEFAULT 'manual'"); } c
 try { db.exec("ALTER TABLE sessions ADD COLUMN notified INTEGER DEFAULT 0"); } catch (e) { }
 try { db.exec("ALTER TABLE sessions ADD COLUMN last_break_notify INTEGER DEFAULT 0"); } catch (e) { }
 try { db.exec("ALTER TABLE sessions ADD COLUMN project_id INTEGER REFERENCES projects(id)"); } catch (e) { }
+try { db.exec("ALTER TABLE sessions ADD COLUMN snooze_until INTEGER DEFAULT 0"); } catch (e) { }
 
 module.exports = {
   db,

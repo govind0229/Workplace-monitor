@@ -2,6 +2,13 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [7.1.1] - 2026-06-21
+
+### Fixed
+- **Instant Idle Popup on Wake** — Fixed a bug where Power Nap and dark wakes would cause the Mac app to incorrectly send unlock signals while the screen was still locked, which tricked the server into starting an idle timer.
+- **Overnight Idle Popup** — Simplified the idle-duration discard logic. Any idle period extending beyond 4 hours will now properly be discarded without prompting the user, even if the entire sleep duration happened within the same day.
+- **Server Crashes on Lock** — Removed undefined `finishReasons` variables that were crashing the server process when attempting to log the time the Mac went to sleep.
+
 ## [7.1.0] - 2026-06-21
 
 ### Added

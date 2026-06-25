@@ -389,6 +389,19 @@
       window.addEventListener('load', sendHeightToNative);
     }
 
+    function formatMins(totalMins) {
+      if (totalMins < 60) {
+        return `${totalMins} ${totalMins === 1 ? 'minute' : 'minutes'}`;
+      }
+      const hrs = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      const hrsStr = `${hrs} ${hrs === 1 ? 'hour' : 'hours'}`;
+      if (mins === 0) {
+        return hrsStr;
+      }
+      return `${hrsStr} and ${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
+    }
+
     async function loadStatus() {
       try {
         const response = await fetch('/status');
@@ -396,7 +409,7 @@
         if (data.pending_break_reminder) {
           const mins = data.pending_break_reminder.minutes;
           const snoozeCount = data.pending_break_reminder.snoozeCount || 0;
-          document.getElementById('breakElapsedText').textContent = `${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
+          document.getElementById('breakElapsedText').textContent = formatMins(mins);
           document.getElementById('breakMessageText').textContent = data.pending_break_reminder.message || 'Take a moment to stretch and rest your eyes.';
           
           if (snoozeCount >= 2) {
