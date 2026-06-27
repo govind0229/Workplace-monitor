@@ -7,6 +7,7 @@ const wbState = {
     goals: parseInt(localStorage.getItem('wbGoals')) || 8,
     selected: JSON.parse(localStorage.getItem('wbSelected') || '["lunch","water","stretch_walk","breathe"]'),
 };
+let wbSettingsLoaded = false;
 
 // wellbeingActivities is now loaded from shared-activities.js
 
@@ -21,6 +22,22 @@ function fmtDur(s) {
 async function initWellbeing() {
     const grid = document.getElementById('activitiesGrid');
     if (!grid) return;
+
+    if (!wbSettingsLoaded) {
+        try {
+            const settingsRes = await fetch(`${API_BASE}/settings`);
+            if (settingsRes.ok) {
+                const settings = await settingsRes.json();
+                wbState.enabled = settings.wellbeingEnabled !== false;
+                wbState.interval = Number.parseInt(settings.breakInterval, 10) || 60;
+                wbState.useAi = settings.useAiDynamicBreak === true;
+                localStorage.setItem('wbEnabled', wbState.enabled);
+                localStorage.setItem('wbInterval', wbState.interval);
+                localStorage.setItem('wbUseAi', wbState.useAi);
+            }
+        } catch (_error) { /* retain local settings while offline */ }
+        wbSettingsLoaded = true;
+    }
 
     breakDurations = {};
     breakStartTimes = {};
@@ -233,7 +250,9 @@ function saveWellbeingSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             breakInterval: wbState.interval,
-            useAiDynamicBreak: wbState.useAi
+            wfhBreakInterval: wbState.interval,
+            useAiDynamicBreak: wbState.useAi,
+            wellbeingEnabled: wbState.enabled
         })
     }).catch(e => console.error('Failed to sync wellbeing settings'));
 

@@ -65,6 +65,16 @@ function getCachedSetting(key, defaultValue = null) {
 }
 function invalidateSettingsCache() { _settingsCache.clear(); _settingsCacheTime = 0; }
 
+function getEffectiveBreakInterval(sessionType) {
+    const smartBreaksEnabled = getCachedSetting('useAiDynamicBreak', 'false') === 'true';
+    const settingKey = sessionType === 'automatic' ? 'wfhBreakInterval' : 'breakInterval';
+    const value = smartBreaksEnabled
+        ? getCachedSetting('dynamicBreakInterval', '60')
+        : getCachedSetting(settingKey, '60');
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : 60;
+}
+
 
 // --- Tracery-Powered Dynamic Break Messages ---
 const tracery = require('tracery-grammar');
@@ -199,8 +209,38 @@ function getSmartBreakMessage(sessionType = 'manual', overrideSlot = null) {
 
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const ALLOWED_ORIGINS = new Set([
+    'app://localhost',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000'
+]);
+
+function isAllowedOrigin(origin) {
+    // Native URLSession requests and same-origin navigation may omit Origin.
+    return !origin || ALLOWED_ORIGINS.has(origin);
+}
+
+// Reject browser requests from unrelated sites before they reach state-changing routes.
+app.use((req, res, next) => {
+    const origin = req.get('Origin');
+    if (!isAllowedOrigin(origin)) {
+        return res.status(403).json({ error: 'Origin not allowed' });
+    }
+    next();
+});
+
+app.use(cors({
+    origin(origin, callback) {
+        if (isAllowedOrigin(origin)) return callback(null, true);
+        const error = new Error('Origin not allowed');
+        error.status = 403;
+        return callback(error);
+    },
+    methods: ['GET', 'POST', 'DELETE'],
+    allowedHeaders: ['Content-Type'],
+    maxAge: 600
+}));
+app.use(express.json({ limit: '64kb' }));
 
 // Prevent caching for all routes (important for static assets in local webview)
 app.use((req, res, next) => {
@@ -208,6 +248,9 @@ app.use((req, res, next) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     next();
 });
 
@@ -220,7 +263,14 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.NODE_ENV === 'test'
+    ? Number.parseInt(process.env.PORT || '', 10)
+    : 3000;
+const HOST = '127.0.0.1';
+
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+    throw new Error('A valid PORT is required when NODE_ENV=test');
+}
 
 // Centralized error handling wrapper
 const asyncHandler = fn => (req, res, next) => {
@@ -303,6 +353,8 @@ const TIME_SCHEDULE = [
 ];
 
 function checkTimeBasedNotifications() {
+    if (getCachedSetting('wellbeingEnabled', 'true') !== 'true') return;
+
     const manualSession = getActiveSession('manual');
     const automaticSession = getTodayAutomaticSession();
     const isManualActive = manualSession && manualSession.status === 'active';
@@ -420,7 +472,8 @@ function runBackgroundLoop() {
                 }
 
                 // Break reminder
-                let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                if (getCachedSetting('wellbeingEnabled', 'true') !== 'true') continue;
+                let breakMin = getEffectiveBreakInterval('manual');
                 if (breakMin === 1) breakMin = 60; // Self-healing if set to 1 for tests
 
                 if (breakMin > 0) {
@@ -439,7 +492,8 @@ function runBackgroundLoop() {
                     }
                 }
             } else if (type === 'automatic') {
-                let wfhBreakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+                if (getCachedSetting('wellbeingEnabled', 'true') !== 'true') continue;
+                let wfhBreakMin = getEffectiveBreakInterval('automatic');
                 if (wfhBreakMin === 1) wfhBreakMin = 60;
 
                 if (wfhBreakMin > 0) {
@@ -928,15 +982,18 @@ app.post('/dismiss-break-reminder', asyncHandler(async (req, res) => {
 app.post('/snooze-break-reminder', asyncHandler(async (req, res) => {
     const manualSession = getActiveSession('manual');
     const autoSession = getTodayAutomaticSession();
-    
-    let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
-    if (breakMin === 1) breakMin = 60;
-    const snoozeMin = parseInt(req.body.minutes || '10');
-    const breakSec = breakMin * 60;
+
+    const snoozeMin = Number.parseInt(req.body.minutes || '10', 10);
+    if (!Number.isInteger(snoozeMin) || snoozeMin < 1 || snoozeMin > 120) {
+        return res.status(400).json({ error: 'minutes must be between 1 and 120' });
+    }
     const snoozeSec = snoozeMin * 60;
 
     for (const session of [manualSession, autoSession]) {
         if (session && session.status === 'active') {
+            let breakMin = getEffectiveBreakInterval(session.type);
+            if (breakMin === 1) breakMin = 60;
+            const breakSec = breakMin * 60;
             const newBreakNotify = session.total_seconds - breakSec + snoozeSec;
             stmtSetBreakNotify.run(newBreakNotify, session.id);
             console.log(`[Break Reminder] Snoozed session #${session.id} for ${snoozeMin} minutes. New last_break_notify = ${newBreakNotify}`);
@@ -1070,6 +1127,8 @@ app.get('/settings', (req, res) => {
     const officeLng = getSetting('officeLng', '');
     const officeRadius = getSetting('officeRadius', '300');
     const defaultProjectId = getSetting('defaultProjectId', null);
+    const useAiDynamicBreak = getSetting('useAiDynamicBreak', 'false') === 'true';
+    const wellbeingEnabled = getSetting('wellbeingEnabled', 'true') === 'true';
 
     res.json({
         goalHours: parseInt(goalHours),
@@ -1081,23 +1140,77 @@ app.get('/settings', (req, res) => {
         officeLat: officeLat,
         officeLng: officeLng,
         officeRadius: parseInt(officeRadius),
-        defaultProjectId: defaultProjectId ? parseInt(defaultProjectId) : null
+        defaultProjectId: defaultProjectId ? parseInt(defaultProjectId) : null,
+        useAiDynamicBreak,
+        wellbeingEnabled
     });
 });
 
 app.post('/settings', asyncHandler(async (req, res) => {
-    const { goalHours, goalMinutes, breakInterval, useAiDynamicBreak, wfhBreakInterval, goalLinePercent, customAppCategories, officeRadius, defaultProjectId } = req.body;
+    const {
+        goalHours, goalMinutes, breakInterval, useAiDynamicBreak, wfhBreakInterval,
+        goalLinePercent, customAppCategories, officeRadius, defaultProjectId,
+        wellbeingEnabled
+    } = req.body;
+
+    const integerFields = [
+        ['goalHours', goalHours, 0, 24],
+        ['goalMinutes', goalMinutes, 0, 59],
+        ['breakInterval', breakInterval, 0, 480],
+        ['wfhBreakInterval', wfhBreakInterval, 0, 480],
+        ['goalLinePercent', goalLinePercent, 0, 100],
+        ['officeRadius', officeRadius, 50, 5000]
+    ];
+    for (const [name, value, min, max] of integerFields) {
+        if (value === undefined) continue;
+        if (!Number.isInteger(value) || value < min || value > max) {
+            return res.status(400).json({ error: `${name} must be an integer between ${min} and ${max}` });
+        }
+    }
+
+    for (const [name, value] of [['useAiDynamicBreak', useAiDynamicBreak], ['wellbeingEnabled', wellbeingEnabled]]) {
+        if (value !== undefined && typeof value !== 'boolean') {
+            return res.status(400).json({ error: `${name} must be a boolean` });
+        }
+    }
+
+    if (customAppCategories !== undefined) {
+        if (typeof customAppCategories !== 'string' || customAppCategories.length > 50000) {
+            return res.status(400).json({ error: 'customAppCategories must be a JSON string under 50KB' });
+        }
+        try {
+            const parsedCategories = JSON.parse(customAppCategories);
+            if (!parsedCategories || Array.isArray(parsedCategories) || typeof parsedCategories !== 'object') {
+                return res.status(400).json({ error: 'customAppCategories must contain a JSON object' });
+            }
+        } catch (_error) {
+            return res.status(400).json({ error: 'customAppCategories must contain valid JSON' });
+        }
+    }
+
+    let normalizedProjectId;
+    if (defaultProjectId !== undefined) {
+        if (defaultProjectId === null) {
+            normalizedProjectId = null;
+        } else if (!Number.isInteger(defaultProjectId) || defaultProjectId <= 0) {
+            return res.status(400).json({ error: 'defaultProjectId must be a positive integer or null' });
+        } else if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(defaultProjectId)) {
+            return res.status(404).json({ error: 'Default project not found' });
+        } else {
+            normalizedProjectId = defaultProjectId;
+        }
+    }
+
     if (goalHours !== undefined) setSetting('goalHours', goalHours);
     if (goalMinutes !== undefined) setSetting('goalMinutes', goalMinutes);
-    if (useAiDynamicBreak !== undefined) setSetting('useAiDynamicBreak', useAiDynamicBreak.toString());
-    if (breakInterval !== undefined) {
-        setSetting('breakInterval', breakInterval);
-        setSetting('dynamicBreakInterval', breakInterval); // Sync so the backend timers use this immediately
-    }
+    if (useAiDynamicBreak !== undefined) setSetting('useAiDynamicBreak', useAiDynamicBreak);
+    if (wellbeingEnabled !== undefined) setSetting('wellbeingEnabled', wellbeingEnabled);
+    if (breakInterval !== undefined) setSetting('breakInterval', breakInterval);
     if (wfhBreakInterval !== undefined) setSetting('wfhBreakInterval', wfhBreakInterval);
     if (goalLinePercent !== undefined) setSetting('goalLinePercent', goalLinePercent);
     if (customAppCategories !== undefined) setSetting('customAppCategories', customAppCategories);
     if (officeRadius !== undefined) setSetting('officeRadius', officeRadius);
+    if (defaultProjectId !== undefined) setSetting('defaultProjectId', normalizedProjectId);
     invalidateSettingsCache(); // Force re-read on next background loop tick
     res.json({ success: true });
 }));
@@ -1510,6 +1623,9 @@ app.get('/ai-digest', (req, res) => {
 });
 // Dynamic Break Interval Scheduler
 function updateDynamicBreak() {
+    if (getSetting('useAiDynamicBreak', 'false') !== 'true') {
+        return;
+    }
     console.log("[Dynamic Breaks] Recalculating dynamic break interval based on past 14 days of work behavior...");
     const { calculateDynamicBreakInterval } = require('./db');
     const newInterval = calculateDynamicBreakInterval();
@@ -1522,11 +1638,25 @@ updateDynamicBreak();
 setInterval(updateDynamicBreak, 24 * 60 * 60 * 1000);
 
 app.get('/dynamic-break-stats', (req, res) => {
-    const interval = getCachedSetting('dynamicBreakInterval', '60');
     const useAi = getCachedSetting('useAiDynamicBreak', 'false') === 'true';
+    const interval = useAi
+        ? getCachedSetting('dynamicBreakInterval', '60')
+        : getCachedSetting('breakInterval', '60');
     res.json({ interval: parseInt(interval), useAi: useAi });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+app.use((req, res) => {
+    res.status(404).json({ error: 'Not found' });
+});
+
+app.use((error, req, res, _next) => {
+    const isMalformedJson = error instanceof SyntaxError && error.status === 400 && 'body' in error;
+    const status = isMalformedJson ? 400 : (error.status || 500);
+    const message = status >= 500 ? 'Internal server error' : error.message;
+    if (status >= 500) console.error('Request failed:', sanitizeLog(error.message || String(error)));
+    res.status(status).json({ error: message });
+});
+
+app.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
 });
