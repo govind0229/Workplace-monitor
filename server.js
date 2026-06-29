@@ -1951,6 +1951,12 @@ app.get('/wellness-report-data', (req, res) => {
             return generic.includes(reason);
         };
 
+        const isWellnessActivity = (reason) => {
+            if (!reason) return false;
+            if (reason === 'lock_driving') return false;
+            return reason.startsWith('lock_') && !isGenericReason(reason);
+        };
+
         const parseUtcDate = (str) => {
             if (!str) return null;
             let formatted = str;
@@ -1964,9 +1970,87 @@ app.get('/wellness-report-data', (req, res) => {
             return isNaN(dateObj.getTime()) ? null : dateObj;
         };
 
-        const calculateDailyWellnessScore = (dateStr, dayBlocks) => {
-            // Exclude driving breaks from compliance and total break calculations
-            const wellbeingBreaks = dayBlocks.filter(b => b.type === 'break' && b.reason && b.reason.startsWith('lock_') && !isGenericReason(b.reason) && b.reason !== 'lock_driving');
+        const mergeTimelineBlocks = (blocks) => {
+            if (blocks.length === 0) return [];
+            
+            const events = [];
+            blocks.forEach(b => {
+                const start = parseUtcDate(b.start);
+                const end = parseUtcDate(b.end);
+                if (start && end) {
+                    events.push({ time: start.getTime(), type: 'start', block: b });
+                    events.push({ time: end.getTime(), type: 'end', block: b });
+                }
+            });
+            
+            events.sort((a, b) => {
+                if (a.time !== b.time) return a.time - b.time;
+                return a.type === 'end' ? -1 : 1;
+            });
+            
+            const merged = [];
+            let activeWorking = 0;
+            let activeBreaks = [];
+            let currentStart = null;
+            let currentState = null;
+            
+            events.forEach(e => {
+                const isStart = e.type === 'start';
+                const type = e.block.type;
+                
+                if (isStart) {
+                    if (type === 'working') {
+                        activeWorking++;
+                    } else {
+                        activeBreaks.push(e.block);
+                    }
+                } else {
+                    if (type === 'working') {
+                        activeWorking--;
+                    } else {
+                        activeBreaks = activeBreaks.filter(b => b !== e.block);
+                    }
+                }
+                
+                let newState = null;
+                if (activeWorking > 0) {
+                    newState = 'working';
+                } else if (activeBreaks.length > 0) {
+                    newState = 'break';
+                }
+                
+                if (newState !== currentState) {
+                    if (currentState !== null && currentStart !== null && e.time > currentStart) {
+                        let reason = undefined;
+                        if (currentState === 'break') {
+                            const wellnessBreak = activeBreaks.find(b => b.reason && isWellnessActivity(b.reason));
+                            const drivingBreak = activeBreaks.find(b => b.reason === 'lock_driving');
+                            reason = wellnessBreak ? wellnessBreak.reason : (drivingBreak ? 'lock_driving' : (activeBreaks[0]?.reason || 'lock_idle'));
+                        }
+                        
+                        const startStr = new Date(currentStart).toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+                        const endStr = new Date(e.time).toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+                        
+                        merged.push({
+                            type: currentState,
+                            start: startStr,
+                            end: endStr,
+                            reason
+                        });
+                    }
+                    currentState = newState;
+                    currentStart = e.time;
+                }
+            });
+            
+            return merged;
+        };
+
+        const calculateDailyWellnessScore = (dateStr, rawBlocks) => {
+            const dayBlocks = mergeTimelineBlocks(rawBlocks);
+
+            // Filter wellness and skipped breaks
+            const wellbeingBreaks = dayBlocks.filter(b => b.type === 'break' && b.reason && isWellnessActivity(b.reason));
             const skippedBreaks = dayBlocks.filter(b => b.type === 'break' && isGenericReason(b.reason));
             
             const totalWellnessBreaks = wellbeingBreaks.length + skippedBreaks.length;
@@ -1975,21 +2059,25 @@ app.get('/wellness-report-data', (req, res) => {
                 complianceRate = Math.round((wellbeingBreaks.length / totalWellnessBreaks) * 100);
             }
 
-            let wellbeingBreakSecs = 0;
+            let workSecs = 0;
+            let healthyBreakSecs = 0;
+
             dayBlocks.forEach(b => {
-                if (b.type === 'break' && b.reason && b.reason !== 'lock_driving') {
-                    const start = parseUtcDate(b.start);
-                    const end = parseUtcDate(b.end);
-                    if (start && end) {
-                        wellbeingBreakSecs += Math.floor((end.getTime() - start.getTime()) / 1000);
+                const start = parseUtcDate(b.start);
+                const end = parseUtcDate(b.end);
+                if (start && end) {
+                    const diff = Math.floor((end.getTime() - start.getTime()) / 1000);
+                    if (b.type === 'working') {
+                        workSecs += diff;
+                    } else if (b.type === 'break' && isWellnessActivity(b.reason)) {
+                        healthyBreakSecs += diff;
                     }
                 }
             });
 
-            const manualTotalSecs = db.prepare("SELECT SUM(total_seconds) as total FROM sessions WHERE type = 'manual' AND date = ?").get(dateStr).total || 0;
             let avgFocusStreak = 0;
-            if (manualTotalSecs > 0) {
-                avgFocusStreak = Math.round((manualTotalSecs / 60) / (wellbeingBreaks.length + 1));
+            if (workSecs > 0) {
+                avgFocusStreak = Math.round((workSecs / 60) / (wellbeingBreaks.length + 1));
             }
 
             let score = 100;
@@ -2001,7 +2089,7 @@ app.get('/wellness-report-data', (req, res) => {
             } else if (avgFocusStreak > 120) {
                 score -= 25;
             }
-            if (manualTotalSecs > 14400 && wellbeingBreaks.length === 0) {
+            if (workSecs > 14400 && wellbeingBreaks.length === 0) {
                 score -= 20;
             }
 
@@ -2009,9 +2097,9 @@ app.get('/wellness-report-data', (req, res) => {
             return {
                 score,
                 compliance: totalWellnessBreaks > 0 ? complianceRate : "-",
-                streak: manualTotalSecs > 0 ? avgFocusStreak : "-",
-                focusTime: manualTotalSecs,
-                breakTime: wellbeingBreakSecs
+                streak: workSecs > 0 ? avgFocusStreak : "-",
+                focusTime: workSecs,
+                breakTime: healthyBreakSecs
             };
         };
 
@@ -2053,13 +2141,15 @@ app.get('/wellness-report-data', (req, res) => {
         const todayBlocks = todayObj ? todayObj.blocks : [];
         const todayStats = calculateDailyWellnessScore(todayDateStr, todayBlocks);
 
-        // 2. Compute Hourly Work vs Break Distribution
+        const mergedTodayBlocks = mergeTimelineBlocks(todayBlocks);
+
+        // 2. Compute Hourly Work vs Break Distribution on Merged Blocks
         const hours = {};
         for (let h = 0; h < 24; h++) {
             hours[h] = { work: 0, break: 0, idle: 0 };
         }
 
-        todayBlocks.forEach(b => {
+        mergedTodayBlocks.forEach(b => {
             const start = parseUtcDate(b.start);
             const end = parseUtcDate(b.end);
             if (!start || !end) return;
@@ -2172,7 +2262,7 @@ app.get('/wellness-report-data', (req, res) => {
             breakComplianceRate: todayStats.compliance,
             totalFocusTime: todayStats.focusTime,
             totalBreakTime: todayStats.breakTime,
-            totalScreenTime: todayStats.focusTime + todayStats.breakTime,
+            totalScreenTime: todayStats.focusTime,
             hourlyStats,
             weeklyTrend,
             tips
