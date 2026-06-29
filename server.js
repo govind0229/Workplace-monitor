@@ -1071,37 +1071,47 @@ app.post('/respond-idle-prompt', asyncHandler(async (req, res) => {
 
     const { sessionId, duration } = pendingIdlePrompt;
 
+    const autoSession = getTodayAutomaticSession();
+    const manualSession = getActiveSession('manual');
+    const targetSessions = [];
+
+    if (autoSession && autoSession.id) targetSessions.push(autoSession);
+    if (manualSession && manualSession.id && manualSession.id !== autoSession.id) targetSessions.push(manualSession);
+
     if (choice === 'meeting' || choice === 'designing' || choice === 'work_call') {
-        updateSessionSeconds(sessionId, duration);
-        addEvent(sessionId, `idle_respond_keep_${choice}`);
-        console.log(sanitizeLog(`[Idle Prompt] Added ${duration}s back to session #${sessionId} (Choice: ${choice})`));
-        
-        const session = db.prepare("SELECT total_seconds, last_break_notify FROM sessions WHERE id = ?").get(sessionId);
-        let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
-        if (breakMin === 1) breakMin = 60;
-        const breakSec = breakMin * 60;
-        
-        if (session && (session.total_seconds - session.last_break_notify >= breakSec)) {
-            const snoozeUntil = session.total_seconds + 600; // 10 mins grace period
-            stmtSetSnoozeUntil.run(snoozeUntil, sessionId);
-            console.log(`[Grace Period] Applied 10-minute grace period (snooze_until) to session #${sessionId}`);
-        }
-    } else {
-        addEvent(sessionId, `idle_respond_discard_${choice}`);
-        console.log(`[Idle Prompt] Discarded idle duration ${duration}s (Choice: ${choice})`);
-        
-        // The user just took a break, so reset their break reminder timer
-        const session = db.prepare("SELECT total_seconds FROM sessions WHERE id = ?").get(sessionId);
-        if (session) {
-            stmtSetBreakNotify.run(session.total_seconds, sessionId);
-            stmtSetSnoozeUntil.run(0, sessionId);
-            // Mark any offered or started break as completed
-            db.prepare("UPDATE breaks_history SET status = 'completed', completed_at = CURRENT_TIMESTAMP, duration_seconds = ? WHERE session_id = ? AND status IN ('started', 'offered')").run(duration, sessionId);
-            if (pendingBreakReminder && pendingBreakReminder.sessionId === sessionId) {
-                pendingBreakReminder = null;
+        targetSessions.forEach(session => {
+            updateSessionSeconds(session.id, duration);
+            addEvent(session.id, `idle_respond_keep_${choice}`);
+            console.log(sanitizeLog(`[Idle Prompt] Added ${duration}s back to session #${session.id} (Choice: ${choice})`));
+            
+            const updated = db.prepare("SELECT total_seconds, last_break_notify FROM sessions WHERE id = ?").get(session.id);
+            let breakMin = parseInt(getCachedSetting('dynamicBreakInterval', '60'));
+            if (breakMin === 1) breakMin = 60;
+            const breakSec = breakMin * 60;
+            
+            if (updated && (updated.total_seconds - updated.last_break_notify >= breakSec)) {
+                const snoozeUntil = updated.total_seconds + 600; // 10 mins grace period
+                stmtSetSnoozeUntil.run(snoozeUntil, session.id);
+                console.log(`[Grace Period] Applied 10-minute grace period (snooze_until) to session #${session.id}`);
             }
-            console.log(`[Idle Prompt] Reset break reminder and cleared snooze for session #${sessionId} to ${session.total_seconds}s`);
-        }
+        });
+    } else {
+        targetSessions.forEach(session => {
+            addEvent(session.id, `idle_respond_discard_${choice}`);
+            console.log(`[Idle Prompt] Discarded idle duration ${duration}s for session #${session.id} (Choice: ${choice})`);
+            
+            const updated = db.prepare("SELECT total_seconds FROM sessions WHERE id = ?").get(session.id);
+            if (updated) {
+                stmtSetBreakNotify.run(updated.total_seconds, session.id);
+                stmtSetSnoozeUntil.run(0, session.id);
+                // Mark any offered or started break as completed
+                db.prepare("UPDATE breaks_history SET status = 'completed', completed_at = CURRENT_TIMESTAMP, duration_seconds = ? WHERE session_id = ? AND status IN ('started', 'offered')").run(duration, session.id);
+                if (pendingBreakReminder && pendingBreakReminder.sessionId === session.id) {
+                    pendingBreakReminder = null;
+                }
+                console.log(`[Idle Prompt] Reset break reminder and cleared snooze for session #${session.id} to ${updated.total_seconds}s`);
+            }
+        });
     }
 
     pendingIdlePrompt = null;
@@ -1923,53 +1933,215 @@ app.get('/dynamic-break-stats', (req, res) => {
 
 app.get('/wellness-report-data', (req, res) => {
     try {
+        const { getTimelineReport } = require('./db');
         const todayDateStr = db.prepare("SELECT date('now', 'localtime') as date").get().date;
 
-        // Calculate Break Compliance Rate for today
-        const breaksToday = db.prepare("SELECT status FROM breaks_history WHERE date(offered_at, 'localtime') = ?").all(todayDateStr);
-        let breakComplianceRate = 0;
-        let completed = 0;
-        let totalBreaks = breaksToday.length;
-        
-        if (totalBreaks > 0) {
-            completed = breaksToday.filter(b => b.status === 'completed').length;
-            breakComplianceRate = Math.round((completed / totalBreaks) * 100);
-        }
-
-        // Calculate Average Focus Streak for today (in minutes)
-        // Focus streak = Total worked minutes today / (completed breaks + 1)
-        const manualTotalSecs = db.prepare("SELECT SUM(total_seconds) as total FROM sessions WHERE type = 'manual' AND date(start_time, 'localtime') = ?").get(todayDateStr).total || 0;
-        let avgFocusStreak = 0;
-        if (manualTotalSecs > 0) {
-            avgFocusStreak = Math.round((manualTotalSecs / 60) / (completed + 1));
-        }
-
-        let tips = [];
-        if (totalBreaks === 0 && manualTotalSecs === 0) {
-            tips.push("Welcome to a new day! Ready to start focusing?");
-            breakComplianceRate = "-";
-            avgFocusStreak = "-";
-        } else {
-            if (avgFocusStreak > 90) {
-                tips.push("Your focus streaks are very long. Consider taking more frequent short breaks to prevent fatigue.");
-            } else if (avgFocusStreak > 30) {
-                tips.push("Great average focus streak! You're balancing deep work with necessary breaks.");
-            } else if (avgFocusStreak > 0) {
-                tips.push("Your focus streaks are a bit short. Try eliminating distractions to focus longer.");
+        const calculateDailyWellnessScore = (dateStr) => {
+            const breaks = db.prepare("SELECT status FROM breaks_history WHERE date(offered_at, 'localtime') = ?").all(dateStr);
+            let breakComplianceRate = 0;
+            let completed = 0;
+            if (breaks.length > 0) {
+                completed = breaks.filter(b => b.status === 'completed').length;
+                breakComplianceRate = Math.round((completed / breaks.length) * 100);
+            } else {
+                breakComplianceRate = 100;
             }
 
-            if (breakComplianceRate >= 80) {
-                tips.push("Excellent break compliance! You are adhering well to your break schedule.");
-            } else if (breakComplianceRate >= 50) {
-                tips.push("You are doing okay with breaks, but try to skip fewer of them to maintain your health.");
-            } else if (breakComplianceRate !== "-") {
-                tips.push("Your break compliance is low today. Please don't ignore your body's need to rest!");
+            const manualTotalSecs = db.prepare("SELECT SUM(total_seconds) as total FROM sessions WHERE type = 'manual' AND date(start_time, 'localtime') = ?").get(dateStr).total || 0;
+            let avgFocusStreak = 0;
+            if (manualTotalSecs > 0) {
+                avgFocusStreak = Math.round((manualTotalSecs / 60) / (completed + 1));
+            }
+
+            let score = 100;
+            if (breaks.length > 0) {
+                score -= (100 - breakComplianceRate) * 0.4;
+            }
+            if (avgFocusStreak > 90) {
+                score -= 15;
+            } else if (avgFocusStreak > 120) {
+                score -= 25;
+            }
+            if (manualTotalSecs > 14400 && completed === 0) {
+                score -= 20;
+            }
+
+            score = Math.max(10, Math.min(100, Math.round(score)));
+            return {
+                score,
+                compliance: breaks.length > 0 ? breakComplianceRate : "-",
+                streak: manualTotalSecs > 0 ? avgFocusStreak : "-",
+                focusTime: manualTotalSecs
+            };
+        };
+
+        // 1. Calculate Today's Stats
+        const todayStats = calculateDailyWellnessScore(todayDateStr);
+        
+        // Sum total break time today
+        const totalBreakSecs = db.prepare("SELECT SUM(duration_seconds) as total FROM breaks_history WHERE date(completed_at, 'localtime') = ? AND status = 'completed'").get(todayDateStr).total || 0;
+
+        // 2. Generate 7-Day Trend
+        const weeklyTrend = [];
+        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${yyyy}-${mm}-${dd}`;
+            const dayLabel = daysOfWeek[d.getDay()];
+            const stats = calculateDailyWellnessScore(dateStr);
+            weeklyTrend.push({
+                day: dayLabel,
+                date: dateStr,
+                score: stats.score
+            });
+        }
+
+        // 3. Compute Hourly Work vs Break Distribution
+        const report = getTimelineReport(todayDateStr, todayDateStr);
+        const todayBlocksObj = report.find(r => r.date === todayDateStr);
+        const todayBlocks = todayBlocksObj ? todayBlocksObj.blocks : [];
+
+        const hours = {};
+        for (let h = 0; h < 24; h++) {
+            hours[h] = { work: 0, break: 0, idle: 0 };
+        }
+
+        const parseUtcDate = (str) => {
+            if (!str) return null;
+            let formatted = str;
+            if (!formatted.includes('T') && formatted.includes(' ')) {
+                formatted = formatted.replace(' ', 'T');
+            }
+            if (!formatted.endsWith('Z') && !formatted.includes('+')) {
+                formatted = formatted + 'Z';
+            }
+            const dateObj = new Date(formatted);
+            return isNaN(dateObj.getTime()) ? null : dateObj;
+        };
+
+        todayBlocks.forEach(b => {
+            const start = parseUtcDate(b.start);
+            const end = parseUtcDate(b.end);
+            if (!start || !end) return;
+
+            const startHour = start.getHours();
+            const endHour = end.getHours();
+            const type = b.type === 'working' ? 'work' : (b.type === 'break' ? 'break' : 'idle');
+
+            if (startHour === endHour) {
+                const duration = Math.floor((end.getTime() - start.getTime()) / 1000);
+                hours[startHour][type] += duration;
+            } else {
+                const startHourEnd = new Date(start);
+                startHourEnd.setMinutes(59, 59, 999);
+                hours[startHour][type] += Math.floor((startHourEnd.getTime() - start.getTime()) / 1000);
+
+                const endHourStart = new Date(end);
+                endHourStart.setMinutes(0, 0, 0, 0);
+                hours[endHour][type] += Math.floor((end.getTime() - endHourStart.getTime()) / 1000);
+
+                for (let h = startHour + 1; h < endHour; h++) {
+                    hours[h][type] += 3600;
+                }
+            }
+        });
+
+        const hourlyStats = [];
+        for (let h = 0; h < 24; h++) {
+            const total = hours[h].work + hours[h].break + hours[h].idle;
+            if (total > 0) {
+                const label = `${String(h).padStart(2, '0')}:00`;
+                hourlyStats.push({
+                    hour: label,
+                    work: Math.round((hours[h].work / total) * 100),
+                    break: Math.round((hours[h].break / total) * 100),
+                    idle: Math.round((hours[h].idle / total) * 100)
+                });
+            }
+        }
+
+        // 4. Dynamic Diagnostic Suggestions
+        const tips = [];
+        if (todayStats.focusTime === 0) {
+            tips.push({
+                category: "General",
+                severity: "low",
+                icon: "👋",
+                title: "Welcome!",
+                desc: "No screen activity recorded yet. Start tracking to receive focus diagnostics."
+            });
+        } else {
+            // Focus time suggestion
+            if (todayStats.focusTime > 28800) { // 8 hours
+                tips.push({
+                    category: "Cognitive Load",
+                    severity: "high",
+                    icon: "🧠",
+                    title: "High Burnout Risk",
+                    desc: "You have exceeded 8 hours of screen time today. Disconnect now to allow your mind to recover."
+                });
+            }
+
+            // Streak suggestion
+            if (todayStats.streak > 90) {
+                tips.push({
+                    category: "Ergonomics",
+                    severity: "high",
+                    icon: "🪑",
+                    title: "Excessive Focus Streak",
+                    desc: `Your average focus streak is ${todayStats.streak}m. Sitting for >90m without standing causes joint compression. Take a walk break.`
+                });
+            } else if (todayStats.streak > 45) {
+                tips.push({
+                    category: "Eye Strain",
+                    severity: "medium",
+                    icon: "👀",
+                    title: "Moderate Focus Streak",
+                    desc: "Your focus blocks are around 45-90m. Practice the 20-20-20 rule (look 20ft away for 20s) to relieve screen fatigue."
+                });
+            } else {
+                tips.push({
+                    category: "Workplace Health",
+                    severity: "low",
+                    icon: "✨",
+                    title: "Balanced Focus Intervals",
+                    desc: "Excellent! You are taking regular breaks that keep your muscle tension low and circulation active."
+                });
+            }
+
+            // Compliance suggestion
+            if (todayStats.compliance !== "-" && todayStats.compliance < 50) {
+                tips.push({
+                    category: "Habit Strength",
+                    severity: "high",
+                    icon: "⏳",
+                    title: "Low Break Adherence",
+                    desc: "You are ignoring or skipping more than half of your break prompts. Try setting a shorter dynamic interval."
+                });
+            } else if (todayStats.compliance >= 80) {
+                tips.push({
+                    category: "Habit Strength",
+                    severity: "low",
+                    icon: "💖",
+                    title: "Superb Break Compliance",
+                    desc: "Fantastic break discipline! You are maintaining a healthy pattern of active rest."
+                });
             }
         }
 
         res.json({
-            avgFocusStreak,
-            breakComplianceRate,
+            wellnessScore: todayStats.score,
+            avgFocusStreak: todayStats.streak,
+            breakComplianceRate: todayStats.compliance,
+            totalFocusTime: todayStats.focusTime,
+            totalBreakTime: totalBreakSecs,
+            totalScreenTime: todayStats.focusTime + totalBreakSecs,
+            hourlyStats,
+            weeklyTrend,
             tips
         });
     } catch (err) {

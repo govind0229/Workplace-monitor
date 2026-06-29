@@ -3954,15 +3954,122 @@ async function initWellnessReport() {
         if (!response.ok) throw new Error('Failed to fetch wellness data');
         const data = await response.json();
         
-        const avgElem = document.getElementById('avgFocusStreak');
-        if (avgElem) avgElem.innerText = data.avgFocusStreak;
-        
-        const compElem = document.getElementById('breakComplianceRate');
-        if (compElem) compElem.innerText = data.breakComplianceRate + '%';
-        
-        const list = document.getElementById('wellnessTipsList');
+        const fmtWellnessDuration = (secs) => {
+            const m = Math.floor(secs / 60);
+            if (m === 0) return '0m';
+            return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+        };
+
+        // 1. Health Score Ring and Text
+        const score = data.wellnessScore || 0;
+        const scoreNumber = document.getElementById('wellnessScoreNumber');
+        if (scoreNumber) scoreNumber.innerText = score;
+
+        const scoreRing = document.getElementById('wellnessScoreRing');
+        if (scoreRing) {
+            // Circle circumference = 2 * PI * r = 2 * 3.14159 * 54 = 339.292
+            const circum = 339.3;
+            const offset = circum * (1 - score / 100);
+            scoreRing.style.strokeDashoffset = offset;
+            
+            // Adjust ring color dynamically
+            let color = '#10b981'; // Green
+            if (score < 50) color = '#ef4444'; // Red
+            else if (score < 80) color = '#f59e0b'; // Orange
+            scoreRing.style.stroke = color;
+        }
+
+        const scoreStatus = document.getElementById('wellnessScoreStatus');
+        const scoreDesc = document.getElementById('wellnessScoreDesc');
+        if (scoreStatus && scoreDesc) {
+            if (score >= 85) {
+                scoreStatus.innerText = 'Optimal Wellbeing';
+                scoreDesc.innerText = 'You are maintaining an excellent work-rest balance today. Keep it up!';
+            } else if (score >= 70) {
+                scoreStatus.innerText = 'Good Habits';
+                scoreDesc.innerText = 'You are doing well, but taking more regular breaks will help protect your joints.';
+            } else if (score >= 50) {
+                scoreStatus.innerText = 'Moderate Strain';
+                scoreDesc.innerText = 'Long focus streaks or skipped breaks are building physical tension. Take a breather.';
+            } else {
+                scoreStatus.innerText = 'High Fatigue Risk';
+                scoreDesc.innerText = 'Critical screen time or extremely low break compliance detected. Disconnect immediately!';
+            }
+        }
+
+        // 2. Metrics Cards
+        const compElem = document.getElementById('wellnessCompliance');
+        if (compElem) compElem.innerText = data.breakComplianceRate === '-' ? '-' : data.breakComplianceRate + '%';
+
+        const streakElem = document.getElementById('wellnessFocusStreak');
+        if (streakElem) streakElem.innerText = data.avgFocusStreak === '-' ? '-' : data.avgFocusStreak + 'm';
+
+        const screenElem = document.getElementById('wellnessScreenTime');
+        if (screenElem) screenElem.innerText = fmtWellnessDuration(data.totalScreenTime);
+
+        const breakElem = document.getElementById('wellnessBreakTime');
+        if (breakElem) breakElem.innerText = fmtWellnessDuration(data.totalBreakTime);
+
+        // 3. Hourly timeline chart
+        const hourlyChart = document.getElementById('hourlyWellbeingChart');
+        if (hourlyChart) {
+            if (data.hourlyStats && data.hourlyStats.length > 0) {
+                hourlyChart.innerHTML = data.hourlyStats.map(h => `
+                    <div class="hourly-bar-row">
+                        <span class="hourly-time">${h.hour}</span>
+                        <div class="hourly-track-wrap">
+                            <div class="hourly-block-fill work" style="width: ${h.work}%" title="Work: ${h.work}%"></div>
+                            <div class="hourly-block-fill break" style="width: ${h.break}%" title="Break: ${h.break}%"></div>
+                            <div class="hourly-block-fill idle" style="width: ${h.idle}%" title="Inactive: ${h.idle}%"></div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                hourlyChart.innerHTML = '<div style="text-align:center; padding: 24px; color: var(--text-muted); font-size: 0.85rem;">No activity log recorded today yet.</div>';
+            }
+        }
+
+        // 4. Suggestions List
+        const list = document.getElementById('wellnessRecommendationsList');
         if (list) {
-            list.innerHTML = data.tips.map(tip => `<li>${tip}</li>`).join('');
+            if (data.tips && data.tips.length > 0) {
+                list.innerHTML = data.tips.map(tip => `
+                    <div class="rec-item ${tip.severity}">
+                        <div class="rec-item-header">
+                            <span class="rec-item-icon">${tip.icon}</span>
+                            <span class="rec-item-title">${tip.title}</span>
+                        </div>
+                        <div class="rec-item-desc">${tip.desc}</div>
+                    </div>
+                `).join('');
+            } else {
+                list.innerHTML = '<div style="text-align:center; padding: 12px; color: var(--text-muted); font-size: 0.8rem;">Habits are currently optimal.</div>';
+            }
+        }
+
+        // 5. Weekly Trend Chart
+        const trendChart = document.getElementById('weeklyTrendChart');
+        if (trendChart) {
+            if (data.weeklyTrend && data.weeklyTrend.length > 0) {
+                trendChart.innerHTML = data.weeklyTrend.map(item => {
+                    let colorClass = 'good';
+                    if (item.score < 50) colorClass = 'danger';
+                    else if (item.score < 80) colorClass = 'warning';
+                    
+                    return `
+                        <div class="trend-col">
+                            <div class="trend-bar-wrapper">
+                                <div class="trend-bar ${colorClass}" style="height: ${item.score}%">
+                                    <div class="trend-val-tooltip">${item.score} pts</div>
+                                </div>
+                            </div>
+                            <span class="trend-day-label">${item.day}</span>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                trendChart.innerHTML = '<div style="text-align:center; padding: 12px; color: var(--text-muted); font-size: 0.8rem;">No trend data available.</div>';
+            }
         }
     } catch (err) {
         console.error("Error loading wellness report:", err);

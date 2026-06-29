@@ -489,31 +489,106 @@
         </div>
 
         <div id="wellnessReportView" class="view">
-            <div class="header-content">
+            <div class="wellness-header">
                 <div class="title-area">
-                    <h1>Wellness Report</h1>
-                    <p class="subtitle">Insights into your work habits and health.</p>
+                    <h1>Wellness &amp; Health Report</h1>
+                    <p class="subtitle">Insights, metrics, and personalized suggestions to improve your workplace well-being.</p>
                 </div>
             </div>
             
-            <div class="metrics-grid" style="margin-top: 2rem;">
-                <div class="glass-card stat-card">
-                    <div class="stat-title">Average Focus Streak</div>
-                    <div class="stat-value" id="avgFocusStreak">-</div>
-                    <div class="stat-subtitle">Minutes before taking a break</div>
-                </div>
-                <div class="glass-card stat-card">
-                    <div class="stat-title">Break Compliance Rate</div>
-                    <div class="stat-value" id="breakComplianceRate">-</div>
-                    <div class="stat-subtitle">% of breaks taken on time</div>
-                </div>
-            </div>
+            <div class="wellness-dashboard-grid">
+                <!-- Left Column: Circular Health Score & Key Metrics -->
+                <div class="wellness-main-panel">
+                    <div class="glass-card wellness-score-card">
+                        <div class="score-ring-container">
+                            <svg class="score-ring-svg" viewBox="0 0 120 120">
+                                <circle class="score-ring-bg" cx="60" cy="60" r="54" />
+                                <circle class="score-ring-fill" id="wellnessScoreRing" cx="60" cy="60" r="54" />
+                            </svg>
+                            <div class="score-display">
+                                <span class="score-number" id="wellnessScoreNumber">-</span>
+                                <span class="score-label">Health Score</span>
+                            </div>
+                        </div>
+                        <div class="score-info">
+                            <h3 id="wellnessScoreStatus">Analyzing Habits...</h3>
+                            <p id="wellnessScoreDesc">Loading health score details...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="wellness-stats-row">
+                        <div class="glass-card stat-card-mini">
+                            <div class="mini-card-icon" style="color: #10b981;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </div>
+                            <div class="mini-card-content">
+                                <span class="mini-title">Break Compliance</span>
+                                <span class="mini-value" id="wellnessCompliance">-</span>
+                            </div>
+                        </div>
+                        <div class="glass-card stat-card-mini">
+                            <div class="mini-card-icon" style="color: #3b82f6;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </div>
+                            <div class="mini-card-content">
+                                <span class="mini-title">Focus Streak</span>
+                                <span class="mini-value" id="wellnessFocusStreak">-</span>
+                            </div>
+                        </div>
+                        <div class="glass-card stat-card-mini">
+                            <div class="mini-card-icon" style="color: #7c3aed;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                            </div>
+                            <div class="mini-card-content">
+                                <span class="mini-title">Total Screen Time</span>
+                                <span class="mini-value" id="wellnessScreenTime">-</span>
+                            </div>
+                        </div>
+                        <div class="glass-card stat-card-mini">
+                            <div class="mini-card-icon" style="color: #f59e0b;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 18.36A9 9 0 0 1 5.64 5.64m12.72 12.72A9 9 0 0 0 5.64 5.64m12.72 12.72L5.64 5.64"></path></svg>
+                            </div>
+                            <div class="mini-card-content">
+                                <span class="mini-title">Total Break Time</span>
+                                <span class="mini-value" id="wellnessBreakTime">-</span>
+                            </div>
+                        </div>
+                    </div>
 
-            <div class="glass-card history-content" style="margin-top: 2rem;">
-                <h3 style="margin-bottom: 1rem; color: var(--text-primary); border-bottom: 1px solid var(--bg-tertiary); padding-bottom: 0.5rem;">AI Health Insights</h3>
-                <ul id="wellnessTipsList" style="list-style-type: disc; padding-left: 1.5rem; color: var(--text-secondary); line-height: 1.8;">
-                    <!-- Populated via JS -->
-                </ul>
+                    <!-- Hourly Break vs. Work Activity Chart -->
+                    <div class="glass-card chart-container-card">
+                        <div class="chart-header">
+                            <h3>Hourly Work vs. Break Distribution</h3>
+                            <p>Track your hourly focus density and rest durations across today</p>
+                        </div>
+                        <div class="hourly-distribution-chart" id="hourlyWellbeingChart">
+                            <!-- Injected dynamically -->
+                        </div>
+                        <div class="hourly-legend">
+                            <div class="legend-item"><span class="legend-dot" style="background: var(--primary, #6366f1);"></span>Work</div>
+                            <div class="legend-item"><span class="legend-dot" style="background: var(--secondary, #10b981);"></span>Break</div>
+                            <div class="legend-item"><span class="legend-dot" style="background: var(--border-hover);"></span>Inactive / Idle</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Suggestions & Recommendations -->
+                <div class="wellness-side-panel">
+                    <div class="glass-card recommendations-card">
+                        <h3>Diagnostic Health Suggestions</h3>
+                        <p class="rec-subtitle">Personalized feedback based on your work habits today:</p>
+                        <div class="recommendations-list" id="wellnessRecommendationsList">
+                            <!-- Recommendation cards injected here -->
+                        </div>
+                    </div>
+                    
+                    <div class="glass-card trend-card">
+                        <h3>7-Day Wellness Trend</h3>
+                        <div class="weekly-trend-chart" id="weeklyTrendChart">
+                            <!-- Custom SVG bar trend chart injected here -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 

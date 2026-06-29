@@ -64,3 +64,85 @@ body[data-theme="light"] .wb-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.06
 .wb-remove-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 3px; border-radius: 5px; display: flex; align-items: center; transition: color 0.2s, background 0.2s; flex-shrink: 0; }
 .wb-remove-btn:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
 @media (max-width: 780px) { .wellbeing-container { grid-template-columns: 1fr; } }
+
+/* Wellness Report Styles */
+.wellness-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.wellness-period-selector { display: flex; gap: 8px; }
+
+.wellness-dashboard-grid { display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
+@media (max-width: 1024px) {
+    .wellness-dashboard-grid { grid-template-columns: 1fr; }
+}
+
+.wellness-main-panel { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.wellness-side-panel { display: flex; flex-direction: column; gap: 20px; }
+
+/* Score Ring */
+.wellness-score-card { display: flex; align-items: center; gap: 32px; padding: 24px; position: relative; }
+.score-ring-container { width: 120px; height: 120px; position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.score-ring-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.score-ring-bg { fill: none; stroke: var(--border); stroke-width: 7; }
+.score-ring-fill { fill: none; stroke: var(--secondary, #10b981); stroke-width: 7; stroke-dasharray: 339.3; stroke-dashoffset: 339.3; stroke-linecap: round; transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+.score-display { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; top: 0; left: 0; }
+.score-number { font-size: 1.8rem; font-weight: 800; color: var(--text); line-height: 1; }
+.score-label { font-size: 0.62rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700; margin-top: 2px; }
+
+.score-info { display: flex; flex-direction: column; gap: 6px; }
+.score-info h3 { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0; }
+.score-info p { font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; margin: 0; }
+
+/* Stats Row */
+.wellness-stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.stat-card-mini { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+.mini-card-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, currentColor 10%, transparent); flex-shrink: 0; }
+.mini-card-icon svg { width: 20px; height: 20px; }
+.mini-card-content { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mini-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.5px; }
+.mini-value { font-size: 1.1rem; font-weight: 800; color: var(--text); }
+
+/* Chart Containers */
+.chart-container-card { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+.chart-header { display: flex; flex-direction: column; gap: 4px; }
+.chart-header h3 { font-size: 1.05rem; font-weight: 800; color: var(--text); margin: 0; }
+.chart-header p { font-size: 0.78rem; color: var(--text-dim); margin: 0; }
+
+/* Hourly timeline chart */
+.hourly-distribution-chart { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.hourly-bar-row { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; }
+.hourly-time { width: 50px; text-align: right; color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
+.hourly-track-wrap { flex: 1; height: 16px; background: var(--border); border-radius: 6px; overflow: hidden; position: relative; display: flex; }
+.hourly-block-fill { height: 100%; transition: width 0.3s; }
+.hourly-block-fill.work { background: var(--primary, #6366f1); }
+.hourly-block-fill.break { background: var(--secondary, #10b981); }
+.hourly-block-fill.idle { background: var(--border-hover); }
+.hourly-legend { display: flex; gap: 16px; margin-top: 8px; justify-content: flex-end; font-size: 0.72rem; font-weight: 600; color: var(--text-dim); }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* Recommendations & Suggestions */
+.recommendations-card { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.rec-subtitle { font-size: 0.78rem; color: var(--text-dim); margin: 0; }
+.recommendations-list { display: flex; flex-direction: column; gap: 10px; }
+.rec-item { padding: 14px 16px; border-radius: 14px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; position: relative; background: var(--surface); }
+.rec-item-header { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.85rem; }
+.rec-item.low { border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.02); color: var(--text); }
+.rec-item.medium { border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.02); color: var(--text); }
+.rec-item.high { border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.02); color: var(--text); }
+.rec-item-icon { font-size: 1.1rem; }
+.rec-item-title { flex: 1; }
+.rec-item-desc { font-size: 0.75rem; color: var(--text-dim); line-height: 1.4; }
+
+/* Weekly SVG bar chart */
+.trend-card { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.weekly-trend-chart { height: 160px; display: flex; align-items: flex-end; justify-content: space-between; padding: 10px 10px 0 10px; position: relative; border-bottom: 1.5px solid var(--border); margin-top: 10px; }
+.trend-col { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; height: 100%; justify-content: flex-end; }
+.trend-bar-wrapper { width: 100%; display: flex; justify-content: center; height: 80%; align-items: flex-end; position: relative; }
+.trend-bar { width: 14px; border-radius: 4px 4px 0 0; background: var(--border-hover); transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s; position: relative; cursor: pointer; }
+.trend-bar:hover { filter: brightness(1.08); }
+.trend-bar.good { background: var(--secondary, #10b981); }
+.trend-bar.warning { background: var(--warning, #f59e0b); }
+.trend-bar.danger { background: var(--danger, #ef4444); }
+.trend-val-tooltip { position: absolute; bottom: 100%; margin-bottom: 6px; padding: 4px 6px; border-radius: 4px; background: var(--text); color: var(--bg); font-size: 0.65rem; font-weight: 700; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; transform: translateY(4px); white-space: nowrap; }
+.trend-bar-wrapper:hover .trend-val-tooltip { opacity: 1; transform: translateY(0); }
+.trend-day-label { font-size: 0.68rem; font-weight: 700; color: var(--text-dim); }
+
