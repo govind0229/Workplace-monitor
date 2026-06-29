@@ -2,6 +2,19 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [8.0.0] - 2026-06-29
+
+### Added
+- **Slack/Teams Status Sync** — Seamlessly synchronize your working status across Slack and Microsoft Teams.
+- **Burnout Prevention System** — Intelligent tracking that monitors for long, uninterrupted sessions and actively encourages healthy work habits.
+- **Automated Screen Locking** — Enforced Mac screen lock functionality for long sessions to guarantee restorative breaks.
+- **Dynamic Intensity-Based Notifications** — Break alerts that dynamically increase in intensity depending on how long you've been working without a break.
+- **Flexible Break Snoozing** — Improved snooze logic that provides flexible deferral options for verified breaks.
+- **Extended Categories** — Expanded the built-in domain and application categories for more precise activity tracking.
+
+### Improved
+- **UI Layout Refinements** — General layout optimizations and visual polish across the application.
+
 ## [7.1.1] - 2026-06-21
 
 ### Fixed
