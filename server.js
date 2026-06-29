@@ -1936,79 +1936,20 @@ app.get('/wellness-report-data', (req, res) => {
         const { getTimelineReport } = require('./db');
         const todayDateStr = db.prepare("SELECT date('now', 'localtime') as date").get().date;
 
-        const calculateDailyWellnessScore = (dateStr) => {
-            const breaks = db.prepare("SELECT status FROM breaks_history WHERE date(offered_at, 'localtime') = ?").all(dateStr);
-            let breakComplianceRate = 0;
-            let completed = 0;
-            if (breaks.length > 0) {
-                completed = breaks.filter(b => b.status === 'completed').length;
-                breakComplianceRate = Math.round((completed / breaks.length) * 100);
-            } else {
-                breakComplianceRate = 100;
-            }
-
-            const manualTotalSecs = db.prepare("SELECT SUM(total_seconds) as total FROM sessions WHERE type = 'manual' AND date(start_time, 'localtime') = ?").get(dateStr).total || 0;
-            let avgFocusStreak = 0;
-            if (manualTotalSecs > 0) {
-                avgFocusStreak = Math.round((manualTotalSecs / 60) / (completed + 1));
-            }
-
-            let score = 100;
-            if (breaks.length > 0) {
-                score -= (100 - breakComplianceRate) * 0.4;
-            }
-            if (avgFocusStreak > 90) {
-                score -= 15;
-            } else if (avgFocusStreak > 120) {
-                score -= 25;
-            }
-            if (manualTotalSecs > 14400 && completed === 0) {
-                score -= 20;
-            }
-
-            score = Math.max(10, Math.min(100, Math.round(score)));
-            return {
-                score,
-                compliance: breaks.length > 0 ? breakComplianceRate : "-",
-                streak: manualTotalSecs > 0 ? avgFocusStreak : "-",
-                focusTime: manualTotalSecs
-            };
+        const isGenericReason = (reason) => {
+            if (!reason) return true;
+            const generic = [
+              'lock_idle', 
+              'lock_system_idle', 
+              'lock_unknown', 
+              'lock_user_initiated', 
+              'lock_lock_screen', 
+              'lock_away', 
+              'lock_startup',
+              'Session Started Paused'
+            ];
+            return generic.includes(reason);
         };
-
-        // 1. Calculate Today's Stats
-        const todayStats = calculateDailyWellnessScore(todayDateStr);
-        
-        // Sum total break time today
-        const totalBreakSecs = db.prepare("SELECT SUM(duration_seconds) as total FROM breaks_history WHERE date(completed_at, 'localtime') = ? AND status = 'completed'").get(todayDateStr).total || 0;
-
-        // 2. Generate 7-Day Trend
-        const weeklyTrend = [];
-        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        for (let i = 6; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const yyyy = d.getFullYear();
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            const dateStr = `${yyyy}-${mm}-${dd}`;
-            const dayLabel = daysOfWeek[d.getDay()];
-            const stats = calculateDailyWellnessScore(dateStr);
-            weeklyTrend.push({
-                day: dayLabel,
-                date: dateStr,
-                score: stats.score
-            });
-        }
-
-        // 3. Compute Hourly Work vs Break Distribution
-        const report = getTimelineReport(todayDateStr, todayDateStr);
-        const todayBlocksObj = report.find(r => r.date === todayDateStr);
-        const todayBlocks = todayBlocksObj ? todayBlocksObj.blocks : [];
-
-        const hours = {};
-        for (let h = 0; h < 24; h++) {
-            hours[h] = { work: 0, break: 0, idle: 0 };
-        }
 
         const parseUtcDate = (str) => {
             if (!str) return null;
@@ -2022,6 +1963,101 @@ app.get('/wellness-report-data', (req, res) => {
             const dateObj = new Date(formatted);
             return isNaN(dateObj.getTime()) ? null : dateObj;
         };
+
+        const calculateDailyWellnessScore = (dateStr, dayBlocks) => {
+            // Exclude driving breaks from compliance and total break calculations
+            const wellbeingBreaks = dayBlocks.filter(b => b.type === 'break' && b.reason && b.reason.startsWith('lock_') && !isGenericReason(b.reason) && b.reason !== 'lock_driving');
+            const skippedBreaks = dayBlocks.filter(b => b.type === 'break' && isGenericReason(b.reason));
+            
+            const totalWellnessBreaks = wellbeingBreaks.length + skippedBreaks.length;
+            let complianceRate = 100;
+            if (totalWellnessBreaks > 0) {
+                complianceRate = Math.round((wellbeingBreaks.length / totalWellnessBreaks) * 100);
+            }
+
+            let wellbeingBreakSecs = 0;
+            dayBlocks.forEach(b => {
+                if (b.type === 'break' && b.reason && b.reason !== 'lock_driving') {
+                    const start = parseUtcDate(b.start);
+                    const end = parseUtcDate(b.end);
+                    if (start && end) {
+                        wellbeingBreakSecs += Math.floor((end.getTime() - start.getTime()) / 1000);
+                    }
+                }
+            });
+
+            const manualTotalSecs = db.prepare("SELECT SUM(total_seconds) as total FROM sessions WHERE type = 'manual' AND date = ?").get(dateStr).total || 0;
+            let avgFocusStreak = 0;
+            if (manualTotalSecs > 0) {
+                avgFocusStreak = Math.round((manualTotalSecs / 60) / (wellbeingBreaks.length + 1));
+            }
+
+            let score = 100;
+            if (totalWellnessBreaks > 0) {
+                score -= (100 - complianceRate) * 0.4;
+            }
+            if (avgFocusStreak > 90) {
+                score -= 15;
+            } else if (avgFocusStreak > 120) {
+                score -= 25;
+            }
+            if (manualTotalSecs > 14400 && wellbeingBreaks.length === 0) {
+                score -= 20;
+            }
+
+            score = Math.max(10, Math.min(100, Math.round(score)));
+            return {
+                score,
+                compliance: totalWellnessBreaks > 0 ? complianceRate : "-",
+                streak: manualTotalSecs > 0 ? avgFocusStreak : "-",
+                focusTime: manualTotalSecs,
+                breakTime: wellbeingBreakSecs
+            };
+        };
+
+        // 1. Calculate 7-Day Trend and Today's blocks
+        const weeklyTrend = [];
+        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
+        const startD = new Date();
+        startD.setDate(startD.getDate() - 6);
+        const startYyyy = startD.getFullYear();
+        const startMm = String(startD.getMonth() + 1).padStart(2, '0');
+        const startDd = String(startD.getDate()).padStart(2, '0');
+        const startDateStr = `${startYyyy}-${startMm}-${startDd}`;
+
+        const trendReport = getTimelineReport(startDateStr, todayDateStr);
+
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${yyyy}-${mm}-${dd}`;
+            const dayLabel = daysOfWeek[d.getDay()];
+            
+            const dayObj = trendReport.find(r => r.date === dateStr);
+            const dayBlocks = dayObj ? dayObj.blocks : [];
+            const stats = calculateDailyWellnessScore(dateStr, dayBlocks);
+            
+            weeklyTrend.push({
+                day: dayLabel,
+                date: dateStr,
+                score: stats.score
+            });
+        }
+
+        // Today's specific statistics
+        const todayObj = trendReport.find(r => r.date === todayDateStr);
+        const todayBlocks = todayObj ? todayObj.blocks : [];
+        const todayStats = calculateDailyWellnessScore(todayDateStr, todayBlocks);
+
+        // 2. Compute Hourly Work vs Break Distribution
+        const hours = {};
+        for (let h = 0; h < 24; h++) {
+            hours[h] = { work: 0, break: 0, idle: 0 };
+        }
 
         todayBlocks.forEach(b => {
             const start = parseUtcDate(b.start);
@@ -2064,7 +2100,7 @@ app.get('/wellness-report-data', (req, res) => {
             }
         }
 
-        // 4. Dynamic Diagnostic Suggestions
+        // 3. Dynamic Suggestions
         const tips = [];
         if (todayStats.focusTime === 0) {
             tips.push({
@@ -2075,8 +2111,7 @@ app.get('/wellness-report-data', (req, res) => {
                 desc: "No screen activity recorded yet. Start tracking to receive focus diagnostics."
             });
         } else {
-            // Focus time suggestion
-            if (todayStats.focusTime > 28800) { // 8 hours
+            if (todayStats.focusTime > 28800) {
                 tips.push({
                     category: "Cognitive Load",
                     severity: "high",
@@ -2086,7 +2121,6 @@ app.get('/wellness-report-data', (req, res) => {
                 });
             }
 
-            // Streak suggestion
             if (todayStats.streak > 90) {
                 tips.push({
                     category: "Ergonomics",
@@ -2113,7 +2147,6 @@ app.get('/wellness-report-data', (req, res) => {
                 });
             }
 
-            // Compliance suggestion
             if (todayStats.compliance !== "-" && todayStats.compliance < 50) {
                 tips.push({
                     category: "Habit Strength",
@@ -2138,8 +2171,8 @@ app.get('/wellness-report-data', (req, res) => {
             avgFocusStreak: todayStats.streak,
             breakComplianceRate: todayStats.compliance,
             totalFocusTime: todayStats.focusTime,
-            totalBreakTime: totalBreakSecs,
-            totalScreenTime: todayStats.focusTime + totalBreakSecs,
+            totalBreakTime: todayStats.breakTime,
+            totalScreenTime: todayStats.focusTime + todayStats.breakTime,
             hourlyStats,
             weeklyTrend,
             tips
