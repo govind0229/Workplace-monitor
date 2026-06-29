@@ -45,8 +45,10 @@ let timeFormat = localStorage.getItem('timeFormat') || '24h';
 let goalSeconds = (getStoredInt('goalHours', 4) * 3600) + (getStoredInt('goalMinutes', 10) * 60);
 let goalLinePercent = getStoredInt('goalLinePercent', 44);
 let defaultProjectId = null;
+let isLayoutDirty = false;
 let filterStartDate = null;
 let filterEndDate = null;
+let currentTimelineRange = 'day';
 
 function getStoredInt(key, defaultValue) {
     const val = localStorage.getItem(key);
@@ -164,6 +166,18 @@ navItems.forEach(item => {
         const targetView = item.dataset.view;
         sessionStorage.setItem('activeView', targetView);
 
+        // If switching away from settings, rollback layout order if modified but not saved
+        if (targetView !== 'settings') {
+            if (typeof isLayoutDirty !== 'undefined' && isLayoutDirty) {
+                applyDashboardLayout(dashboardLayout);
+                tempLayout = [...dashboardLayout];
+                if (typeof renderSettingsLayoutList === 'function') {
+                    renderSettingsLayoutList();
+                }
+                isLayoutDirty = false;
+            }
+        }
+
         // Reset scroll position to top when switching views!
         const mainContent = document.querySelector('.main-content');
         if (mainContent) {
@@ -207,7 +221,13 @@ navItems.forEach(item => {
                 renderStatsChart(currentStatsRange);
             }, 50);
         }
-        if (targetView === 'settings') loadSettings();
+        if (targetView === 'settings') {
+            loadSettings();
+            tempLayout = [...dashboardLayout];
+            if (typeof renderSettingsLayoutList === 'function') {
+                renderSettingsLayoutList();
+            }
+        }
         if (targetView === 'location') initLocationView();
         if (targetView === 'wellnessReport') initWellnessReport();
         if (targetView === 'wellbeing') {
@@ -310,6 +330,120 @@ async function loadSettings() {
         }
         if (maxSkipsBeforeLockEl && data.maxSkipsBeforeLock) {
             maxSkipsBeforeLockEl.value = data.maxSkipsBeforeLock;
+        }
+
+        const slackSyncEnabledEl = document.getElementById('slackSyncEnabled');
+        const slackUserTokenEl = document.getElementById('slackUserToken');
+        const slackStatusTextActiveEl = document.getElementById('slackStatusTextActive');
+        const slackStatusEmojiActiveEl = document.getElementById('slackStatusEmojiActive');
+        const slackStatusTextBreakEl = document.getElementById('slackStatusTextBreak');
+        const slackStatusEmojiBreakEl = document.getElementById('slackStatusEmojiBreak');
+        const slackSettingsFields = document.getElementById('slackSettingsFields');
+
+        const teamsSyncEnabledEl = document.getElementById('teamsSyncEnabled');
+        const teamsWebhookUrlEl = document.getElementById('teamsWebhookUrl');
+        const teamsSettingsFields = document.getElementById('teamsSettingsFields');
+
+        if (slackSyncEnabledEl) {
+            slackSyncEnabledEl.checked = !!data.slackSyncEnabled;
+            if (slackSettingsFields) {
+                slackSettingsFields.style.display = slackSyncEnabledEl.checked ? 'flex' : 'none';
+            }
+            slackSyncEnabledEl.onchange = (e) => {
+                if (slackSettingsFields) {
+                    slackSettingsFields.style.display = e.target.checked ? 'flex' : 'none';
+                }
+            };
+        }
+        if (slackUserTokenEl) slackUserTokenEl.value = data.slackUserToken || '';
+        if (slackStatusTextActiveEl) slackStatusTextActiveEl.value = data.slackStatusTextActive || 'Focusing on Desk';
+        if (slackStatusEmojiActiveEl) slackStatusEmojiActiveEl.value = data.slackStatusEmojiActive || ':laptop_computer:';
+        if (slackStatusTextBreakEl) slackStatusTextBreakEl.value = data.slackStatusTextBreak || 'Quick Break';
+        if (slackStatusEmojiBreakEl) slackStatusEmojiBreakEl.value = data.slackStatusEmojiBreak || ':coffee:';
+
+        if (teamsSyncEnabledEl) {
+            teamsSyncEnabledEl.checked = !!data.teamsSyncEnabled;
+            if (teamsSettingsFields) {
+                teamsSettingsFields.style.display = teamsSyncEnabledEl.checked ? 'flex' : 'none';
+            }
+            teamsSyncEnabledEl.onchange = (e) => {
+                if (teamsSettingsFields) {
+                    teamsSettingsFields.style.display = e.target.checked ? 'flex' : 'none';
+                }
+            };
+        }
+        if (teamsWebhookUrlEl) teamsWebhookUrlEl.value = data.teamsWebhookUrl || '';
+
+        const testSlackBtn = document.getElementById('testSlackConnectionBtn');
+        const slackTestResult = document.getElementById('slackTestResult');
+        if (testSlackBtn) {
+            testSlackBtn.onclick = async () => {
+                const token = slackUserTokenEl.value;
+                if (!token) {
+                    slackTestResult.textContent = '❌ Please enter a token first';
+                    slackTestResult.style.color = '#ef4444';
+                    return;
+                }
+                testSlackBtn.disabled = true;
+                slackTestResult.textContent = 'Testing...';
+                slackTestResult.style.color = 'var(--text-dim)';
+                try {
+                    const res = await fetch(`${API_BASE}/settings/test-slack`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token })
+                    });
+                    const d = await res.json();
+                    if (res.ok) {
+                        slackTestResult.textContent = `✓ Connected to Slack as ${d.user} (Team: ${d.team})`;
+                        slackTestResult.style.color = '#10b981';
+                    } else {
+                        slackTestResult.textContent = `❌ Error: ${d.error}`;
+                        slackTestResult.style.color = '#ef4444';
+                    }
+                } catch (e) {
+                    slackTestResult.textContent = `❌ Request failed`;
+                    slackTestResult.style.color = '#ef4444';
+                } finally {
+                    testSlackBtn.disabled = false;
+                }
+            };
+        }
+
+        const testTeamsBtn = document.getElementById('testTeamsConnectionBtn');
+        const teamsTestResult = document.getElementById('teamsTestResult');
+        if (testTeamsBtn) {
+            testTeamsBtn.onclick = async () => {
+                const webhookUrl = teamsWebhookUrlEl.value;
+                if (!webhookUrl) {
+                    teamsTestResult.textContent = '❌ Please enter a Webhook URL first';
+                    teamsTestResult.style.color = '#ef4444';
+                    return;
+                }
+                testTeamsBtn.disabled = true;
+                teamsTestResult.textContent = 'Testing...';
+                teamsTestResult.style.color = 'var(--text-dim)';
+                try {
+                    const res = await fetch(`${API_BASE}/settings/test-teams`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ webhookUrl })
+                    });
+                    const d = await res.json();
+                    if (res.ok) {
+                        teamsTestResult.textContent = `✓ Connection test posted to Teams!`;
+                        teamsTestResult.style.color = '#10b981';
+                    } else {
+                        teamsTestResult.textContent = `❌ Error: ${d.error}`;
+                        teamsTestResult.style.color = '#ef4444';
+                    }
+                } catch (e) {
+                    teamsTestResult.textContent = `❌ Request failed`;
+                    teamsTestResult.style.color = '#ef4444';
+                } finally {
+                    testTeamsBtn.disabled = false;
+                }
+            };
         }
 
 
@@ -502,6 +636,15 @@ saveSettingsBtn.onclick = async () => {
     try {
         const strictBreakModeEl = document.getElementById('strictBreakMode');
         const maxSkipsBeforeLockEl = document.getElementById('maxSkipsBeforeLock');
+
+        const slackSyncEnabledEl = document.getElementById('slackSyncEnabled');
+        const slackUserTokenEl = document.getElementById('slackUserToken');
+        const slackStatusTextActiveEl = document.getElementById('slackStatusTextActive');
+        const slackStatusEmojiActiveEl = document.getElementById('slackStatusEmojiActive');
+        const slackStatusTextBreakEl = document.getElementById('slackStatusTextBreak');
+        const slackStatusEmojiBreakEl = document.getElementById('slackStatusEmojiBreak');
+        const teamsSyncEnabledEl = document.getElementById('teamsSyncEnabled');
+        const teamsWebhookUrlEl = document.getElementById('teamsWebhookUrl');
         
         await fetch(`${API_BASE}/settings`, {
             method: 'POST',
@@ -514,7 +657,15 @@ saveSettingsBtn.onclick = async () => {
                 officeRadius: radius,
                 customAppCategories: JSON.stringify(customAppCategories),
                 strictBreakMode: strictBreakModeEl ? strictBreakModeEl.checked : false,
-                maxSkipsBeforeLock: maxSkipsBeforeLockEl ? parseInt(maxSkipsBeforeLockEl.value) : 5
+                maxSkipsBeforeLock: maxSkipsBeforeLockEl ? parseInt(maxSkipsBeforeLockEl.value) : 5,
+                slackSyncEnabled: slackSyncEnabledEl ? slackSyncEnabledEl.checked : false,
+                slackUserToken: slackUserTokenEl ? slackUserTokenEl.value : '',
+                slackStatusTextActive: slackStatusTextActiveEl ? slackStatusTextActiveEl.value : 'Focusing on Desk',
+                slackStatusEmojiActive: slackStatusEmojiActiveEl ? slackStatusEmojiActiveEl.value : ':laptop_computer:',
+                slackStatusTextBreak: slackStatusTextBreakEl ? slackStatusTextBreakEl.value : 'Quick Break',
+                slackStatusEmojiBreak: slackStatusEmojiBreakEl ? slackStatusEmojiBreakEl.value : ':coffee:',
+                teamsSyncEnabled: teamsSyncEnabledEl ? teamsSyncEnabledEl.checked : false,
+                teamsWebhookUrl: teamsWebhookUrlEl ? teamsWebhookUrlEl.value : ''
             })
         });
         alert('Settings saved!');
@@ -1465,12 +1616,19 @@ function updateGreeting() {
 }
 
 async function updateStatus(forceSync = false) {
+    if (typeof isLayoutDrawerOpen === 'function' && isLayoutDrawerOpen()) {
+        return;
+    }
     const now = Date.now();
 
     if (forceSync) {
         // App was brought to foreground (e.g. from tray/widget)
-        const monitorNav = document.querySelector('[data-view="monitor"]');
-        if (monitorNav) monitorNav.click();
+        // Only click to switch view if the active view is not already monitor
+        const activeNav = document.querySelector('.nav-item.active');
+        if (!activeNav || activeNav.dataset.view !== 'monitor') {
+            const monitorNav = document.querySelector('[data-view="monitor"]');
+            if (monitorNav) monitorNav.click();
+        }
     }
 
     if (forceSync || (now - lastSyncRealTime >= syncInterval)) {
@@ -1510,10 +1668,20 @@ async function updateStatus(forceSync = false) {
             // Critical: Align our local reference with the MOMENT of fetch completion
             lastSyncRealTime = Date.now();
 
+            // Determine the active display status for the status badge
+            let currentStatus = manualStatus;
+            if (manualStatus === 'idle') {
+                if (autoStatus === 'active') {
+                    currentStatus = 'active';
+                } else if (autoStatus === 'paused') {
+                    currentStatus = 'paused';
+                }
+            }
+
             // Batch DOM updates
             requestAnimationFrame(() => {
-                statusBadge.textContent = manualStatus;
-                statusBadge.className = 'status-badge status-' + manualStatus;
+                statusBadge.textContent = currentStatus;
+                statusBadge.className = 'status-badge status-' + currentStatus;
 
                 const arrivalTimeDisplay = document.getElementById('arrivalTimeDisplay');
                 const arrivalTimeVal = document.getElementById('arrivalTimeVal');
@@ -2560,11 +2728,12 @@ async function renderAppTimelineChart() {
     if (!canvas) return;
 
     try {
-        const timeRes = await fetch(`${API_BASE}/app-timeline`);
+        const timeRes = await fetch(`${API_BASE}/app-timeline?range=${currentTimelineRange}`);
         const timeData = await timeRes.json();
 
         const topApps = timeData.topApps || [];
         const timeline = timeData.timeline || {};
+        const labels = timeData.labels || [];
 
         const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#f97316', '#84cc16', '#d946ef'];
         const appColorMap = {};
@@ -2572,33 +2741,14 @@ async function renderAppTimelineChart() {
             appColorMap[appName] = colors[i % colors.length];
         });
 
-        const hoursWithData = Object.keys(timeline).map(Number).sort((a, b) => a - b);
-        const currentHour = new Date().getHours();
-        
-        // Start from the first hour of activity, or default to 8am. Don't start later than current hour.
-        let minHour = hoursWithData.length > 0 ? hoursWithData[0] : 8;
-        minHour = Math.min(minHour, currentHour);
-        
-        // Ensure we always show at least 4 hours of context
-        if (currentHour - minHour < 4) {
-            minHour = Math.max(0, currentHour - 4);
-        }
-
-        const labels = [];
-        for (let h = minHour; h <= currentHour; h++) {
-            const ampm = h >= 12 ? 'p' : 'a';
-            const hour12 = h % 12 || 12;
-            labels.push(`${hour12}${ampm}`);
-        }
-
         const datasets = [];
         topApps.forEach(appName => {
             const data = [];
-            for (let h = minHour; h <= currentHour; h++) {
-                const hourData = timeline[h] || {};
-                const val = hourData[appName] || 0;
+            labels.forEach(label => {
+                const labelData = timeline[label] || {};
+                const val = labelData[appName] || 0;
                 data.push(val / 60); // display in minutes
-            }
+            });
             datasets.push({
                 label: appName,
                 data: data,
@@ -2634,7 +2784,14 @@ async function renderAppTimelineChart() {
                                 let label = context.dataset.label || '';
                                 if (label) { label += ': '; }
                                 if (context.parsed.y !== null) {
-                                    label += Math.round(context.parsed.y) + ' mins';
+                                    const mins = Math.round(context.parsed.y);
+                                    if (mins >= 60) {
+                                        const h = Math.floor(mins / 60);
+                                        const m = mins % 60;
+                                        label += m > 0 ? `${h}h ${m}m` : `${h}h`;
+                                    } else {
+                                        label += mins + 'm';
+                                    }
                                 }
                                 return label;
                             }
@@ -2667,6 +2824,9 @@ async function renderAppTimelineChart() {
 // ─── Auto-refresh when window regains focus (native app + browser) ───
 // Debounce to avoid multiple rapid calls
 const debouncedRefresh = debounce(() => {
+    if (typeof isLayoutDrawerOpen === 'function' && isLayoutDrawerOpen()) {
+        return;
+    }
     updateStatus(true);
     loadDashboardCharts();
 }, 300);
@@ -2723,7 +2883,246 @@ window.addEventListener('offline', () => {
     }
 })();
 
+// ─── Dashboard Custom Layout Feature ───
+const CARD_NAMES = {
+    'cardWeeklyChart': 'Last 7 Days (Workplace)',
+    'cardGoalProgress': 'Goal Progress (Rings)',
+    'cardAppCategories': 'App Categories (Today)',
+    'cardAppsTimeline': 'Top Apps Timeline',
+    'cardAppUsage': 'App Usage (Today)',
+    'cardActivityTimeline': "Today's Activity Timeline"
+};
+
+const DEFAULT_CARD_ORDER = [
+    'cardWeeklyChart',
+    'cardGoalProgress',
+    'cardAppCategories',
+    'cardAppsTimeline',
+    'cardAppUsage',
+    'cardActivityTimeline'
+];
+
+let dashboardLayout = [];
+let tempLayout = [];
+
+function isLayoutDrawerOpen() {
+    const activeNav = document.querySelector('.nav-item.active');
+    const isSettingsActive = activeNav && activeNav.dataset.view === 'settings';
+    return isSettingsActive || isLayoutDirty;
+}
+
+function loadSavedLayout() {
+    try {
+        const saved = localStorage.getItem('dashboard_card_layout');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            const allValid = DEFAULT_CARD_ORDER.every(id => parsed.includes(id)) && parsed.length === DEFAULT_CARD_ORDER.length;
+            if (allValid) {
+                dashboardLayout = parsed;
+                return;
+            }
+        }
+    } catch (e) {
+        console.error('Error loading layout:', e);
+    }
+    dashboardLayout = [...DEFAULT_CARD_ORDER];
+}
+
+const CARD_WIDTH_REQUIREMENTS = {
+    'cardWeeklyChart': 'wide',
+    'cardGoalProgress': 'narrow',
+    'cardAppCategories': 'medium',
+    'cardAppsTimeline': 'wide',
+    'cardAppUsage': 'full',
+    'cardActivityTimeline': 'full'
+};
+
+function adjustRowGridTemplates() {
+    const topRow = document.querySelector('.dashboard-top-row');
+    const middleRow = document.querySelector('.dashboard-middle-row');
+    if (!topRow || !middleRow) return;
+
+    function updateRowLayoutClass(row) {
+        row.classList.remove(
+            'layout-wide-narrow',
+            'layout-narrow-wide',
+            'layout-medium-wide',
+            'layout-wide-medium',
+            'layout-equal'
+        );
+
+        const children = Array.from(row.children).filter(el => el.id && CARD_WIDTH_REQUIREMENTS[el.id]);
+        if (children.length < 2) return;
+
+        const id1 = children[0].id;
+        const id2 = children[1].id;
+        const type1 = CARD_WIDTH_REQUIREMENTS[id1];
+        const type2 = CARD_WIDTH_REQUIREMENTS[id2];
+
+        if (type1 === 'narrow' && type2 === 'wide') {
+            row.classList.add('layout-narrow-wide');
+        } else if (type1 === 'wide' && type2 === 'narrow') {
+            row.classList.add('layout-wide-narrow');
+        } else if (type1 === 'narrow' && type2 === 'medium') {
+            row.classList.add('layout-narrow-wide');
+        } else if (type1 === 'medium' && type2 === 'narrow') {
+            row.classList.add('layout-wide-narrow');
+        } else if (type1 === 'medium' && type2 === 'wide') {
+            row.classList.add('layout-medium-wide');
+        } else if (type1 === 'wide' && type2 === 'medium') {
+            row.classList.add('layout-wide-medium');
+        } else {
+            row.classList.add('layout-equal');
+        }
+    }
+
+    updateRowLayoutClass(topRow);
+    updateRowLayoutClass(middleRow);
+}
+
+function applyDashboardLayout(layout) {
+    const topRow = document.querySelector('.dashboard-top-row');
+    const middleRow = document.querySelector('.dashboard-middle-row');
+    const bottomRow = document.querySelector('.dashboard-bottom-row');
+    if (!topRow || !middleRow || !bottomRow) return;
+
+    layout.forEach((cardId, index) => {
+        const card = document.getElementById(cardId);
+        if (!card) return;
+
+        if (index < 2) {
+            topRow.appendChild(card);
+        } else if (index < 4) {
+            middleRow.appendChild(card);
+        } else {
+            bottomRow.appendChild(card);
+        }
+    });
+
+    adjustRowGridTemplates();
+}
+
+function renderSettingsLayoutList() {
+    const listContainer = document.getElementById('settingsLayoutList');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = '';
+    tempLayout.forEach((cardId, index) => {
+        const cardName = CARD_NAMES[cardId] || cardId;
+        const item = document.createElement('div');
+        item.className = 'drawer-item';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = cardName;
+        item.appendChild(nameSpan);
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'drawer-item-actions';
+
+        // Up Button
+        const upBtn = document.createElement('button');
+        upBtn.className = 'drawer-btn';
+        upBtn.innerHTML = '▲';
+        upBtn.title = 'Move Up';
+        upBtn.disabled = index === 0;
+        upBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (index > 0) {
+                // Swap in temp layout
+                const temp = tempLayout[index];
+                tempLayout[index] = tempLayout[index - 1];
+                tempLayout[index - 1] = temp;
+                
+                isLayoutDirty = true;
+                // Apply preview to DOM and re-render settings layout list
+                applyDashboardLayout(tempLayout);
+                renderSettingsLayoutList();
+            }
+        };
+        actionsDiv.appendChild(upBtn);
+
+        // Down Button
+        const downBtn = document.createElement('button');
+        downBtn.className = 'drawer-btn';
+        downBtn.innerHTML = '▼';
+        downBtn.title = 'Move Down';
+        downBtn.disabled = index === tempLayout.length - 1;
+        downBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (index < tempLayout.length - 1) {
+                // Swap in temp layout
+                const temp = tempLayout[index];
+                tempLayout[index] = tempLayout[index + 1];
+                tempLayout[index + 1] = temp;
+                
+                isLayoutDirty = true;
+                // Apply preview to DOM and re-render settings layout list
+                applyDashboardLayout(tempLayout);
+                renderSettingsLayoutList();
+            }
+        };
+        actionsDiv.appendChild(downBtn);
+
+        item.appendChild(actionsDiv);
+        listContainer.appendChild(item);
+    });
+}
+
+function initDashboardLayout() {
+    const resetBtn = document.getElementById('settingsResetLayoutBtn');
+    const saveBtn = document.getElementById('settingsSaveLayoutBtn');
+
+    loadSavedLayout();
+    applyDashboardLayout(dashboardLayout);
+
+    tempLayout = [...dashboardLayout];
+    renderSettingsLayoutList();
+
+    if (resetBtn) {
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            tempLayout = [...DEFAULT_CARD_ORDER];
+            isLayoutDirty = true;
+            applyDashboardLayout(tempLayout);
+            renderSettingsLayoutList();
+        });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Commit changes
+            dashboardLayout = [...tempLayout];
+            try {
+                localStorage.setItem('dashboard_card_layout', JSON.stringify(dashboardLayout));
+                alert('Dashboard layout saved!');
+            } catch (err) {
+                console.error('Error saving layout:', err);
+                alert('Failed to save layout.');
+            }
+            isLayoutDirty = false;
+        });
+    }
+}
+
+function initTimelineTabs() {
+    const tabsContainer = document.getElementById('appTimelineTabs');
+    if (!tabsContainer) return;
+
+    tabsContainer.querySelectorAll('.timeline-tab-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            tabsContainer.querySelectorAll('.timeline-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentTimelineRange = btn.dataset.range;
+            renderAppTimelineChart();
+        };
+    });
+}
+
 // Initial load
+initDashboardLayout();
+initTimelineTabs();
 updateStatus(true);
 loadDashboardCharts();
 
@@ -3107,6 +3506,7 @@ function initReportFilters() {
 
     // Close on click outside
     document.addEventListener('click', (e) => {
+        if (!e.isTrusted) return; // Ignore programmatic clicks
         if (popup && !popup.contains(e.target) && e.target !== toggleBtn) {
             popup.style.display = 'none';
         }
@@ -3274,7 +3674,13 @@ async function initAIDigest() {
                 <span>AI Digest</span>
             `);
             triggerBtn.onclick = () => showAIDigestModal();
-            titleRow.appendChild(triggerBtn);
+            
+            const actionsContainer = titleRow.querySelector('.view-actions');
+            if (actionsContainer) {
+                actionsContainer.insertBefore(triggerBtn, actionsContainer.firstChild);
+            } else {
+                titleRow.appendChild(triggerBtn);
+            }
         }
     }
 

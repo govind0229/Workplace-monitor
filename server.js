@@ -12,6 +12,7 @@ let pendingIdlePrompt = null;
 let pendingBreakReminder = null;
 let consecutiveSkippedBreaks = 0;
 let lastIdleStart = null;
+let currentBreakState = null;
 const IDLE_PROMPT_THRESHOLD_SEC = 600; // 10 minutes
 
 function clearSessionState(sessionId) {
@@ -70,6 +71,7 @@ function sendNativeNotification(title, message) {
 
 const { db, startSession, getActiveSession, addEvent, updateSessionSeconds, completeSession, getDailyReport, getWeeklyReport, getMonthlyReport, getOfficeVisitsReport, getTodayTotal, getTodayManualTotal, hasNotifiedToday, getTodayAutomaticSession, recordAppUsage, getTodayAppUsage, getSetting, setSetting, getRecentlySentMessages, markMessageSent, createProject, getProjects, deleteProject, getProjectReport, getLastSyncedId, updateSyncedId, getUnsyncedData } = require('./db');
 const cors = require('cors');
+const { syncStatus } = require('./services/statusSyncService');
 
 // Self-healing: Reset break interval settings if they are set to 1 minute (from testing/demo mode)
 const currentBreakInterval = getSetting('breakInterval');
@@ -717,6 +719,7 @@ app.post('/start', asyncHandler(async (req, res) => {
         }
     }
 
+    syncStatus('active');
     res.json({ success: true, session });
 }));
 
@@ -725,6 +728,7 @@ app.post('/pause', asyncHandler(async (req, res) => {
     if (session && session.status === 'active') {
         db.prepare("UPDATE sessions SET status = 'paused', last_tick = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
         sendNativeNotification('Workplace Monitor', 'Tracking paused.');
+        syncStatus('paused');
         res.json({ success: true });
     } else {
         res.status(404).json({ error: 'No active session to pause' });
@@ -738,6 +742,8 @@ app.post('/stop', asyncHandler(async (req, res) => {
         clearSessionState(session.id);
         console.log(`[Manual] Session stopped: ${session.id}`);
         sendNativeNotification('✅ Finish Day Session', 'Workplace session finished. Great work today!');
+        currentBreakState = null;
+        syncStatus('away');
         res.json({ success: true });
     } else {
         res.status(404).json({ error: 'No active session' });
@@ -761,7 +767,12 @@ app.post('/event', asyncHandler(async (req, res) => {
             lastIdleStart = Date.now();
         }
         consecutiveSkippedBreaks = 0;
+        if (!currentBreakState) {
+            syncStatus('away');
+        }
     } else if (event === 'unlock') {
+        currentBreakState = null;
+        syncStatus('active');
         let duration = 0;
         let isOvernight = false;
 
@@ -1178,6 +1189,9 @@ app.post('/start-break', asyncHandler(async (req, res) => {
     // Physically lock the Mac screen to enforce the break!
     triggerMacLockScreen(reason || 'start_break');
 
+    currentBreakState = reason || 'break';
+    syncStatus(currentBreakState);
+
     res.json({ success: true });
 }));
 
@@ -1263,19 +1277,64 @@ app.get('/app-usage', (req, res) => {
 // Helper function to get merged category map (default + custom)
 function getCategoryMap() {
     const defaultCategoryMap = {
-        'Productivity': ['Xcode', 'Visual Studio Code', 'Code', 'Terminal', 'iTerm2', 'Sublime Text', 'IntelliJ IDEA', 'PyCharm', 'WebStorm', 'Android Studio', 'Cursor', 'Windsurf', 'Nova', 'BBEdit', 'TextMate',
-            'github.com', 'gitlab.com', 'bitbucket.org', 'stackoverflow.com', 'jira.atlassian.com', 'linear.app', 'notion.so', 'trello.com', 'asana.com', 'clickup.com'],
-        'Communication': ['Slack', 'Microsoft Teams', 'Zoom', 'Discord', 'Telegram', 'WhatsApp', 'Messages', 'Mail', 'Outlook', 'Spark', 'FaceTime', 'Skype',
-            'mail.google.com', 'outlook.live.com', 'slack.com', 'teams.microsoft.com', 'discord.com', 'web.whatsapp.com', 'web.telegram.org'],
-        'Browsers': ['Safari', 'Google Chrome', 'Firefox', 'Arc', 'Brave Browser', 'Microsoft Edge', 'Opera', 'Vivaldi'],
-        'Design': ['Figma', 'Sketch', 'Adobe Photoshop', 'Adobe Illustrator', 'Adobe XD', 'Canva', 'Affinity Designer', 'Affinity Photo', 'Preview',
-            'figma.com', 'canva.com', 'dribbble.com', 'behance.net'],
-        'Documents': ['Microsoft Word', 'Microsoft Excel', 'Microsoft PowerPoint', 'Pages', 'Numbers', 'Keynote', 'Notion', 'Obsidian', 'Bear', 'Notes', 'TextEdit',
-            'docs.google.com', 'sheets.google.com', 'slides.google.com', 'medium.com'],
-        'Entertainment': ['Spotify', 'Music', 'YouTube', 'Netflix', 'VLC', 'IINA', 'TV', 'Podcasts', 'Books',
-            'youtube.com', 'netflix.com', 'twitch.tv', 'reddit.com', 'twitter.com', 'x.com', 'instagram.com', 'facebook.com', 'tiktok.com', 'spotify.com'],
-        'Utilities': ['Finder', 'System Preferences', 'System Settings', 'Activity Monitor', 'Disk Utility', 'Calculator', 'Calendar', 'Reminders', 'Clock', 'Shortcuts',
-            'calendar.google.com', 'drive.google.com']
+        'Productivity': [
+            'Xcode', 'Visual Studio Code', 'Code', 'Terminal', 'iTerm2', 'Sublime Text', 
+            'IntelliJ IDEA', 'PyCharm', 'WebStorm', 'Android Studio', 'Cursor', 'Windsurf', 
+            'Nova', 'BBEdit', 'TextMate', 'github.com', 'gitlab.com', 'bitbucket.org', 
+            'stackoverflow.com', 'jira.atlassian.com', 'linear.app', 'notion.so', 
+            'trello.com', 'asana.com', 'clickup.com', 'slack.com', 'teams.microsoft.com',
+            'localhost', '127.0.0.1'
+        ],
+        'Communication': [
+            'Slack', 'Microsoft Teams', 'Zoom', 'Discord', 'Telegram', 'WhatsApp', 
+            'Messages', 'Mail', 'Outlook', 'Spark', 'FaceTime', 'Skype', 'Signal',
+            'mail.google.com', 'outlook.live.com', 'slack.com', 'teams.microsoft.com', 
+            'discord.com', 'web.whatsapp.com', 'web.telegram.org'
+        ],
+        'Browsers': [
+            'Safari', 'Google Chrome', 'Firefox', 'Arc', 'Brave Browser', 
+            'Microsoft Edge', 'Opera', 'Vivaldi'
+        ],
+        'Design': [
+            'Figma', 'Sketch', 'Adobe Photoshop', 'Adobe Illustrator', 'Adobe XD', 
+            'Canva', 'Affinity Designer', 'Affinity Photo', 'Preview',
+            'figma.com', 'canva.com', 'dribbble.com', 'behance.net', 'adobe.com'
+        ],
+        'Documents': [
+            'Microsoft Word', 'Microsoft Excel', 'Microsoft PowerPoint', 'Pages', 
+            'Numbers', 'Keynote', 'Notion', 'Obsidian', 'Bear', 'Notes', 'TextEdit',
+            'docs.google.com', 'sheets.google.com', 'slides.google.com'
+        ],
+        'Entertainment': [
+            'Spotify', 'Music', 'YouTube', 'Netflix', 'VLC', 'IINA', 'TV', 
+            'Podcasts', 'Books', 'Disney+', 'Prime Video', 'youtube.com', 
+            'netflix.com', 'twitch.tv', 'spotify.com', 'disneyplus.com', 'primevideo.com'
+        ],
+        'Social Media': [
+            'Instagram', 'Facebook', 'Twitter', 'LinkedIn', 'TikTok', 'Reddit',
+            'instagram.com', 'facebook.com', 'twitter.com', 'x.com', 'reddit.com',
+            'tiktok.com', 'linkedin.com', 'threads.net', 'pinterest.com'
+        ],
+        'Gaming': [
+            'Steam', 'Epic Games Launcher', 'Minecraft', 'Roblox', 'Battle.net',
+            'League of Legends', 'World of Warcraft', 'GOG Galaxy', 'Origin',
+            'steamcommunity.com', 'roblox.com', 'itch.io', 'epicgames.com'
+        ],
+        'Finance': [
+            'Stocks', 'Calculator', 'QuickBooks', 'TurboTax', 'Tally',
+            'paypal.com', 'stripe.com', 'coinbase.com', 'binance.com', 
+            'zerodha.com', 'groww.in'
+        ],
+        'AI & Learning': [
+            'Wikipedia', 'Duolingo', 'Coursera', 'Udemy', 'Khan Academy',
+            'wikipedia.org', 'duolingo.com', 'coursera.org', 'udemy.com',
+            'chatgpt.com', 'gemini.google.com', 'claude.ai', 'poe.com'
+        ],
+        'Utilities': [
+            'Finder', 'System Preferences', 'System Settings', 'Activity Monitor', 
+            'Disk Utility', 'Calendar', 'Reminders', 'Clock', 'Shortcuts', 'App Store',
+            'calendar.google.com', 'drive.google.com', 'dropbox.com', 'icloud.com'
+        ]
     };
 
     // Get custom mappings from settings
@@ -1324,38 +1383,144 @@ app.get('/app-usage-categories', (req, res) => {
 });
 
 app.get('/app-timeline', (req, res) => {
-    // 1. Determine top 8 apps for the day
-    const topAppsUsage = getTodayAppUsage();
-    const top8AppNames = topAppsUsage.slice(0, 8).map(u => u.app_name);
+    const range = req.query.range || 'day';
+    let top8AppNames = [];
+    let timelineEvents = [];
+    let labels = [];
+    let labelToDate = {};
+    let labelToHour = {};
 
-    // 2. Query timeline events
-    const timelineEvents = db.prepare(`
-        SELECT strftime('%H', timestamp) as hour, app_name, SUM(duration_seconds) as duration
-        FROM app_usage_timeline
-        WHERE date = date('now', 'localtime')
-        GROUP BY hour, app_name
-        ORDER BY hour ASC
-    `).all();
+    try {
+        if (range === 'day') {
+            // 1. Determine top 8 apps for today
+            const topAppsUsage = getTodayAppUsage();
+            top8AppNames = topAppsUsage.slice(0, 8).map(u => u.app_name);
 
-    const appsByHour = {};
+            // 2. Query timeline events for today
+            timelineEvents = db.prepare(`
+                SELECT strftime('%H', timestamp) as hour, app_name, SUM(duration_seconds) as duration
+                FROM app_usage_timeline
+                WHERE date = date('now', 'localtime')
+                GROUP BY hour, app_name
+                ORDER BY hour ASC
+            `).all();
 
-    timelineEvents.forEach(event => {
-        // Only include apps that are in the Top 8
-        if (!top8AppNames.includes(event.app_name)) {
-            return;
+            const currentHour = new Date().getHours();
+            const activeHours = timelineEvents.map(e => parseInt(e.hour, 10)).sort((a, b) => a - b);
+            let minHour = activeHours.length > 0 ? activeHours[0] : 8;
+            minHour = Math.min(minHour, currentHour);
+            
+            if (currentHour - minHour < 4) {
+                minHour = Math.max(0, currentHour - 4);
+            }
+
+            for (let h = minHour; h <= currentHour; h++) {
+                const ampm = h >= 12 ? 'p' : 'a';
+                const hour12 = h % 12 || 12;
+                const display = `${hour12}${ampm}`;
+                labels.push(display);
+                labelToHour[display] = String(h).padStart(2, '0');
+            }
+
+        } else if (range === 'week') {
+            // 1. Determine top 8 apps for the last 7 days
+            const topAppsUsage = db.prepare(`
+                SELECT app_name, SUM(total_seconds) as total_seconds
+                FROM app_usage
+                WHERE date >= date('now', '-6 days', 'localtime')
+                GROUP BY app_name
+                ORDER BY total_seconds DESC
+                LIMIT 8
+            `).all();
+            top8AppNames = topAppsUsage.map(u => u.app_name);
+
+            // 2. Query timeline events for the last 7 days
+            timelineEvents = db.prepare(`
+                SELECT date, app_name, SUM(duration_seconds) as duration
+                FROM app_usage_timeline
+                WHERE date >= date('now', '-6 days', 'localtime')
+                GROUP BY date, app_name
+                ORDER BY date ASC
+            `).all();
+
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const dateStr = `${yyyy}-${mm}-${dd}`;
+                const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
+                labels.push(weekday);
+                labelToDate[weekday] = dateStr;
+            }
+
+        } else if (range === 'month') {
+            // 1. Determine top 8 apps for the last 30 days
+            const topAppsUsage = db.prepare(`
+                SELECT app_name, SUM(total_seconds) as total_seconds
+                FROM app_usage
+                WHERE date >= date('now', '-29 days', 'localtime')
+                GROUP BY app_name
+                ORDER BY total_seconds DESC
+                LIMIT 8
+            `).all();
+            top8AppNames = topAppsUsage.map(u => u.app_name);
+
+            // 2. Query timeline events for the last 30 days
+            timelineEvents = db.prepare(`
+                SELECT date, app_name, SUM(duration_seconds) as duration
+                FROM app_usage_timeline
+                WHERE date >= date('now', '-29 days', 'localtime')
+                GROUP BY date, app_name
+                ORDER BY date ASC
+            `).all();
+
+            for (let i = 29; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const dateStr = `${yyyy}-${mm}-${dd}`;
+                const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                labels.push(formatted);
+                labelToDate[formatted] = dateStr;
+            }
         }
-        
-        const hour = parseInt(event.hour, 10);
-        if (!appsByHour[hour]) {
-            appsByHour[hour] = {};
-        }
-        if (!appsByHour[hour][event.app_name]) {
-            appsByHour[hour][event.app_name] = 0;
-        }
-        appsByHour[hour][event.app_name] += event.duration;
-    });
 
-    res.json({ timeline: appsByHour, topApps: top8AppNames });
+        const timeline = {};
+        labels.forEach(label => {
+            timeline[label] = {};
+            top8AppNames.forEach(appName => {
+                timeline[label][appName] = 0;
+            });
+        });
+
+        timelineEvents.forEach(event => {
+            if (!top8AppNames.includes(event.app_name)) return;
+            
+            let matchedLabel = null;
+            if (range === 'day') {
+                const hourInt = parseInt(event.hour, 10);
+                const ampm = hourInt >= 12 ? 'p' : 'a';
+                const hour12 = hourInt % 12 || 12;
+                matchedLabel = `${hour12}${ampm}`;
+            } else {
+                matchedLabel = labels.find(l => labelToDate[l] === event.date);
+            }
+
+            if (matchedLabel && timeline[matchedLabel]) {
+                timeline[matchedLabel][event.app_name] += event.duration;
+            }
+        });
+
+        res.json({ timeline, topApps: top8AppNames, labels });
+
+    } catch (e) {
+        console.error('Error fetching app timeline:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 app.use('/', require('./routes/settings'));
