@@ -97,8 +97,8 @@ jobs:
 
       - name: Create Source Tarball for Homebrew Formula
         run: |
-          tar -czf workplace-monitor-v${{ env.VERSION }}.tar.gz --exclude='.git' --exclude='node_modules' .
-          mv workplace-monitor-v${{ env.VERSION }}.tar.gz ./artifacts/
+          tar -czf ../workplace-monitor-v${{ env.VERSION }}.tar.gz --exclude='.git' --exclude='node_modules' --exclude='./artifacts' .
+          mv ../workplace-monitor-v${{ env.VERSION }}.tar.gz ./artifacts/
 
       - name: Calculate SHA256 hashes
         id: shasum
