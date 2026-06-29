@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "description": "Workplace activity tracker and status sync monitor.",
+  "homepage": "https://github.com/user/workplace-monitor",
+  "license": "MIT",
+  "url": "https://github.com/user/workplace-monitor/releases/download/v1.0.0/workplace-monitor-win.zip",
+  "hash": "cb15f7a08b5e408ecbbcc41d7d0a273295c276a4ba2c24f686c12c75a40a8523",
+  "extract_dir": "workplace-monitor-win",
+  "bin": "win_utility.exe",
+  "shortcuts": [
+    ["win_utility.exe", "Workplace Monitor Launcher"]
+  ],
+  "persist": [
+    "data.db",
+    "settings.json"
+  ],
+  "checkver": {
+    "github": "https://github.com/user/workplace-monitor"
+  },
+  "autoupdate": {
+    "url": "https://github.com/user/workplace-monitor/releases/download/v$version/workplace-monitor-win.zip"
+  }
+}

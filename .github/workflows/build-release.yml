@@ -1,4 +1,4 @@
-name: Build and Release PKG
+name: Build and Release
 
 on:
   workflow_dispatch:
@@ -7,27 +7,25 @@ on:
       - main
 
 jobs:
-  build:
+  build-macos:
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # - arch: x64
-          #   runner: self-hosted
           - arch: arm64
             runner: macos-latest
     
     timeout-minutes: 15
     steps:
       - name: Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@v4
 
       - name: Read Version from File
         run: echo "VERSION=$(cat .version)" >> $GITHUB_ENV
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -46,24 +44,49 @@ jobs:
           bash pkg_installer/build_distribution_pkg.sh
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
           name: WorkplaceMonitor-${{ matrix.arch }}
           path: WorkplaceMonitor-${{ matrix.arch }}.pkg
 
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore and Build C# Tracker
+        run: |
+          dotnet publish win_utility/win_utility.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./publish
+
+      - name: Create Release Zip
+        run: |
+          powershell -Command "Compress-Archive -Path ./publish/* -DestinationPath ./workplace-monitor-win.zip"
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkplaceMonitor-win
+          path: workplace-monitor-win.zip
+
   release:
-    needs: build
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
-    if: always() && (needs.build.result == 'success' || needs.build.result == 'failure')
+    if: always() && (needs.build-macos.result == 'success' || needs.build-windows.result == 'success')
     permissions:
       contents: write
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@v4
 
       - name: Download All Artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@v4
         with:
           path: ./artifacts
           merge-multiple: true
@@ -72,9 +95,15 @@ jobs:
       - name: Read Version
         run: echo "VERSION=$(cat .version)" >> $GITHUB_ENV
 
-      - name: Calculate SHA256
+      - name: Create Source Tarball for Homebrew Formula
+        run: |
+          tar -czf workplace-monitor-v${{ env.VERSION }}.tar.gz --exclude='.git' --exclude='node_modules' .
+          mv workplace-monitor-v${{ env.VERSION }}.tar.gz ./artifacts/
+
+      - name: Calculate SHA256 hashes
         id: shasum
         run: |
+          # Calculate macOS hashes
           if [ -f ./artifacts/WorkplaceMonitor-x64.pkg ]; then
             echo "SHA_X64=$(sha256sum ./artifacts/WorkplaceMonitor-x64.pkg | awk '{print $1}')" >> $GITHUB_ENV
             echo "HAS_X64=true" >> $GITHUB_ENV
@@ -88,46 +117,55 @@ jobs:
           else
             echo "HAS_ARM64=false" >> $GITHUB_ENV
           fi
+          
+          # Calculate Windows hash
+          if [ -f ./artifacts/WorkplaceMonitor-win.zip ]; then
+            echo "SHA_WIN=$(sha256sum ./artifacts/WorkplaceMonitor-win.zip | awk '{print $1}')" >> $GITHUB_ENV
+            echo "HAS_WIN=true" >> $GITHUB_ENV
+          else
+            echo "HAS_WIN=false" >> $GITHUB_ENV
+          fi
 
-      - name: Update Homebrew Tap
+          # Calculate Source Tarball hash
+          if [ -f ./artifacts/workplace-monitor-v${{ env.VERSION }}.tar.gz ]; then
+            echo "SHA_SOURCE=$(sha256sum ./artifacts/workplace-monitor-v${{ env.VERSION }}.tar.gz | awk '{print $1}')" >> $GITHUB_ENV
+            echo "HAS_SOURCE=true" >> $GITHUB_ENV
+          else
+            echo "HAS_SOURCE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Update Homebrew Tap (Casks and Formula)
         env:
           VERSION: ${{ env.VERSION }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           SHA_X64: ${{ env.SHA_X64 }}
           SHA_ARM64: ${{ env.SHA_ARM64 }}
+          SHA_SOURCE: ${{ env.SHA_SOURCE }}
           HAS_X64: ${{ env.HAS_X64 }}
           HAS_ARM64: ${{ env.HAS_ARM64 }}
+          HAS_SOURCE: ${{ env.HAS_SOURCE }}
         run: |
           if [ -z "$TAP_GITHUB_TOKEN" ]; then
             echo "TAP_GITHUB_TOKEN is missing. Skipping Homebrew tap update."
             exit 0
           fi
           
-          if [ "$HAS_ARM64" != "true" ] && [ "$HAS_X64" != "true" ]; then
-            echo "No artifacts found to release. Skipping Homebrew update."
-            exit 0
-          fi
-
           git clone https://${TAP_GITHUB_TOKEN}@github.com/govind0229/homebrew-tap.git tap-repo
           cd tap-repo
-          mkdir -p Casks
           
-          generate_cask() {
-            local cask_name=$1
-            # If an architecture is missing, we use a placeholder or keep old value?
-            # For simplicity, if one is missing, we use the other one as fallback or a dummy.
-            # Usually users want both, so we'll just use the available ones.
-            local final_sha_arm="${SHA_ARM64:-$SHA_X64}"
-            local final_sha_intel="${SHA_X64:-$SHA_ARM64}"
-
-            cat > "Casks/${cask_name}.rb" << EOF
-          cask "${cask_name}" do
+          # 1. Update macOS GUI Cask
+          if [ "$HAS_ARM64" = "true" ] || [ "$HAS_X64" = "true" ]; then
+            mkdir -p Casks
+            local_sha_arm="${SHA_ARM64:-$SHA_X64}"
+            local_sha_intel="${SHA_X64:-$SHA_ARM64}"
+            
+            cat > Casks/workinghours.rb << EOF
+          cask "workinghours" do
             arch arm: "arm64", intel: "x64"
 
             version "$VERSION"
-            
-            sha256 arm:   "$final_sha_arm",
-                   intel: "$final_sha_intel"
+            sha256 arm:   "$local_sha_arm",
+                   intel: "$local_sha_intel"
 
             url "https://github.com/govind0229/Workplace-monitor/releases/download/v#{version}/WorkplaceMonitor-#{arch}.pkg"
             name "Workplace Monitor"
@@ -139,27 +177,60 @@ jobs:
             uninstall pkgutil: "com.workplacemonitor.app"
           end
           EOF
-          }
+          fi
+
+          # 2. Update CLI/WSL Formula
+          if [ "$HAS_SOURCE" = "true" ]; then
+            mkdir -p Formula
+            cat > Formula/workplace-monitor.rb << EOF
+          class WorkplaceMonitor < Formula
+            desc "Workplace activity tracker and status sync monitor"
+            homepage "https://github.com/govind0229/Workplace-monitor"
+            url "https://github.com/govind0229/Workplace-monitor/releases/download/v${VERSION}/workplace-monitor-v${VERSION}.tar.gz"
+            sha256 "${SHA_SOURCE}"
+            license "MIT"
+
+            depends_on "node"
+
+            def install
+              libexec.install Dir["*"]
+              (bin/"workplace-monitor").write <<~EOS
+                #!/bin/bash
+                exec "#{Formula["node"].opt_bin}/node" "#{libexec}/server.js" "$@"
+              EOS
+            end
+
+            service do
+              run [opt_bin/"workplace-monitor"]
+              keep_alive true
+              log_path var/"log/workplace-monitor.log"
+              error_log_path var/"log/workplace-monitor.log"
+            end
+          end
+          EOF
+          fi
           
-          generate_cask "workinghours"
-          generate_cask "workinghours@$VERSION"
-          
+          # Commit and Push
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/
-          git commit -m "Update workinghours to v$VERSION (multi-arch)" || echo "No changes to commit"
+          git add Casks/ Formula/
+          git commit -m "Update workinghours and workplace-monitor to v$VERSION" || echo "No changes to commit"
           git push origin main
 
       - name: Extract Release Notes
         run: |
           sed -n "/^## \[${{ env.VERSION }}\]/,/^## /p" CHANGELOG.md | sed '$d' > release_notes.md
+        continue-on-error: true
 
       - name: Create Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ env.VERSION }}
           name: WorkplaceMonitor v${{ env.VERSION }}
           body_path: release_notes.md
-          files: ./artifacts/WorkplaceMonitor-*.pkg
+          files: |
+            ./artifacts/WorkplaceMonitor-*.pkg
+            ./artifacts/WorkplaceMonitor-win.zip
+            ./artifacts/workplace-monitor-v*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
