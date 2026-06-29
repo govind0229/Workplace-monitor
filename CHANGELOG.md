@@ -2,6 +2,20 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [9.0.0] - 2026-06-29
+
+### Added
+- **Windows Platform Support** — Native Windows tracking support via C# (.NET Core) background agent, featuring Win32 app focus tracking, session switch event locks, and user idle duration hooks.
+- **UI Automation URL Resolver** — Traverses the Windows UI Automation tree to retrieve active browser tab domains from Chrome, Edge, Brave, and Firefox.
+- **Scoop & Homebrew CLI Manifests** — Added Scoop package manifest (`scoop/workplace-monitor.json`) for Windows command-line setup and Homebrew Formula (`homebrew/workplace-monitor.rb`) for WSL/Linux service management.
+- **CI/CD Build Pipeline Upgrades** — Added a `build-windows` pipeline job to compile .NET binaries, generate source tarballs, and auto-update Homebrew formulas on new releases.
+- **Expanded App Categories** — Added new dedicated analytics groups for *Social Media*, *Gaming*, *Finance*, and *AI & Learning* to provide more detailed tracking data.
+
+### Improved
+- **Dashboard Spacing & Grid Caps** — Bounded dashboard rows to a maximum width of `1060px` (centered) to prevent extreme stretching on large monitors and remove empty space between cards.
+- **Weekly Chart Sizing** — Grouped 7-day columns closely together using a `12px` gap cap, `52px` daily column bounds, and sleek `12px` thin bars for a refined look.
+- **Donut Chart Sizing & Centering** — Enlarged the category donut chart to `180px` and configured vertical flex layouts to keep the chart perfectly centered inside the card under height stretching.
+
 ## [8.0.0] - 2026-06-29
 
 ### Added
