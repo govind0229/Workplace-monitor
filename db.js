@@ -557,14 +557,28 @@ module.exports = {
           currentReason = null;
         } else if (event.event_type.startsWith('idle_respond_discard_')) {
           const choice = event.event_type.replace('idle_respond_discard_', '');
-          if (currentState === 'break' && (currentReason === 'lock_idle' || currentReason === 'lock_system_idle' || currentReason === 'lock_unknown')) {
+          const isGenericReason = (reason) => {
+            if (!reason) return true;
+            const generic = [
+              'lock_idle', 
+              'lock_system_idle', 
+              'lock_unknown', 
+              'lock_user_initiated', 
+              'lock_lock_screen', 
+              'lock_away', 
+              'lock_startup',
+              'Session Started Paused'
+            ];
+            return generic.includes(reason);
+          };
+          if (currentState === 'break' && isGenericReason(currentReason)) {
             currentReason = `lock_${choice}`;
           } else {
             const blocks = timelineByDate[date];
             if (blocks && blocks.length > 0) {
               for (let i = blocks.length - 1; i >= 0; i--) {
                 if (blocks[i].type === 'break' && blocks[i].session_id === session.id) {
-                  if (blocks[i].reason === 'lock_idle' || blocks[i].reason === 'lock_system_idle' || blocks[i].reason === 'lock_unknown') {
+                  if (isGenericReason(blocks[i].reason)) {
                     blocks[i].reason = `lock_${choice}`;
                   }
                   break;

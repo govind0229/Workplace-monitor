@@ -32,23 +32,40 @@ async function initWellbeing() {
         const todayDayObj = data.timeline ? data.timeline.find(t => t.date === todayStr) : null;
         const todayBlocks = todayDayObj ? todayDayObj.blocks : [];
         const reasonMap = {
-            lunch: ['lunch'], dinner: ['lunch'],
+            lunch: ['lunch'], 
+            dinner: ['lunch'],
             coffee: ['coffee'],
             driving: ['driving'],
             exercise: ['exercise'],
             personal: ['personal'],
             water: ['water'],
             stretch_walk: ['stretch_walk', 'walk'],
+            walk: ['walk'],
+            breathe: ['breathe'],
             take_break: ['breathe', 'mindful'],
-            focus: ['focus']
+            mindful: ['mindful'],
+            focus: ['focus'],
+            read: ['read']
+        };
+        const parseUtcDate = (str) => {
+            if (!str) return null;
+            let formatted = str;
+            if (!formatted.includes('T') && formatted.includes(' ')) {
+                formatted = formatted.replace(' ', 'T');
+            }
+            if (!formatted.endsWith('Z') && !formatted.includes('+')) {
+                formatted = formatted + 'Z';
+            }
+            const d = new Date(formatted);
+            return isNaN(d.getTime()) ? null : d.getTime();
         };
         const intervals = {};
         todayBlocks.forEach(b => {
             if (b.type === 'break' && b.reason) {
                 const key = b.reason.replace('lock_', '');
                 const ids = reasonMap[key] || [key];
-                const t1 = b.start ? new Date(b.start.replace(' ', 'T') + 'Z').getTime() : null;
-                const t2 = b.end ? new Date(b.end.replace(' ', 'T') + 'Z').getTime() : Date.now();
+                const t1 = parseUtcDate(b.start);
+                const t2 = parseUtcDate(b.end) || Date.now();
                 if (t1 && t2 > t1) {
                     ids.forEach(id => {
                         if (!intervals[id]) intervals[id] = [];
