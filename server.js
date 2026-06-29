@@ -1993,6 +1993,7 @@ app.get('/wellness-report-data', (req, res) => {
             let activeBreaks = [];
             let currentStart = null;
             let currentState = null;
+            let currentBreakReason = undefined;
             
             events.forEach(e => {
                 const isStart = e.type === 'start';
@@ -2003,6 +2004,13 @@ app.get('/wellness-report-data', (req, res) => {
                         activeWorking++;
                     } else {
                         activeBreaks.push(e.block);
+                        if (currentState === 'break') {
+                            if (e.block.reason === 'lock_driving') {
+                                currentBreakReason = 'lock_driving';
+                            } else if (isWellnessActivity(e.block.reason) && currentBreakReason !== 'lock_driving') {
+                                currentBreakReason = e.block.reason;
+                            }
+                        }
                     }
                 } else {
                     if (type === 'working') {
@@ -2021,13 +2029,6 @@ app.get('/wellness-report-data', (req, res) => {
                 
                 if (newState !== currentState) {
                     if (currentState !== null && currentStart !== null && e.time > currentStart) {
-                        let reason = undefined;
-                        if (currentState === 'break') {
-                            const wellnessBreak = activeBreaks.find(b => b.reason && isWellnessActivity(b.reason));
-                            const drivingBreak = activeBreaks.find(b => b.reason === 'lock_driving');
-                            reason = wellnessBreak ? wellnessBreak.reason : (drivingBreak ? 'lock_driving' : (activeBreaks[0]?.reason || 'lock_idle'));
-                        }
-                        
                         const startStr = new Date(currentStart).toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
                         const endStr = new Date(e.time).toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
                         
@@ -2035,9 +2036,18 @@ app.get('/wellness-report-data', (req, res) => {
                             type: currentState,
                             start: startStr,
                             end: endStr,
-                            reason
+                            reason: currentState === 'break' ? currentBreakReason : undefined
                         });
                     }
+                    
+                    if (newState === 'break') {
+                        const wellnessBreak = activeBreaks.find(b => b.reason && isWellnessActivity(b.reason));
+                        const drivingBreak = activeBreaks.find(b => b.reason === 'lock_driving');
+                        currentBreakReason = wellnessBreak ? wellnessBreak.reason : (drivingBreak ? 'lock_driving' : (activeBreaks[0]?.reason || 'lock_idle'));
+                    } else {
+                        currentBreakReason = undefined;
+                    }
+                    
                     currentState = newState;
                     currentStart = e.time;
                 }
