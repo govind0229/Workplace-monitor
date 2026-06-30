@@ -110,7 +110,7 @@ body[data-theme="light"] .wb-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.06
 .hourly-distribution-chart { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .hourly-bar-row { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; }
 .hourly-time { width: 50px; text-align: right; color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
-.hourly-track-wrap { flex: 1; height: 16px; background: var(--border); border-radius: 6px; overflow: hidden; position: relative; display: flex; }
+.hourly-track-wrap { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; position: relative; display: flex; }
 .hourly-block-fill { height: 100%; transition: width 0.3s; }
 .hourly-block-fill.work { background: var(--primary, #6366f1); }
 .hourly-block-fill.break { background: var(--secondary, #10b981); }
