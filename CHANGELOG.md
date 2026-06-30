@@ -2,6 +2,19 @@
 
 All notable changes to WorkplaceMonitor will be documented in this file.
 
+## [9.1.0] - 2026-06-30
+
+### Added
+- **Wellness & Health Report Dashboard** — Transformed the wellness page with an animated circular SVG Health Score Ring (0-100) based on dynamic fatigue thresholds and 4 key cards: Break Compliance, Focus Streak, Total Screen Time, and Total Break Time.
+- **Hourly Activity Distribution** — Added a custom horizontal stacked bar chart displaying hourly work-rest densities (Work, Break, and Idle) for each hour of the day.
+- **7-Day Trend Charts** — Created a custom 7-day SVG vertical bar chart displaying wellness score history with score tooltips on hover.
+- **Diagnostic Recommendations Engine** — Introduced dynamic clinical health suggestions (Cognitive Load/Burnout, Ergonomics, Eye Strain, and Habit Strength) with color-coded severity cards based on active streak and compliance metrics.
+
+### Improved
+- **Timeline Merger & De-duplication** — Implemented an interval-merging algorithm to merge overlapping working and break intervals from concurrent tracking sessions (manual and automatic), ensuring total screen time and focus hours are calculated without duplicate counting.
+- **Completed-Only Break Totals** — Filtered out uncompleted/generic idle periods (like `lock_unknown`, `lock_idle`, `lock_away`, etc.) from the break duration totals so that only completed wellbeing activities (coffee, lunch, breathe, walk, etc.) count as break time.
+- **Driving Commute Exclusions** — Excluded driving commutes (`lock_driving`) entirely from wellness metrics, compliance rates, streaks, and score calculations.
+
 ## [9.0.0] - 2026-06-29
 
 ### Added
